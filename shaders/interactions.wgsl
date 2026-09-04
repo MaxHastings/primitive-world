@@ -23,7 +23,9 @@ fn propose(@builtin(global_invocation_id) id: vec3<u32>) {
   let d=decisions[i];
   if (d.target_id>=params.agent_count || d.target_id==i || (d.selected_action!=GIVE && d.selected_action!=FORCE && d.selected_action!=COMMUNICATE)) { return; }
   let a=agents[i]; let b=agents[d.target_id];
-  if (a.alive==0u || b.alive==0u || length(a.position-b.position)>INTERACTION_RADIUS) { return; }
+  let distance=length(a.position-b.position);
+  let contact_radius=select(INTERACTION_RADIUS,min(a.sensor_radius,b.sensor_radius),d.selected_action==COMMUNICATE);
+  if (a.alive==0u || b.alive==0u || distance>contact_radius) { return; }
   if (d.selected_action==GIVE && (a.food<=0.0 || b.food>=FOOD_CAPACITY)) { return; }
   atomicMin(&claims[i],priority(i)); atomicMin(&claims[d.target_id],priority(i));
 }
@@ -36,6 +38,9 @@ fn resolve(@builtin(global_invocation_id) id: vec3<u32>) {
   if (atomicLoad(&claims[i])!=priority(i) || atomicLoad(&claims[j])!=priority(i)) { return; }
   // Accepted pairs are disjoint. No invocation can read a record another pair writes.
   var a=agents[i]; var b=agents[j];
+  let distance=length(a.position-b.position);
+  let contact_radius=select(INTERACTION_RADIUS,min(a.sensor_radius,b.sensor_radius),d.selected_action==COMMUNICATE);
+  if (distance>contact_radius) { return; }
   if (d.selected_action==COMMUNICATE) {
     let report=a.places[min(u32(d.amount),3u)];
     var replace=0u; var weakest=1000.0; var duplicate=false;
