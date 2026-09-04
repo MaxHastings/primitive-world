@@ -20,10 +20,10 @@ pub struct WorldMetrics {
     pub moving_agents: u64,
     pub eating_agents: u64,
     pub harvested: f64,
-    /// Cumulative, overlapping agent-tick gate failures: age, energy, food,
-    /// movement, cooldown; followed by all-gates-open and requests.
+    /// Reproduction attempts: immature, energy, inventory, cooldown, requested, eligible, resolved.
     pub birth_gates: [u32; 7],
     pub action_ticks: [u32; 7],
+    pub invalid_outputs: u32,
     pub force_attempts: u32,
     pub force_energy_spent: f64,
     pub force_food_spilled: f64,
@@ -37,8 +37,8 @@ pub struct EvolutionSnapshot {
     pub living: u64,
     pub unique_lineages: u64,
     pub parent_lineages_present: u64,
-    pub maximum_generation: u32,
-    pub mean_generation: f64,
+    pub maximum_ancestry_depth: u32,
+    pub mean_ancestry_depth: f64,
     pub mean_genome: Vec<f64>,
     pub genome_variance: Vec<f64>,
 }
@@ -79,6 +79,8 @@ impl Simulation {
     ) -> Result<EvolutionSnapshot, String> {
         let bytes = read_buffer(device, queue, &self.agent_buffers[self.current_buffer])?;
         let agents = bytemuck::cast_slice::<u8, AgentGpu>(&bytes);
+        let gene_bytes = read_buffer(device, queue, &self.genome_buffer)?;
+        let genes: &[f32] = bytemuck::cast_slice(&gene_bytes);
         let mut lineages = HashSet::new();
         let mut parent_lineages = HashSet::new();
         let mut snapshot = EvolutionSnapshot {
@@ -88,15 +90,23 @@ impl Simulation {
             ..Default::default()
         };
         let mut genome_squares = [0.0; crate::simulation::GENOME_SIZE];
-        for agent in agents.iter().filter(|agent| agent.alive != 0) {
+        for (slot, agent) in agents
+            .iter()
+            .enumerate()
+            .filter(|(_, agent)| agent.alive != 0)
+        {
             snapshot.living += 1;
             lineages.insert(agent.lineage_id);
             if agent.parent_lineage != 0 {
                 parent_lineages.insert(agent.parent_lineage);
             }
-            snapshot.maximum_generation = snapshot.maximum_generation.max(agent.ancestry_depth);
-            snapshot.mean_generation += agent.ancestry_depth as f64;
-            for (index, gene) in agent.genome.iter().enumerate() {
+            snapshot.maximum_ancestry_depth =
+                snapshot.maximum_ancestry_depth.max(agent.ancestry_depth);
+            snapshot.mean_ancestry_depth += agent.ancestry_depth as f64;
+            for (index, gene) in genes[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE]
+                .iter()
+                .enumerate()
+            {
                 snapshot.mean_genome[index] += *gene as f64;
                 genome_squares[index] += (*gene as f64) * (*gene as f64);
             }
@@ -105,11 +115,11 @@ impl Simulation {
         snapshot.parent_lineages_present = parent_lineages.len() as u64;
         if snapshot.living > 0 {
             let count = snapshot.living as f64;
-            snapshot.mean_generation /= count;
-            for index in 0..crate::simulation::GENOME_SIZE {
+            snapshot.mean_ancestry_depth /= count;
+            for (index, square) in genome_squares.iter().enumerate() {
                 snapshot.mean_genome[index] /= count;
                 snapshot.genome_variance[index] =
-                    (genome_squares[index] / count - snapshot.mean_genome[index].powi(2)).max(0.0);
+                    (square / count - snapshot.mean_genome[index].powi(2)).max(0.0);
             }
         }
         Ok(snapshot)
@@ -121,12 +131,7 @@ impl Simulation {
         queue: &wgpu::Queue,
     ) -> Result<WorldMetrics, String> {
         let mut encoder = device.create_command_encoder(&Default::default());
-        {
-            let mut pass = encoder.begin_compute_pass(&Default::default());
-            pass.set_pipeline(&self.summary_pipeline);
-            pass.set_bind_group(0, &self.summary_bind_groups[self.current_buffer], &[]);
-            pass.dispatch_workgroups(64, 1, 1);
-        }
+        self.dispatch(&mut encoder, "summary", self.current_buffer, 64, 1);
         queue.submit(Some(encoder.finish()));
         let bytes = read_buffer(device, queue, &self.summary_buffer)?;
         let mut total = [0u64; 16];
@@ -162,6 +167,7 @@ impl Simulation {
             action_ticks: counters[24..31]
                 .try_into()
                 .map_err(|_| "Invalid action counters")?,
+            invalid_outputs: counters[31],
             force_attempts: counters[12],
             force_energy_spent: (counters[13] as f64 + counters[14] as f64) / 1000.0,
             force_food_spilled: counters[15] as f64 / 1000.0,
@@ -181,18 +187,27 @@ impl Simulation {
             &self.resource_buffer,
             &self.fertility_buffer,
             &self.ground_buffer,
-            &self.social_memory_buffer,
             &self.death_stats_buffer,
             &self.event_buffer,
-            &self.neural_state_buffer,
-            &self.neural_weights_buffer,
+            &self.perception_buffer,
+            &self.decision_buffer,
+            &self.genome_buffer,
         ];
         let data: Vec<_> = buffers
             .iter()
             .map(|b| read_buffer(device, queue, b))
             .collect::<Result<_, _>>()?;
-        let mut file = std::fs::File::create(path).map_err(|e| e.to_string())?;
-        file.write_all(b"PRIMWORLD011").map_err(|e| e.to_string())?;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .map_err(|e| {
+                format!(
+                    "{}: {e}; preserve or rename the previous save first",
+                    path.display()
+                )
+            })?;
+        file.write_all(b"PRIMWORLD012").map_err(|e| e.to_string())?;
         for n in [self.seed, self.tick, settings.len() as u32] {
             file.write_all(&n.to_le_bytes())
                 .map_err(|e| e.to_string())?;
@@ -214,31 +229,34 @@ impl Simulation {
         let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
         let mut magic = [0; 12];
         file.read_exact(&mut magic).map_err(|e| e.to_string())?;
-        if &magic != b"PRIMWORLD011" {
-            return Err("Unsupported checkpoint version".into());
+        if &magic != b"PRIMWORLD012" {
+            return Err("Unsupported checkpoint: recurrent-v1 requires schema 12; older files are unchanged".into());
         }
         let mut fields = [0; 12];
         file.read_exact(&mut fields).map_err(|e| e.to_string())?;
         let seed = u32::from_le_bytes(fields[0..4].try_into().unwrap());
         let tick = u32::from_le_bytes(fields[4..8].try_into().unwrap());
         let settings_len = u32::from_le_bytes(fields[8..12].try_into().unwrap()) as usize;
-        if settings_len > 4_194_304 {
+        if settings_len > 16_777_216 {
             return Err("Invalid settings length".into());
         }
         let mut json = vec![0; settings_len];
         file.read_exact(&mut json).map_err(|e| e.to_string())?;
         let settings: SimSettings = serde_json::from_slice(&json).map_err(|e| e.to_string())?;
-        crate::founders::validate_genomes(&settings.founder_genomes)?;
+        settings.validate()?;
         let mut buffers = vec![
             &self.agent_buffers[0],
             &self.resource_buffer,
             &self.fertility_buffer,
             &self.ground_buffer,
-            &self.social_memory_buffer,
             &self.death_stats_buffer,
             &self.event_buffer,
         ];
-        buffers.extend([&self.neural_state_buffer, &self.neural_weights_buffer]);
+        buffers.extend([
+            &self.perception_buffer,
+            &self.decision_buffer,
+            &self.genome_buffer,
+        ]);
         let mut data = Vec::new();
         for buffer in &buffers {
             let mut length = [0; 8];
@@ -251,29 +269,116 @@ impl Simulation {
             file.read_exact(&mut bytes).map_err(|e| e.to_string())?;
             data.push(bytes);
         }
-        // Validate neural payloads before changing any live buffer.
-        NeuralWeights::from_flat(bytemuck::cast_slice(&data[8]))?;
-        for st in data[7]
-            .chunks_exact(std::mem::size_of::<NeuralState>())
-            .map(bytemuck::pod_read_unaligned::<NeuralState>)
+        for a in data[0]
+            .chunks_exact(std::mem::size_of::<AgentGpu>())
+            .map(bytemuck::pod_read_unaligned::<AgentGpu>)
         {
-            if st.choice >= crate::neural::ACTIONS as u32
-                || st.valid > 1
-                || !st.energy.is_finite()
-                || !st.food.is_finite()
-                || st
-                    .hidden
+            if a.alive > 1
+                || a.action > 6
+                || a.position
                     .iter()
-                    .chain(&st.before)
-                    .chain(&st.after)
-                    .chain(&st.observation)
-                    .chain(&st.logits)
-                    .chain(&st.mask)
-                    .chain(&st.probabilities)
+                    .any(|v| !v.is_finite() || !(0.0..=WORLD_SIZE).contains(v))
+                || [
+                    a.energy,
+                    a.age,
+                    a.food,
+                    a.max_speed,
+                    a.sensor_radius,
+                    a.max_age,
+                    a.attention,
+                    a.event_amount,
+                    a.collected,
+                    a.ingested,
+                    a.spent,
+                    a.received,
+                ]
+                .iter()
+                .chain(&a.hidden)
+                .chain(&a.velocity)
+                .chain(&a.moved)
+                .any(|v| !v.is_finite())
+                || a.food < 0.0
+                || a.food > 8.001
+                || a.energy < 0.0
+                || a.energy > 100.001
+                || a.age < 0.0
+                || a.max_age < 1.0
+                || a.max_age > 11000.0
+                || a.max_speed < 0.0
+                || a.max_speed > 1.2
+                || a.hidden.iter().any(|v| v.abs() > 1.0)
+                || a.sensor_radius < 4.0
+                || a.sensor_radius > 48.0
+            {
+                return Err("Invalid recurrent-v1 body checkpoint".into());
+            }
+        }
+        if bytemuck::cast_slice::<u8, f32>(&data[8])
+            .iter()
+            .any(|x| !x.is_finite() || x.abs() > 4.0)
+        {
+            return Err("Invalid checkpoint genome".into());
+        }
+        if data[2]
+            .chunks_exact(4)
+            .map(|v| f32::from_le_bytes(v.try_into().unwrap()))
+            .any(|v| !v.is_finite() || !(0.0..=1.0).contains(&v))
+        {
+            return Err("Invalid checkpoint soil".into());
+        }
+        for cell in data[3].chunks_exact(32) {
+            let value = |i| f32::from_le_bytes(cell[i..i + 4].try_into().unwrap());
+            if [value(8), value(24), value(28)]
+                .iter()
+                .any(|v| !v.is_finite() || *v < 0.0)
+                || value(8) >= 1.0
+                || value(24) > 1.0
+                || value(28) > 1000.0
+            {
+                return Err("Invalid checkpoint ground".into());
+            }
+        }
+        for p in data[6]
+            .chunks_exact(std::mem::size_of::<PerceptionGpu>())
+            .map(bytemuck::pod_read_unaligned::<PerceptionGpu>)
+        {
+            if !p.resource_here.is_finite()
+                || !p.local_count.is_finite()
+                || p.samples
+                    .iter()
+                    .any(|s| !s.food.is_finite() || s.offset.iter().any(|v| !v.is_finite()))
+                || p.bodies.iter().any(|b| {
+                    !b.food.is_finite()
+                        || !b.event.is_finite()
+                        || b.offset.iter().chain(&b.velocity).any(|v| !v.is_finite())
+                        || b.slot > MAX_AGENTS
+                })
+            {
+                return Err("Invalid checkpoint perception".into());
+            }
+        }
+        for d in data[7]
+            .chunks_exact(std::mem::size_of::<DecisionGpu>())
+            .map(bytemuck::pod_read_unaligned::<DecisionGpu>)
+        {
+            if d.selected_action > 6
+                || d.invalid > 1
+                || d.target > MAX_AGENTS
+                || [d.attention, d.amount, d.payload]
+                    .iter()
+                    .chain(&d.movement)
+                    .chain(&d.scores)
+                    .chain(&d.hidden)
+                    .chain(&d.inputs)
                     .any(|v| !v.is_finite())
             {
-                return Err("Invalid recurrent checkpoint state".into());
+                return Err("Invalid checkpoint decision".into());
             }
+        }
+        // Reject trailing payloads before mutating live state.
+        let mut trailing = [0u8; 1];
+        if file.read(&mut trailing).map_err(|e| e.to_string())? != 0 {
+            return Err("Trailing checkpoint data".into());
         }
         // Apply only after the entire checkpoint has been read and checked.
         for (buffer, bytes) in buffers.iter().zip(&data) {

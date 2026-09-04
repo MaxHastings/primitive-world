@@ -6,7 +6,7 @@ struct SelectionParams { world_position: vec2<f32>, radius: f32, padding: f32, }
 @compute @workgroup_size(64, 1, 1)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   let index = id.x;
-  if (index >= 100000u) { return; }
+  if (index >= INVALID) { return; }
   let agent = agents[index];
   if (agent.alive == 0u) { return; }
   let distance = length(agent.position - selection.world_position);

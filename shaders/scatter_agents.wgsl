@@ -11,7 +11,7 @@ var<storage, read_write> agent_indices: array<u32>;
 var<uniform> params: SimParams;
 
 const OCCUPANCY_GRID: u32 = 256u;
-const MAX_AGENTS: u32 = 100000u;
+const MAX_AGENTS: u32 = INVALID;
 
 @compute @workgroup_size(64, 1, 1)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {

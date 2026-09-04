@@ -1,41 +1,43 @@
-@group(0) @binding(5) var<storage, read_write> ground: array<Ground>;
-@group(0) @binding(0) var<storage, read> agents: array<Agent>;
-@group(0) @binding(1) var<storage, read> resources: array<u32>;
-@group(0) @binding(2) var<storage, read> occupancy: array<atomic<u32>>;
-@group(0) @binding(3) var<storage, read_write> perceptions: array<Perception>;
-@group(0) @binding(4) var<uniform> params: SimParams;
-fn food_at(pos: vec2<f32>) -> f32 {
-  let cell = vec2<u32>(clamp(pos / params.world_size * 512.0, vec2<f32>(0.0), vec2<f32>(511.0)));
-  return f32(resources[cell.y * 512u + cell.x] + min(atomicLoad(&ground[cell.y * 512u + cell.x].dropped), 8000u)) / 1000.0;
-}
-fn crowd_at(pos: vec2<f32>) -> f32 {
-  let cell = vec2<u32>(clamp(pos / params.world_size * 256.0, vec2<f32>(0.0), vec2<f32>(255.0)));
-  return f32(atomicLoad(&occupancy[cell.y * 256u + cell.x]));
-}
+@group(0) @binding(0) var<storage,read> agents:array<Agent>;
+@group(0) @binding(1) var<storage,read> resources:array<u32>;
+@group(0) @binding(2) var<storage,read_write> ground:array<Ground>;
+@group(0) @binding(3) var<storage,read> occupancy:array<u32>;
+@group(0) @binding(4) var<storage,read> offsets:array<u32>;
+@group(0) @binding(5) var<storage,read> indices:array<u32>;
+@group(0) @binding(6) var<storage,read_write> perceptions:array<Perception>;
+@group(0) @binding(7) var<uniform> params:SimParams;
+fn food_at(pos:vec2<f32>)->f32{let i=ground_index(pos);return f32(resources[i]+min(atomicLoad(&ground[i].dropped),8000u))/1000.0;}
 @compute @workgroup_size(64)
-fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-  let i = id.x;
-  if (i >= params.agent_count) { return; }
-  var p: Perception;
-  let a = agents[i];
-  if (a.alive == 0u) { perceptions[i] = p; return; }
-  let r = a.sensor_radius;
-  var foods: array<f32, 4>;
-  for (var k=0u; k<4u; k++) {
-    let pos = a.position + food_sample_offset(k+1u,r,params.tick,params.neural_config.w);
-    foods[k] = food_at(pos);
-    if ((params.neural_config.w&2u)!=0u && params.tick>=8u) {foods[k]=0.0;}
-    p.crowd[k] = crowd_at(pos);
+fn main(@builtin(global_invocation_id) id:vec3<u32>){
+ let i=id.x;if(i>=params.agent_count){return;}let a=agents[i];var p:Perception;
+ for(var k=0u;k<4u;k++){p.bodies[k].slot=INVALID;}
+ if(a.alive==0u){perceptions[i]=p;return;}
+ p.resource_here=food_at(a.position);
+ let center=vec2<i32>(clamp(a.position/8.0,vec2<f32>(0),vec2<f32>(255)));
+ p.local_count=f32(occupancy[u32(center.y)*256u+u32(center.x)]);
+ var dirs=array<vec2<f32>,4>(vec2<f32>(0,-1),vec2<f32>(1,0),vec2<f32>(0,1),vec2<f32>(-1,0));
+ for(var k=0u;k<8u;k++){
+  let range=select(a.sensor_radius/6.0,a.sensor_radius,k>=4u);
+  let pos=clamp(a.position+rotate(dirs[k%4u],a.attention)*range,vec2<f32>(0),vec2<f32>(params.world_size));
+  p.samples[k]=Sample(pos-a.position,food_at(pos),0.0);
+ }
+ // Bounded neutral sampling; no preference based on food, conduct or identity.
+ let radius=min(6,i32(ceil(a.sensor_radius/8.0)));let side=u32(2*radius+1);let cells=side*side;
+ let start_cell=hash_u32(a.rng^params.tick)%cells;var count=0u;
+ for(var c=0u;c<cells;c++){
+  if(count>=4u){break;}let n=(c+start_cell)%cells;
+  let cell=center+vec2<i32>(i32(n%side)-radius,i32(n/side)-radius);
+  if(any(cell<vec2<i32>(0))||any(cell>=vec2<i32>(256))){continue;}
+  let ci=u32(cell.y)*256u+u32(cell.x);var start=0u;if(ci>0u){start=offsets[ci-1u];}
+  let available=offsets[ci]-start;if(available==0u){continue;}
+  for(var j=0u;j<min(2u,available);j++){
+   if(count>=4u){break;}
+   let other=indices[start+(hash_u32(a.rng^ci^params.tick)+j)%available];
+   if(other==i||other>=INVALID){continue;}let b=agents[other];
+   if(b.alive==0u||length(b.position-a.position)>a.sensor_radius){continue;}
+   let event=select(0.0,b.event_amount,b.event_tick+1u==params.tick);
+   p.bodies[count]=Body(b.position-a.position,b.velocity,b.food,event,other,b.generation);count++;
   }
-  p.resource_here = food_at(a.position);
-  p.resource_north = foods[0]; p.resource_east = foods[1];
-  p.resource_south = foods[2]; p.resource_west = foods[3];
-  p.local_count = crowd_at(a.position);
-  p.local_density = clamp((p.local_count - 1.0) / 8.0, 0.0, 1.0);
-  // An occupancy cell covers four food cells: this is a deliberately coarse forecast.
-  let demand = max(0.0, p.local_count - 1.0) * 0.25 * params.resource_and_noise.x / 1000.0 * 8.0;
-  p.projected_food = max(0.0, p.resource_here - demand);
-  p.competition_pressure = clamp(demand / max(p.resource_here, 0.02), 0.0, 1.0);
-  p.gradient = vec2<f32>(foods[1]-foods[3], foods[2]-foods[0]);
-  perceptions[i] = p;
+ }
+ perceptions[i]=p;
 }

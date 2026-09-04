@@ -1,49 +1,35 @@
-@group(0) @binding(0) var<storage, read_write> agents: array<Agent>;
-@group(0) @binding(1) var<storage, read> free_indices: array<u32>;
-@group(0) @binding(2) var<storage, read> free_prefix: array<u32>;
-@group(0) @binding(3) var<storage, read> birth_parents: array<u32>;
-@group(0) @binding(4) var<storage, read> birth_prefix: array<u32>;
-@group(0) @binding(5) var<uniform> params: SimParams;
-@group(0) @binding(6) var<storage, read_write> stats: array<atomic<u32>>;
-@group(0) @binding(7) var<storage, read_write> social_memory: array<Relation>;
-@group(0) @binding(8) var<storage,read_write> neural_state:array<NeuralState>;
+@group(0) @binding(0) var<storage,read_write> agents:array<Agent>;
+@group(0) @binding(1) var<storage,read> free_indices:array<u32>;
+@group(0) @binding(2) var<storage,read> free_prefix:array<u32>;
+@group(0) @binding(3) var<storage,read> parents:array<u32>;
+@group(0) @binding(4) var<storage,read> birth_prefix:array<u32>;
+@group(0) @binding(5) var<uniform> params:SimParams;
+@group(0) @binding(6) var<storage,read_write> stats:array<atomic<u32>>;
+@group(0) @binding(7) var<storage,read> decisions:array<Decision>;
+@group(0) @binding(8) var<storage,read_write> genomes:array<f32>;
 @compute @workgroup_size(64)
-fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-  let n=id.x;
-  if (n>=min(birth_prefix[INVALID-1u],free_prefix[INVALID-1u])) { return; }
-  let pi=birth_parents[n]; let ci=free_indices[n];
-  var parent=agents[pi];
-  let cost=params.sensor_and_padding.w;
-  if (parent.alive==0u || agents[ci].alive!=0u || parent.energy<max(params.sensor_and_padding.z,cost+10.0) || parent.food<2.0) { return; }
-  parent.next_birth=params.tick+params.lifecycle.y;
-  parent.lifetime_births+=1u;
-  var child: Agent;
-  let angle=random01(parent.rng)*6.2831853;
-  child.position=clamp(parent.position+vec2<f32>(cos(angle),sin(angle))*2.0,vec2<f32>(0.0),vec2<f32>(params.world_size));
-  child.goal=child.position;
-  // Transfer reserves, and dissipate 20% of the reproduction energy cost.
-  child.energy=cost*0.8; parent.energy-=cost;
-  child.food=1.0; parent.food-=1.0;
-  child.max_age=9000.0+random01(parent.rng ^ ci)*2000.0;
-  child.max_speed=parent.max_speed; child.sensor_radius=parent.sensor_radius;
-  // Sparse, signed mutation preserves most of a functional controller. The
-  // mutation process is fixed; no cost-free copying-fidelity gene is selected.
-  for (var k=0u; k<128u; k++) {
-    let key=parent.rng ^ ci ^ (k*0x9e3779b9u) ^ params.tick;
-    let mutation=select(0.0,(random01(key)-0.5)*0.06,random01(key ^ 0xb5297a4du)<0.1);
-    let bound=select(4.0,1.0,k<16u);
-    child.genome[k]=clamp(parent.genome[k]+mutation,-bound,bound);
-  }
-  child.rng=hash_u32(parent.rng ^ ci ^ params.tick); child.alive=1u;
-  child.generation=agents[ci].generation+1u;
-  child.lineage_id=atomicAdd(&stats[10],1u)+100001u;
-  child.parent_lineage=parent.lineage_id;
-  child.birth_tick=params.tick;
-  child.birth_parent_slot=pi;
-  child.ancestry_depth=parent.ancestry_depth+1u;
-  child.guide_id=INVALID; child.target_id=INVALID; child.event_actor=INVALID;
-  agents[pi]=parent; agents[ci]=child;
-  var blank:NeuralState; neural_state[ci]=blank;
-  for (var k=0u; k<8u; k++) { social_memory[ci*8u+k]=Relation(INVALID,0u,0.0,0.0,0.0,params.tick,0.0,0.0,0.0,0.0,0u,0u); }
-  atomicAdd(&stats[3],1u);
+fn main(@builtin(global_invocation_id) id:vec3<u32>){
+ let n=id.x;if(n>=min(free_prefix[INVALID-1u],birth_prefix[INVALID-1u])){return;}
+ let pi=parents[n];let ci=free_indices[n];var p=agents[pi];let d=decisions[pi];
+ let child_energy=params.sensor_and_padding.w*0.8*d.amount;
+ let cost=params.sensor_and_padding.w*0.2+child_energy;
+ // Interactions have resolved since the intention: revalidate actual possession.
+ if(p.alive==0u||agents[ci].alive!=0u||p.food<1.0||p.energy<cost||d.selected_action!=REPRODUCE){return;}
+ var child:Agent;let angle=random01(p.rng)*6.2831853;
+ child.position=clamp(p.position+vec2<f32>(cos(angle),sin(angle))*2.0,vec2<f32>(0),vec2<f32>(params.world_size));
+ child.energy=child_energy;child.food=1.0;p.energy-=cost;p.food-=1.0;p.spent+=cost;
+ p.next_birth=params.tick+params.lifecycle.y;p.lifetime_births++;
+ if(p.energy<=0.0){p.alive=0u;atomicAdd(&stats[1],1u);}
+ child.max_speed=p.max_speed;child.sensor_radius=p.sensor_radius;
+ child.max_age=9000.0+2000.0*random01(p.rng^ci);
+ for(var k=0u;k<1568u;k++){
+  let key=p.rng^ci^(k*0x9e3779b9u)^params.tick;
+  let mutation=select(0.0,(random01(key)-0.5)*0.06,random01(key^0xb5297a4du)<0.02);
+  genomes[ci*1568u+k]=clamp(genomes[pi*1568u+k]+mutation,-4.0,4.0);
+ }
+ child.alive=1u;child.rng=hash_u32(p.rng^ci^params.tick);child.generation=agents[ci].generation+1u;
+ child.event_actor=INVALID;child.target_id=INVALID;
+ child.lineage_id=atomicAdd(&stats[10],1u)+INVALID+1u;
+ child.parent_lineage=p.lineage_id;child.birth_tick=params.tick;child.birth_parent_slot=pi;child.ancestry_depth=p.ancestry_depth+1u;
+ agents[pi]=p;agents[ci]=child;atomicAdd(&stats[3],1u);atomicAdd(&stats[22],1u);
 }

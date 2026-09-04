@@ -1,6 +1,6 @@
 mod founders;
 mod headless;
-mod neural;
+mod model;
 mod renderer;
 mod simulation;
 
@@ -58,8 +58,6 @@ struct AppState {
     evolution_snapshot: Option<simulation::observability::EvolutionSnapshot>,
     cursor_position: PhysicalPosition<f64>,
     selected: Option<SelectionOutput>,
-    neural_inspection: Option<(u32, neural::NeuralState)>,
-    neural_path: String,
     seed_input: u32,
     shock_mode: ShockMode,
     shock_radius: f32,
@@ -197,47 +195,13 @@ impl AppState {
 
         let mut simulation = Simulation::new(&device, &queue, 1);
         let args: Vec<_> = std::env::args().collect();
-        if args.iter().any(|a| a == "--bootstrap") {
-            simulation.use_bootstrap_founders();
-        }
-        simulation.settings.force_enabled = !args.iter().any(|a| a == "--no-force");
-        simulation.settings.communication_enabled = !args.iter().any(|a| a == "--no-signals");
-        simulation.settings.evolving_landscape = !args.iter().any(|a| a == "--static-landscape");
-        if let Some(i) = args.iter().position(|a| a == "--seed") {
-            simulation.seed = args
-                .get(i + 1)
-                .expect("Missing seed")
-                .parse()
-                .expect("Invalid seed");
-        }
-        simulation.settings.legacy_controller = args.iter().any(|a| a == "--legacy-controller");
-        if let Some(i) = args.iter().position(|a| a == "--founders") {
-            simulation
-                .load_founders(std::path::Path::new(
-                    args.get(i + 1).expect("Missing --founders path"),
-                ))
-                .expect("Invalid founder bank");
-        }
-        let neural_path = args
-            .iter()
-            .position(|a| a == "--neural-weights")
-            .and_then(|i| args.get(i + 1))
-            .cloned()
-            .unwrap_or_else(|| "policies/forager-v3.json".into());
-        if args
-            .iter()
-            .any(|arg| arg == "--neural" || arg == "--neural-weights")
-        {
-            match neural::NeuralWeights::load_json(std::path::Path::new(&neural_path))
-                .and_then(|w| simulation.set_neural_weights(&queue, &w))
-            {
-                Ok(()) => simulation.settings.neural_policy = true,
-                Err(e) => eprintln!("Neural policy not enabled: {e}"),
-            }
-        }
-        simulation.settings.neural_greedy = args.iter().any(|a| a == "--neural-greedy");
+        headless::configure(&mut simulation, &args).expect("Invalid command line");
         simulation.reset(&queue);
-        simulation.update_params(&queue);
+        if let Some(i) = args.iter().position(|a| a == "--checkpoint") {
+            simulation
+                .load_checkpoint(&queue, std::path::Path::new(&args[i + 1]))
+                .expect("Invalid checkpoint");
+        }
         let renderer = Renderer::new(
             &device,
             config.format,
@@ -289,8 +253,6 @@ impl AppState {
             evolution_snapshot: None,
             cursor_position: PhysicalPosition::new(0.0, 0.0),
             selected: None,
-            neural_inspection: None,
-            neural_path,
             seed_input: initial_seed,
             shock_mode: ShockMode::Select,
             shock_radius: 45.0,
@@ -372,20 +334,9 @@ impl AppState {
     }
 
     fn update_title(&self) {
-        let lens = Lens::from_u32(self.renderer.camera.lens).name();
         self.window.set_title(&format!(
-            "Primitive World / {} / checkpoint 11  |  {:>6} / {} living  |  {:>5.1} FPS  |  {}",
-            if self.simulation.settings.neural_policy {
-                "GRU experimental"
-            } else if self.simulation.settings.legacy_controller {
-                "legacy"
-            } else {
-                "candidate-v1"
-            },
-            self.living_agents,
-            MAX_AGENTS,
-            self.render_fps,
-            lens
+            "Primitive World / recurrent-v1 / checkpoint 12 | {} / {} living | {:.1} FPS",
+            self.living_agents, MAX_AGENTS, self.render_fps
         ));
     }
 
@@ -402,10 +353,10 @@ impl AppState {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("simulation and frame encoder"),
             });
-        if let Some(timing) = &self.gpu_timing {
-            if ticks > 0 {
-                encoder.write_timestamp(&timing.query_set, 0);
-            }
+        if let Some(timing) = &self.gpu_timing
+            && ticks > 0
+        {
+            encoder.write_timestamp(&timing.query_set, 0);
         }
         self.simulation
             .encode_ticks(&mut encoder, &self.device, &self.queue, ticks);
@@ -484,8 +435,9 @@ impl AppState {
         for texture_id in &full_output.textures_delta.free {
             self.egui_renderer.free_texture(texture_id);
         }
-        let sample_alive = ticks > 0 && self.frame_count % 30 == 0;
-        let sample_gpu = self.gpu_timing.is_some() && ticks > 0 && self.frame_count % 30 == 0;
+        let sample_alive = ticks > 0 && self.frame_count.is_multiple_of(30);
+        let sample_gpu =
+            self.gpu_timing.is_some() && ticks > 0 && self.frame_count.is_multiple_of(30);
         if sample_alive {
             self.simulation.copy_alive_count(&mut encoder);
             self.simulation.copy_death_stats(&mut encoder);
@@ -536,13 +488,12 @@ impl AppState {
                 self.interaction_stats = [transfers, force, transferred_matter, force_deaths];
             }
         }
-        if sample_gpu {
-            if let Some(timing) = &self.gpu_timing {
-                if let Some((sim_ms, render_ms)) = timing.read(&self.device) {
-                    self.gpu_sim_ms = Some(sim_ms);
-                    self.gpu_render_ms = Some(render_ms);
-                }
-            }
+        if sample_gpu
+            && let Some(timing) = &self.gpu_timing
+            && let Some((sim_ms, render_ms)) = timing.read(&self.device)
+        {
+            self.gpu_sim_ms = Some(sim_ms);
+            self.gpu_render_ms = Some(render_ms);
         }
         self.frame_count += 1;
         self.ticks_window_accumulated = self.ticks_window_accumulated.saturating_add(ticks);
@@ -577,7 +528,7 @@ impl Lens {
             3 => Self::Energy,
             4 => Self::Movement,
             5 => Self::Age,
-            6 => Self::Gradient,
+            6 => Self::Attention,
             7 => Self::CarriedFood,
             8 => Self::Action,
             9 => Self::Fertility,
@@ -587,448 +538,333 @@ impl Lens {
 }
 
 fn action_name(action: u32) -> &'static str {
-    [
-        "wait",
-        "move",
-        "collect",
-        "ingest",
-        "transfer",
-        "apply force",
-        "emit",
-    ]
-    .get(action as usize)
-    .copied()
-    .unwrap_or("unknown")
+    model::ACTION_NAMES[action.min(6) as usize]
 }
-
 fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
     let mut reset = false;
-    let mut population_changed = false;
-    let mut parameters_changed = false;
-    egui::Window::new("Primitive World")
+    egui::Window::new("Primitive World — recurrent-v1")
         .default_pos([16.0, 16.0])
+        .default_width(430.0)
         .vscroll(true)
-        .default_width(420.0)
-        .resizable(true)
-        .show(ctx, |ui| {
-            ui.label("GPU-first local-rule experiment");
-            ui.separator();
-            ui.horizontal(|ui| {
-                if ui
-                    .button(if state.paused { "Resume" } else { "Pause" })
-                    .clicked()
-                {
-                    state.paused = !state.paused;
-                }
-                for (index, label) in ["1x", "2x", "4x", "8x", "16x", "MAX"].iter().enumerate() {
-                    if ui
-                        .selectable_label(state.speed_index == index, *label)
-                        .clicked()
-                    {
-                        state.speed_index = index;
-                    }
-                }
-                if ui.button("Step").clicked() {
-                    state.paused = true;
-                    state.speed_index = 0;
-                    state.step_requested = true;
-                }
-            });
-            ui.label(format!(
-                "Tick: {}    render: {:.1} FPS    simulation dispatch: {} ticks/s",
-                state.simulation.tick, state.render_fps, state.ticks_last_second
-            ));
-            ui.label(format!(
-                "Living agents: {} / {}    CPU submit path: {:.2} ms",
-                state.living_agents, MAX_AGENTS, state.last_submit_ms
-            ));
-            ui.label(format!(
-                "Food eaten: {} units    births: {}    deaths: {} starvation / {} old age",
-                state.food_eaten as f32 / 1000.0, state.births, state.starvation_deaths, state.age_deaths
-            ));
-            if let (Some(sim_ms), Some(render_ms)) = (state.gpu_sim_ms, state.gpu_render_ms) {
-                ui.label(format!(
-                    "GPU simulation: {:.3} ms    GPU world render: {:.3} ms",
-                    sim_ms, render_ms
-                ));
-            } else {
-                ui.label("GPU timestamps: unavailable on this adapter");
-            }
-            if let Some(m)=state.history.back() {
-                ui.label(format!("Juveniles: {}  vegetation: {:.0}  dropped: {:.1}  carried: {:.1}",m.juveniles,m.vegetation,m.dropped_food,m.carried_food));
-                ui.small(format!("Food per agent: {:.2}; reserves ≥1.5: {}; energy <20: {}",m.carried_food/m.living.max(1) as f64,m.stocked_agents,m.hungry_agents));
-                ui.small(format!("Local signals observed: {}", m.signals));
-            }
-            ui.collapsing("Population history",|ui| {
-                let (rect,_)=ui.allocate_exact_size(egui::vec2(330.0,80.0),egui::Sense::hover());
-                let max=state.history.iter().map(|m|m.living).max().unwrap_or(1).max(1) as f32;
-                let points:Vec<_>=state.history.iter().enumerate().map(|(i,m)|egui::pos2(rect.left()+rect.width()*i as f32/(state.history.len().max(2)-1) as f32,rect.bottom()-rect.height()*m.living as f32/max)).collect();
-                if points.len()>1 {ui.painter().add(egui::Shape::line(points,egui::Stroke::new(1.5,egui::Color32::LIGHT_GREEN)));}
-                ui.small(format!("Peak in view: {max:.0}; samples follow simulation progress"));
-            });
-            ui.horizontal(|ui| {
-                if ui.button("Save checkpoint").clicked() {
-                    state.file_status=match state.simulation.save_checkpoint(&state.device,&state.queue,std::path::Path::new("world.checkpoint")) {Ok(())=>"Saved world.checkpoint".into(),Err(e)=>e};
-                }
-                if ui.button("Load checkpoint").clicked() {
-                    state.file_status=match state.simulation.load_checkpoint(&state.queue,std::path::Path::new("world.checkpoint")) {
-                        Ok(())=>{state.selected=None;state.neural_inspection=None;state.renderer.camera.selected_id=u32::MAX;state.history.clear();state.paused=true;
-                            if let Ok(m)=state.simulation.metrics(&state.device,&state.queue) {state.living_agents=m.living as u32;state.history.push_back(m);}
-                            "Loaded world.checkpoint (paused)".into()},Err(e)=>e};
-                }
-                if ui.button("Export history").clicked() {
-                    state.file_status=match serde_json::to_vec_pretty(&state.history).map_err(|e|e.to_string()).and_then(|bytes|std::fs::write("history.json",bytes).map_err(|e|e.to_string())) {Ok(())=>"Exported history.json".into(),Err(e)=>e};
-                }
-                if ui.button("Inspect evolution").clicked() {
-                    state.evolution_snapshot = match state.simulation.evolution_snapshot(&state.device, &state.queue) {
-                        Ok(snapshot) => { state.file_status = "Captured observer-only evolution snapshot".into(); Some(snapshot) },
-                        Err(error) => { state.file_status = error; None },
-                    };
-                }
-                if let Some(snapshot) = &state.evolution_snapshot {
-                    ui.small(format!("Evolution observer: {} individuals, {} distinct parents, max ancestry depth {}", snapshot.unique_lineages, snapshot.parent_lineages_present, snapshot.maximum_generation));
-                    ui.small(format!("Mean weight variance: {:.6}",snapshot.genome_variance.iter().sum::<f64>()/snapshot.genome_variance.len().max(1) as f64));
-                }
-            });
-            ui.collapsing("Recent interactions",|ui| {
-                if ui.button("Refresh recent events").clicked() {
-                    match state.simulation.recent_events(&state.device,&state.queue) {Ok(events)=>state.recent_events=events,Err(e)=>state.file_status=e};
-                }
-                for event in state.recent_events.iter().rev().take(40) {
-                    ui.small(format!("tick {}: {} [{}] {} -> {} [{}] ({:.2})",event.tick,event.actor,event.actor_lineage,action_name(event.action),event.other,event.other_lineage,event.amount));
-                }
-            });
-            if !state.file_status.is_empty() {ui.small(&state.file_status);}
-            ui.separator();
-            ui.label("Primitive parameters");
-            ui.collapsing("Policy", |ui| {
-                ui.label(format!("Model: {}",state.simulation.settings.neural_model));
-                ui.text_edit_singleline(&mut state.neural_path);
-                if ui.button("Load neural forager").clicked() {
-                    state.file_status=match neural::NeuralWeights::load_json(std::path::Path::new(&state.neural_path)).and_then(|w|state.simulation.set_neural_weights(&state.queue,&w)) {
-                        Ok(())=>{state.simulation.settings.neural_policy=true;state.simulation.reset_neural_memory(&state.queue);state.neural_inspection=None;"Loaded GRU; private memories reset".into()},Err(e)=>e,
-                    };
-                }
-                if ui.button("Reset world with inherited founders").clicked(){state.simulation.settings.neural_policy=false;state.simulation.settings.legacy_controller=false;reset=true;state.file_status="Reset with inherited founder weights".into();}
-                ui.checkbox(&mut state.simulation.settings.neural_greedy,"Choose most probable neural action");
-                ui.small(format!("Founder bank: {}. Signed candidate weights mutate at birth. Archived GRU is experimental.",state.simulation.settings.founder_name));
-            });
-            ui.small(if state.simulation.settings.neural_policy {
-                "Policy: learned GRU forager (8-tick decisions)"
-            } else {
-                if state.simulation.settings.legacy_controller {"Policy: legacy authored scores"} else {"Policy: candidate-v1 inherited weights"}
-            });
+        .show(ctx, |ui| draw_inspector(ui, state, &mut reset));
+    if reset {
+        state.simulation.seed = state.seed_input;
+        state.simulation.reset(&state.queue);
+        state.selected = None;
+        state.history.clear();
+        state.recent_events.clear();
+        state.evolution_snapshot = None;
+        state.renderer.camera.selected_id = u32::MAX;
+        state.living_agents = state.simulation.settings.population;
+        state.births = 0;
+        state.starvation_deaths = 0;
+        state.age_deaths = 0;
+        state.food_eaten = 0;
+        state.interaction_stats = [0; 4];
+    }
+}
+fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
+    ui.label("One inherited recurrent controller · checkpoint 12");
+    ui.small(format!(
+        "Founders: {}",
+        state.simulation.settings.founder_name
+    ));
+    ui.horizontal(|ui| {
+        if ui
+            .button(if state.paused { "Resume" } else { "Pause" })
+            .clicked()
+        {
+            state.paused = !state.paused;
+        }
+        if ui.button("Step").clicked() {
+            state.paused = true;
+            state.step_requested = true;
+        }
+        for (i, label) in ["1x", "2x", "4x", "8x", "16x", "MAX"].iter().enumerate() {
             if ui
-                .add(
-                    egui::Slider::new(
-                        &mut state.simulation.settings.population,
-                        1..=MAX_AGENTS,
-                    )
-                    .text("initial population"),
-                )
-                .changed()
+                .selectable_label(state.speed_index == i, *label)
+                .clicked()
             {
-                population_changed = true;
+                state.speed_index = i;
             }
-            if ui
-                .add(
-                    egui::Slider::new(
-                        &mut state.simulation.settings.resource_regeneration,
-                        0.0..=2.0,
-                    )
-                    .fixed_decimals(3)
-                    .text("resource regeneration"),
-                )
-                .changed()
+        }
+    });
+    ui.label(format!(
+        "Tick {} · {} living · {} births · {:.1} FPS · {} ticks/s",
+        state.simulation.tick,
+        state.living_agents,
+        state.births,
+        state.render_fps,
+        state.ticks_last_second
+    ));
+    ui.label(format!(
+        "Deaths: {} starvation / {} age",
+        state.starvation_deaths, state.age_deaths
+    ));
+    if let Some(m) = state.history.back() {
+        ui.label(format!(
+            "Food: {:.1} vegetation / {:.1} dropped / {:.1} carried",
+            m.vegetation, m.dropped_food, m.carried_food
+        ));
+        ui.small(format!(
+            "Invalid outputs: {} · force: {} · signals: {}",
+            m.invalid_outputs, m.events[5], m.signals
+        ));
+        ui.collapsing("Reproduction resolution", |ui| {
+            for (name, count) in [
+                "Immature attempts",
+                "Insufficient energy",
+                "Insufficient inventory",
+                "Recovery active",
+                "Requested",
+                "Eligible before interactions",
+                "Resolved",
+            ]
+            .iter()
+            .zip(m.birth_gates)
             {
-                parameters_changed = true;
-            }
-            if ui
-                .add(
-                    egui::Slider::new(
-                        &mut state.simulation.settings.movement_energy_cost,
-                        0.0..=0.04,
-                    )
-                    .text("movement cost"),
-                )
-                .changed()
-            {
-                parameters_changed = true;
-            }
-            if ui
-                .add(
-                    egui::Slider::new(&mut state.simulation.settings.metabolic_cost, 0.0..=0.06)
-                        .text("metabolic cost"),
-                )
-                .changed()
-            {
-                parameters_changed = true;
-            }
-            if ui
-                .add(
-                    egui::Slider::new(&mut state.simulation.settings.sensor_radius, 2.0..=40.0)
-                        .text("sensory radius"),
-                )
-                .changed()
-            {
-                parameters_changed = true;
-            }
-            if ui
-                .add(
-                    egui::Slider::new(&mut state.simulation.settings.exploration_noise, 0.0..=2.0)
-                        .text("exploration noise"),
-                )
-                .changed()
-            {
-                parameters_changed = true;
-            }
-            if ui
-                .add(
-                    egui::Slider::new(&mut state.simulation.settings.consume_amount, 1.0..=100.0)
-                        .text("harvest amount (millifood)"),
-                )
-                .changed()
-            {
-                parameters_changed = true;
-            }
-            if ui
-                .add(
-                    egui::Slider::new(
-                        &mut state.simulation.settings.reproduction_threshold,
-                        40.0..=100.0,
-                    )
-                    .text("reproduction threshold"),
-                )
-                .changed()
-            {
-                parameters_changed = true;
-            }
-            if ui
-                .add(
-                    egui::Slider::new(&mut state.simulation.settings.reproduction_cost, 5.0..=50.0)
-                        .text("reproduction cost"),
-                )
-                .changed()
-            {
-                parameters_changed = true;
-            }
-            if ui
-                .add(
-                    egui::Slider::new(&mut state.simulation.settings.maturity_age, 50.0..=1_500.0)
-                        .text("maturity age"),
-                )
-                .changed()
-            {
-                parameters_changed = true;
-            }
-            if ui
-                .add(
-                    egui::Slider::new(&mut state.simulation.settings.heterogeneity, 0.0..=1.0)
-                        .text("variation within food patches"),
-                )
-                .changed()
-            {
-                parameters_changed = true;
-            }
-            ui.collapsing("World affordances and lifecycle", |ui| {
-                ui.checkbox(&mut state.simulation.settings.evolving_landscape,"Evolving food landscape");
-                ui.add(egui::Slider::new(&mut state.simulation.settings.birth_cooldown,30..=1000).text("birth cooldown (ticks)"));
-                ui.checkbox(&mut state.simulation.settings.communication_enabled,"Enable local signal affordance");
-                ui.checkbox(&mut state.simulation.settings.force_enabled,"Enable physical-force affordance");
-            });
-            ui.label(format!("Transfers: {}  matter moved: {:.2}  force: {}  force deaths: {}",state.interaction_stats[0],state.interaction_stats[2] as f32/1000.0,state.interaction_stats[1],state.interaction_stats[3]));
-            if let Some(m)=state.history.back(){
-                ui.collapsing("Reproduction and conflict diagnostics",|ui|{
-                    ui.small("Cumulative living-agent ticks; gate failures overlap.");
-                    for (label,count) in ["Immature","Low energy","Below 2 food","Moving","Cooldown","All gates open","Birth requests"].into_iter().zip(m.birth_gates){ui.small(format!("{label}: {count}"));}
-                    ui.small(format!("Force attempts: {}  energy spent: {:.1}  food spilled: {:.2}",m.force_attempts,m.force_energy_spent,m.force_food_spilled));
-                });
-            }
-            if state.living_agents==0 { ui.colored_label(egui::Color32::YELLOW,"Extinct. Resources continue recovering; Reset world explicitly reseeds."); }
-            if state.living_agents==MAX_AGENTS { ui.label("Population is at the GPU capacity limit."); }
-            ui.horizontal(|ui| {
-                ui.label("seed");
-                ui.add(egui::DragValue::new(&mut state.seed_input).range(1..=u32::MAX));
-                if ui.button("Reset world").clicked() {
-                    state.simulation.seed = state.seed_input;
-                    reset = true;
-                }
-            });
-            if population_changed {
-                reset = true;
-            } else if parameters_changed {
-                state.simulation.update_params(&state.queue);
-            }
-            if reset {
-                state.simulation.reset(&state.queue);
-                state.living_agents = state.simulation.settings.population;
-                state.food_eaten = 0;
-                state.starvation_deaths = 0;
-                state.age_deaths = 0;
-                state.births = 0;
-                state.interaction_stats = [0; 4];
-                state.history.clear();
-                state.selected = None;
-                state.neural_inspection = None;
-                state.renderer.camera.selected_id = u32::MAX;
-            }
-            ui.separator();
-            ui.label("Raw visualization lens");
-            egui::ComboBox::from_id_salt("lens")
-                .selected_text(Lens::from_u32(state.renderer.camera.lens).name())
-                .show_ui(ui, |ui| {
-                    for lens in [
-                        Lens::Normal,
-                        Lens::ResourceDensity,
-                        Lens::AgentDensity,
-                        Lens::Energy,
-                        Lens::Movement,
-                        Lens::Age,
-                        Lens::Gradient,
-                        Lens::CarriedFood,
-                        Lens::Action,
-                        Lens::Fertility,
-                    ] {
-                        ui.selectable_value(
-                            &mut state.renderer.camera.lens,
-                            lens as u32,
-                            lens.name(),
-                        );
-                    }
-                });
-            match Lens::from_u32(state.renderer.camera.lens) {
-                Lens::Normal => ui.label("Background: regenerating local resource field"),
-                Lens::ResourceDensity => {
-                    ui.label("Heatmap: low resource blue → high resource yellow")
-                }
-                Lens::AgentDensity => ui.label("Heatmap: low occupancy blue → high occupancy red"),
-                Lens::Energy => ui.label("Particles: low energy red → high energy green"),
-                Lens::Movement => ui.label("Particles: low movement blue → high movement yellow"),
-                Lens::Age => ui.label("Particles: younger cyan → older magenta"),
-                Lens::Gradient => ui.label("Particles: local resource-gradient magnitude"),
-                Lens::CarriedFood => ui.label("Food reserves: empty red to stocked cyan; dropped food is blue"),
-                Lens::Action => ui.label("Wait gray / move blue / collect green / ingest yellow / transfer pink / apply force red / emit cyan"),
-                Lens::Fertility => ui.label("Landscape potential: barren dark → fertile green/gold; weather changes actual growth"),
-            };
-            ui.separator();
-            ui.label("World intervention (click the world)");
-            ui.horizontal_wrapped(|ui| {
-                ui.selectable_value(&mut state.shock_mode, ShockMode::Select, "select");
-                ui.selectable_value(&mut state.shock_mode, ShockMode::AddResource, "+ resource");
-                ui.selectable_value(
-                    &mut state.shock_mode,
-                    ShockMode::RemoveResource,
-                    "- resource",
-                );
-                ui.selectable_value(&mut state.shock_mode, ShockMode::KillAgents, "kill agents");
-            });
-            ui.add(egui::Slider::new(&mut state.shock_radius, 10.0..=160.0).text("brush radius"));
-            ui.label("Pan: WASD / arrows    Zoom: wheel    Lens: L    Camera reset: Home");
-            if let Some(selected) = state.selected {
-                ui.separator();
-                ui.label(format!("Agent {}", selected.agent_id()));
-                if state.simulation.settings.neural_policy {
-                    if ui.button("Refresh neural decision").clicked() {
-                        match state.simulation.neural_inspect(&state.device,&state.queue,selected.agent_id() as usize) {
-                            Ok(trace)=>state.neural_inspection=Some((selected.agent_id(),trace)),Err(e)=>state.file_status=e,
-                        }
-                    }
-                    if let Some((id,trace))=state.neural_inspection.filter(|(id,st)|*id==selected.agent_id() && st.generation==selected.agent.generation) {
-                        ui.small(format!("Agent {id}: decision tick {}, generation {}",trace.tick,trace.generation));
-                        for (a,name) in neural::ACTION_NAMES.iter().enumerate(){ui.small(format!("{} {}: {:.1}%{}",if a==trace.choice as usize {">"}else{" "},name,trace.probabilities[a]*100.,if trace.mask[a]<0.5 {" (unavailable)"}else{""}));}
-                        ui.small(format!("Observed energy {:.1}, reserves {:.3}",trace.energy,trace.food));
-                        ui.small(format!("Food observations: {:?}",&trace.observation[2..11]));
-                    }
-                }
-                ui.label(format!(
-                    "Age: {:.0} ticks    Energy: {:.2}",
-                    selected.agent.age, selected.agent.energy
-                ));
-                ui.label(format!(
-                    "Position: {:.2}, {:.2}",
-                    selected.agent.position[0], selected.agent.position[1]
-                ));
-                ui.label(format!(
-                    "Sensory radius: {:.2}    max movement: {:.2}",
-                    selected.agent.sensor_radius, selected.agent.max_speed
-                ));
-                ui.label(format!(
-                    "Carried food: {:.3} / 8    Action: {}",
-                    selected.agent.food, action_name(selected.agent.action)
-                ));
-                ui.label(format!(
-                    "Destination: {:.1}, {:.1}",
-                    selected.agent.goal[0], selected.agent.goal[1]
-                ));
-                ui.label(format!("Ancestry depth: {}  slot incarnation: {}  age limit: {:.0}",selected.agent.ancestry_depth,selected.agent.generation,selected.agent.max_age));
-                ui.small(format!("Births: {}  cooldown remaining: {} ticks; reproduction also requires maturity, energy and 2 food",selected.agent.lifetime_births,selected.agent.next_birth.saturating_sub(state.simulation.tick)));
-                ui.small(format!("Lineage {}  parent {}  born tick {}",selected.agent.lineage_id,selected.agent.parent_lineage,selected.agent.birth_tick));
-                ui.collapsing("Inherited controller weights",|ui|{for (index,row) in selected.agent.genome.chunks(16).enumerate(){ui.small(format!("{}: {:?}",index,row.iter().map(|v|(v*100.0).round()/100.0).collect::<Vec<_>>()));}});
-                if state.simulation.settings.neural_policy {
-                    ui.small("Place records are private state; they are not objective scores.");
-                }
-                ui.collapsing("Remembered places", |ui| {
-                    for place in selected.agent.places.iter().filter(|p|p.confidence>0.0) {
-                        ui.label(format!("({:.0}, {:.0}) food {:.2}, observed tick {}, confidence {:.2}, source {}",place.position[0],place.position[1],place.food,place.observed,place.confidence,place.source_id));
-                    }
-                });
-                ui.collapsing("Nearby bodies (raw perception)", |ui| {
-                    for candidate in selected.social.candidates.iter().filter(|c| c.target_slot < MAX_AGENTS && c.target_generation != 0) {
-                        ui.label(format!("{}:{}  distance {:.1}  carried {:.2}  velocity {:.2},{:.2}", candidate.target_slot, candidate.target_generation, candidate.distance, candidate.food, candidate.velocity[0], candidate.velocity[1]));
-                    }
-                });
-                if selected.agent.event_amount!=0.0 {
-                    ui.label(format!("Last received interaction: agent {} at tick {}, outcome {:.2}",selected.agent.event_actor,selected.agent.event_tick,selected.agent.event_amount));
-                }
-                ui.collapsing("Current perception", |ui| {
-                    ui.label(format!(
-                        "here {:.3}  north {:.3}  east {:.3}",
-                        selected.perception.resource_here,
-                        selected.perception.resource_north,
-                        selected.perception.resource_east
-                    ));
-                    ui.label(format!(
-                        "south {:.3}  west {:.3}  density {:.3} ({:.0})",
-                        selected.perception.resource_south,
-                        selected.perception.resource_west,
-                        selected.perception.local_density,
-                        selected.perception.local_count
-                    ));
-                    ui.label(format!(
-                        "projected food {:.3}  competition {:.3}",
-                        selected.perception.projected_food,
-                        selected.perception.competition_pressure
-                    ));
-                    ui.label(format!(
-                        "raw nearby candidates: {}",
-                        selected.social.candidates.iter().filter(|c| c.target_slot < MAX_AGENTS && c.target_generation != 0).count()
-                    ));
-                    ui.label(format!(
-                        "gradient {:.3}, {:.3}",
-                        selected.perception.gradient[0], selected.perception.gradient[1]
-                    ));
-                });
-                if !state.simulation.settings.neural_policy {ui.collapsing("Candidate action scores", |ui| {
-                    for (name, score) in ["wait", "move", "collect", "ingest", "transfer", "force", "emit"]
-                        .into_iter()
-                        .zip(selected.decision.scores)
-                    {
-                        ui.label(format!("{name:>6}  {score:>8.3}"));
-                    }
-                    ui.label(format!(
-                        "selected: {}",
-                        ["wait", "move", "collect", "ingest", "transfer", "force", "emit"]
-                            [selected.decision.selected_action.min(6) as usize]
-                    ));
-                });}
-            } else {
-                ui.label(
-                    "Click an agent to inspect actual state, local perception, and action scores.",
-                );
+                ui.label(format!("{name}: {count}"));
             }
         });
+    }
+    ui.horizontal(|ui| {
+        if ui.button("Save checkpoint").clicked() {
+            state.file_status = state
+                .simulation
+                .save_checkpoint(
+                    &state.device,
+                    &state.queue,
+                    std::path::Path::new("recurrent-world.checkpoint"),
+                )
+                .map(|_| "Saved recurrent-world.checkpoint".into())
+                .unwrap_or_else(|e| e);
+        }
+        if ui.button("Load checkpoint").clicked() {
+            state.file_status = match state.simulation.load_checkpoint(
+                &state.queue,
+                std::path::Path::new("recurrent-world.checkpoint"),
+            ) {
+                Ok(()) => {
+                    state.selected = None;
+                    state.renderer.camera.selected_id = u32::MAX;
+                    state.history.clear();
+                    state.recent_events.clear();
+                    state.evolution_snapshot = None;
+                    state.paused = true;
+                    state.seed_input = state.simulation.seed;
+                    if let Ok(m) = state.simulation.metrics(&state.device, &state.queue) {
+                        state.living_agents = m.living as u32;
+                        state.births = m.events[3];
+                        state.starvation_deaths = m.events[1];
+                        state.age_deaths = m.events[2];
+                        state.food_eaten = m.events[0];
+                        state.interaction_stats = m.events[4..8].try_into().unwrap();
+                        state.history.push_back(m);
+                    }
+                    "Loaded (paused)".into()
+                }
+                Err(e) => e,
+            };
+        }
+    });
+    ui.horizontal(|ui| {
+        if ui.button("Inspect evolution").clicked() {
+            match state
+                .simulation
+                .evolution_snapshot(&state.device, &state.queue)
+            {
+                Ok(x) => state.evolution_snapshot = Some(x),
+                Err(e) => state.file_status = e,
+            }
+        }
+        if ui.button("Export history").clicked() {
+            state.file_status = serde_json::to_vec_pretty(&state.history)
+                .map_err(|e| e.to_string())
+                .and_then(|b| {
+                    std::fs::write("recurrent-history.json", b).map_err(|e| e.to_string())
+                })
+                .map(|_| "Exported recurrent-history.json".into())
+                .unwrap_or_else(|e| e);
+        }
+    });
+    if let Some(x) = &state.evolution_snapshot {
+        ui.small(format!(
+            "Lineages {} · max ancestry {} · mean ancestry {:.2}",
+            x.unique_lineages, x.maximum_ancestry_depth, x.mean_ancestry_depth
+        ));
+    }
+    ui.collapsing("Population history", |ui| {
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(340.0, 80.0), egui::Sense::hover());
+        let peak = state
+            .history
+            .iter()
+            .map(|m| m.living)
+            .max()
+            .unwrap_or(1)
+            .max(1) as f32;
+        let points: Vec<_> = state
+            .history
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                egui::pos2(
+                    rect.left() + rect.width() * i as f32 / (state.history.len().max(2) - 1) as f32,
+                    rect.bottom() - rect.height() * m.living as f32 / peak,
+                )
+            })
+            .collect();
+        if points.len() > 1 {
+            ui.painter().add(egui::Shape::line(
+                points,
+                egui::Stroke::new(1.5, egui::Color32::LIGHT_GREEN),
+            ));
+        }
+    });
+    ui.collapsing("Physical settings", |ui| {
+        ui.add(egui::DragValue::new(&mut state.seed_input).prefix("Seed "));
+        ui.add(
+            egui::Slider::new(&mut state.simulation.settings.population, 0..=MAX_AGENTS)
+                .text("Initial bodies"),
+        );
+        ui.add(
+            egui::Slider::new(
+                &mut state.simulation.settings.resource_regeneration,
+                0.0..=0.1,
+            )
+            .text("Regeneration"),
+        );
+        ui.add(
+            egui::Slider::new(&mut state.simulation.settings.metabolic_cost, 0.0..=0.2)
+                .text("Metabolic cost"),
+        );
+        ui.add(
+            egui::Slider::new(
+                &mut state.simulation.settings.movement_energy_cost,
+                0.0..=0.1,
+            )
+            .text("Movement cost"),
+        );
+        ui.checkbox(
+            &mut state.simulation.settings.evolving_landscape,
+            "Evolving geography",
+        );
+        ui.checkbox(
+            &mut state.simulation.settings.force_enabled,
+            "Contact force available",
+        );
+        ui.checkbox(
+            &mut state.simulation.settings.communication_enabled,
+            "Local signals available",
+        );
+        if ui.button("Reset with current founder weights").clicked() {
+            *reset = true;
+        }
+    });
+    ui.horizontal(|ui| {
+        if ui.button("Next lens").clicked() {
+            state.renderer.camera.lens = Lens::from_u32(state.renderer.camera.lens).next() as u32;
+        }
+        ui.label(Lens::from_u32(state.renderer.camera.lens).name());
+    });
+    ui.horizontal(|ui| {
+        for (mode, label) in [
+            (ShockMode::Select, "Select"),
+            (ShockMode::RemoveResource, "Remove food"),
+            (ShockMode::AddResource, "Add food"),
+            (ShockMode::KillAgents, "Kill"),
+        ] {
+            if ui
+                .selectable_label(state.shock_mode == mode, label)
+                .clicked()
+            {
+                state.shock_mode = mode;
+            }
+        }
+    });
+    ui.add(egui::Slider::new(&mut state.shock_radius, 4.0..=400.0).text("Intervention radius"));
+    ui.collapsing("Recent physical events", |ui| {
+        if ui.button("Refresh events").clicked() {
+            match state.simulation.recent_events(&state.device, &state.queue) {
+                Ok(x) => state.recent_events = x,
+                Err(e) => state.file_status = e,
+            }
+        }
+        for e in state.recent_events.iter().rev().take(30) {
+            ui.small(format!(
+                "{}: {} {} → {} ({:.3})",
+                e.tick,
+                e.actor,
+                action_name(e.action),
+                e.other,
+                e.amount
+            ));
+        }
+    });
+    if let Some(s) = state.selected {
+        ui.separator();
+        ui.label(format!(
+            "Agent {} · incarnation {} · ancestry {}",
+            s.agent_id(),
+            s.agent.generation,
+            s.agent.ancestry_depth
+        ));
+        ui.label(format!(
+            "Energy {:.2} · inventory {:.3} · age {:.0}",
+            s.agent.energy, s.agent.food, s.agent.age
+        ));
+        ui.label(format!(
+            "Position {:.1}, {:.1} · attention {:.2}",
+            s.agent.position[0], s.agent.position[1], s.agent.attention
+        ));
+        ui.label(format!(
+            "Body action: {} · movement {:.2}, {:.2}",
+            action_name(s.agent.action),
+            s.decision.movement[0],
+            s.decision.movement[1]
+        ));
+        ui.small(format!(
+            "Requested amount {:.3} · signal {:.3} · target {}:{}",
+            s.decision.amount, s.decision.payload, s.decision.target, s.decision.target_generation
+        ));
+        ui.collapsing("Actual feedback",|ui|{ui.label(format!("Collected {:.3} · ingested {:.3} · spent {:.3} · received {:.3} · displacement {:?}",s.agent.collected,s.agent.ingested,s.agent.spent,s.agent.received,s.agent.moved));});
+        ui.collapsing("Local food samples", |ui| {
+            ui.label(format!("Underfoot {:.3}", s.perception.resource_here));
+            for p in s.perception.samples {
+                ui.small(format!(
+                    "Offset {:.2}, {:.2}: food {:.3}",
+                    p.offset[0], p.offset[1], p.food
+                ));
+            }
+        });
+        ui.collapsing("Observed bodies", |ui| {
+            for b in s.perception.bodies.iter().filter(|b| b.slot < MAX_AGENTS) {
+                ui.small(format!(
+                    "{}:{} offset {:?} · food {:.3} · event {:.3}",
+                    b.slot, b.generation, b.offset, b.food, b.event
+                ));
+            }
+        });
+        ui.collapsing("Action logits (not rewards)", |ui| {
+            for (name, v) in model::ACTION_NAMES.iter().zip(s.decision.scores) {
+                ui.label(format!("{name}: {v:.3}"));
+            }
+        });
+        ui.collapsing("Internal recurrent state", |ui| {
+            for (i, v) in s.agent.hidden.iter().enumerate() {
+                ui.small(format!("{i}: {v:.4}"));
+            }
+            ui.small("Numeric state has no assigned semantic labels.");
+        });
+        ui.collapsing("Raw controller input vector", |ui| {
+            for (i, v) in s.decision.inputs.iter().enumerate() {
+                ui.small(format!("{i}: {v:.4}"));
+            }
+        });
+    }
+    if !state.file_status.is_empty() {
+        ui.small(&state.file_status);
+    }
 }
-
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -1038,7 +874,7 @@ impl ApplicationHandler for App {
             event_loop
                 .create_window(
                     WindowAttributes::default()
-                        .with_title("Primitive World — candidate-v1 / checkpoint 11")
+                        .with_title("Primitive World — recurrent-v1 / checkpoint 12")
                         .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 820.0)),
                 )
                 .expect("window creation failed"),
@@ -1138,6 +974,19 @@ impl ApplicationHandler for App {
 }
 
 fn main() {
+    let options: Vec<_> = std::env::args().collect();
+    if options.iter().any(|x| x == "--help") {
+        println!("{}", headless::HELP);
+        return;
+    }
+    if options.iter().any(|x| x == "--version") {
+        println!("Primitive World recurrent-v1 / checkpoint 12");
+        return;
+    }
+    if let Err(e) = headless::arguments(&options) {
+        eprintln!("{e}");
+        std::process::exit(2);
+    }
     let args: Vec<_> = std::env::args().collect();
     if args.iter().any(|a| a == "--headless") {
         if let Err(error) = headless::run(&args) {

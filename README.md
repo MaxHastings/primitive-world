@@ -1,10 +1,13 @@
 # Primitive World
 
-A GPU simulation of local survival, reproduction, remembered places, material exchange, local signals, and costly physical interaction. The active boundary is defined in [KERNEL_SPEC.md](KERNEL_SPEC.md), with the research direction in [DESIGN_PLAN.md](DESIGN_PLAN.md). Social labels are observer interpretations, not agent objectives or world laws.
+One GPU artificial-life model: **recurrent-v1**, checkpoint **12**.
+Agents inherit neural weights, keep private recurrent state, and directly request
+movement, attention, interactions and reproduction. There is no destination
+scorer, place-memory manager, automatic birth lottery or alternate controller.
 
-**Planned clean cutover:** [DESIGN_PLAN.md](DESIGN_PLAN.md) specifies one coherent
-replacement of the agent model, not an incremental migration. It is not yet
-implemented; the run instructions and candidate-v1 behavior below remain current.
+The clean cutover is implemented. The bundled bank contains actual descendants
+prepared on seeds 11 and 22. Held-out results and limitations are in
+[the validation record](reports/RECURRENT_VALIDATION.md).
 
 ## Run
 
@@ -12,63 +15,86 @@ implemented; the run instructions and candidate-v1 behavior below remain current
 cargo run --release
 ```
 
-Close an older running copy before rebuilding that executable on Windows. A fresh launch uses current defaults. Loading a checkpoint restores its saved settings, including regeneration.
+Requires Rust and a GPU supported by wgpu. On Windows, close an older copy
+yourself before rebuilding its executable, or use a separate Cargo target
+directory. We do not automatically stop running applications.
 
-Defaults: 1,000 initial agents, regeneration 0.01, metabolic cost 0.06, movement cost 0.01, and 8 energy per food unit. A harvest collects up to 0.025 food; an eating action consumes up to 0.1. Carrying capacity is 8 food. These are experiment settings, not guarantees of stability at every slider combination.
+The window and inspector identify recurrent-v1/checkpoint 12. An already-running
+old process will continue showing the old model until you launch the new build.
+Old checkpoints are rejected, never migrated or deleted.
 
-Reproduction requires maturity, energy, at least 2 carried food, an elapsed cooldown, and a non-movement action. Each eligible tick has a 3/1024 birth-request chance. At default cost, the parent spends 50 energy and transfers 1 food; the child receives 40 energy and that food. Survivors can repopulate after shortages. Complete extinction requires an explicit reset. The 100,000-agent capacity is a storage limit, not a population target.
+Defaults: 1,000 founders from `policies/recurrent-v1.json`, 16,384 body slots,
+a 2048-unit square, eight directional food samples, four observed neighbors,
+and sixteen recurrent state values per body. These are finite modeling and
+engineering choices, not promises of intelligence or population equilibrium.
 
-## Controls and observation
+## Controls
 
-- Pause: Space or the UI button. Step is available in the UI.
-- Speed: 1, 2, 4, 8, 6 (16x), M (maximum), or UI buttons.
-- Pan: WASD or arrow keys. Zoom: wheel. Reset camera: Home.
-- Cycle visualization: L. Food and action views help distinguish reserves from movement.
-- Select an agent to inspect its state, local observations, action scores, private place memory, raw nearby bodies, and lineage ancestry.
-- Choose a resource or kill intervention, then click the world to apply it.
-- Save/load checkpoints, export population history, capture an observer-only evolution snapshot, and refresh lineage-aware recent interactions through the UI.
+- Space: pause/resume. UI: step and speed. Keys 1, 2, 4, 8, 6, M select speeds.
+- WASD/arrows: pan; wheel: zoom; Home: camera reset; L: cycle lens.
+- Select a body for raw observations, intentions, actual consequences and state.
+- UI provides explicit food/kill interventions, reset, checkpoints and history.
 
-The dashboard reports food per living agent, reserves, hunger, births, deaths, local signals, and lineage-aware observer data. None of these measurements are visible to the controller or used as a reproductive objective.
+Save uses `recurrent-world.checkpoint`; load restores that world and pauses.
+A save refuses to overwrite an existing file: preserve/rename it before saving
+again. History export uses `recurrent-history.json` and replaces that export.
+No automatic reset or reseeding follows extinction.
 
-## Headless checks
+## Headless operation
 
 ```powershell
-cargo test -- --nocapture --test-threads=1
-cargo run --release -- --headless --ticks 16000 --seed 1 --regeneration 0.025 --sample 2000 --famine-at 6000 --restore-at 8000 --output reports/run.json
+cargo test -- --test-threads=1
+cargo run --release -- --headless --seed 101 --ticks 12000 --sample 1000 --output reports/my-run.json
 ```
 
-The output directory must exist. Headless mode runs GPU compute without opening a window. Reports include initial and final settings, intervention timing, reserve/energy summaries, physical interaction totals, and population history.
+Headless runs use GPU compute without creating a window. The report directory
+must exist; report, founder-export and checkpoint paths must be new.
+`--help` lists supported options; `--version` identifies the model without
+opening a window. No Python is needed for normal simulation.
 
-`--famine-at` removes vegetation and stops regeneration; carried and dropped food remain. `--restore-at` restores the configured regeneration rate, letting fertile regions grow food again; it does not refill the map. This is a severe controlled shock, separate from ordinary weather. `--no-signals` disables the local signal affordance; `--no-force` disables the force affordance separately. `--static-landscape` freezes geography.
+- `--bootstrap`: explicitly unprepared, mutable seed weights with standing variation.
+- `--founders PATH`: another compatible recurrent-v1 bank; missing/invalid files fail.
+- `--checkpoint PATH`: resume saved settings, weights, private state and tick.
+  It cannot be combined with seed/founder/world-setting overrides.
+- `--no-force`, `--no-signals`: disable those physical capabilities.
+- `--static-landscape`: freeze geography, not weather.
+- `--famine-at T --restore-at U`: remove vegetation and stop regeneration at
+  absolute tick T; restore the configured growth rate at U. Carried/dropped food
+  remain. Restoration is not a map refill.
+- `--save-checkpoint PATH`, `--export-founders PATH`: explicit artifacts.
+  Export requires living descendants; export failure is recorded in the report.
 
-The default controller is candidate-v1: independent signed weights for seven actions, inherited and sparsely mutated at birth. Fresh runs use the bundled descendant bank prepared on seeds 11 and 22; `--bootstrap` starts from explicit physiological seed weights. `--founders PATH` loads another prepared bank; `--legacy-controller` selects the historical authored scores. See [CONTROLLER.md](CONTROLLER.md) for the feature contract, biases and preparation procedure. The optional `--neural` flag loads the archived shared GRU experiment; it is neither the default nor a validated long-term founder policy.
+`training/prepare.py` uses Python's standard library, registers a finite run
+budget before launching, and never selects weights from evaluation worlds:
 
-## Model and limits
+```powershell
+cargo build --release
+python training/prepare.py --directory reports/new-campaign
+```
 
-For individual discovery, known-target travel, and place-memory ablations, see
-[headless travel diagnostics](experiments/README.md) and the
-[measured travel findings](reports/TRAVEL_DIAGNOSTIC.md). These use an explicitly
-isolated two-patch fixture, not the ordinary population benchmark.
-The [matched sensing follow-up](reports/SENSING_DIAGNOSTIC.md) separates
-sensor coverage from the destination-ranking bottleneck. Experimental sensing
-modes are headless diagnostic options; ordinary sensing remains unchanged.
+## What this model does—and does not—claim
 
-The world is a bounded 2048-unit square with a 512-squared food/fertility grid and a 256-squared spatial index. Seeded geography creates large and small rich hubs joined by lower-yield forage bands, with irregular edges and some barren gaps. Rain, drought, soil depletion from harvesting, and fractional regeneration affect food within those regions. The variation slider controls variation within regions; changing the seed and resetting changes their placement. Agents have sixteen fixed, separated private place memories and observe a bounded set of raw nearby bodies. The action intent vocabulary is wait, move, collect, ingest, transfer, apply force, and emit; semantic labels belong to the observer, not the kernel. Collection and ingestion are separate actions; agents do not automatically feed while walking.
+Weights change only through birth mutation. During life the controller changes
+its sixteen numerical memory values, not its weights. Those values have no
+assigned meanings, guaranteed storage duration, or built-in map. A finite
+recurrent controller can retain information; useful memory and navigation must
+still arise from its weights and experience.
 
-Reports now distinguish force attempts, resolved force, energy costs, spilled food, cumulative action counts and overlapping birth-eligibility failures. Ancestry depth is separate from slot incarnation.
+The initialization is not a blank slate: mutable seed weights favor basic
+feeding, local food-directed movement and reproduction. The documented
+preparation produced viable descendants, not evidence that these capabilities
+were discovered from nothing. We still author bodies, sensors, ecology,
+initial conditions, network size and mutation.
 
-Each tick updates ecology and spatial indexing, local physical perception, agent-owned intents, collection, bodies and movement, disjoint pair interactions, signal events, death drops, and births. Atomic collection and disjoint interactions protect resource transfers from double spending. Birth allocation reuses dead slots with new incarnation identifiers and creates a new lineage identity linked to the parent. Offspring inherit adult capabilities and a boundedly mutated controller genome; private memories are cleared.
+The ecology was preserved: fertile hubs, low-yield bands and barren gaps,
+harvest depletion, rain/drought and geography blending every 8,192 ticks.
+Existing bands are authored terrain, not agent-built roads. Clusters or visible
+tracks alone are not evidence of social organization or route planning.
+All seven campaign runs reproduced; none exercised transfer, force or signaling
+in ordinary operation. Wiring tests exercise those actions separately.
 
-Nearby bodies expose position, velocity, carried matter, and recent local events. The active kernel does not identify helpers, enemies, leaders, groups, or trustworthy reports. Transfer and force spend or move matter through physical resolution; emit creates a bounded local event without copying a structured map. Any social interpretation belongs to the observer.
-
-Tests cover physical transfers, reproduction and famine recovery, action selection, local sensing, signal locality, generic force, matter conservation, checkpoint replay, lineage capture, and batched clocks. Validation has used NVIDIA Vulkan. Atomic ordering means population-scale runs can diverge even with the same seed; headless results are not cross-GPU determinism claims.
-
-See [the candidate-v1 validation record](reports/CANDIDATE_VALIDATION.md) for preparation, held-out populations, controls, and limits of the evidence.
-
-Four compass samples bias food-directed travel toward horizontal and vertical paths. Clusters and trails alone do not demonstrate cooperation or social groups. This directional bias is a known substrate choice, not an emergence claim.
-
-The landscape now combines broad fertile regions with several scales of smooth value noise. Peaks drift, change size and richness, and sometimes fade as others emerge. Geography blends between seeded keyframes every 8,192 simulation ticks; faster weather and local harvesting act on top. Potential productivity is normalized between keyframes, while actual growth still depends on soil, weather, and unused capacity. The **Landscape fertility** lens shows geography independently of current food. **Evolving food landscape** can freeze it for comparison.
-
-Trips persist through small preference changes and eating/collection pauses. The observer records movement and physical encounters without treating clusters or correlated movement as proof of a social group. The optional `cargo test motion_diagnostic -- --ignored --nocapture` records individual movement rather than inferring competence from population totals.
-
-Version-11 checkpoints save the controller genome, lineage identity, current neural weights, private memories, and decision traces. Checkpoints are intentionally single-schema: an incompatible file is rejected instead of being silently rewritten into a different world.
+Read [CONTROLLER.md](CONTROLLER.md) for the exact neural contract,
+[KERNEL_SPEC.md](KERNEL_SPEC.md) for costs and physical resolution, and
+[DESIGN_PLAN.md](DESIGN_PLAN.md) for the cutover decision.
+The old implementation remains at Git tag `pre-recurrent-cutover`.
+Historical reports are retained as history, not descriptions of this runtime.

@@ -8,7 +8,7 @@ struct InterventionParams {
 
 @compute @workgroup_size(64, 1, 1)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-  if (id.x >= 100000u) { return; }
+  if (id.x >= INVALID) { return; }
   if (length(agents[id.x].position - intervention.center) <= intervention.radius) {
     agents[id.x].alive = 0u;
     agents[id.x].energy = 0.0;

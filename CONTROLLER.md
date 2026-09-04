@@ -1,119 +1,148 @@
-# Inherited controller and founder preparation
+# recurrent-v1 controller contract
 
-The current runtime is an evolutionary ecology experiment with a finite,
-explicit controller architecture. It is not an open-ended intelligence claim.
-Physics, local perception and actual reproduction determine what happens.
-There is no desired population, migration, cooperation or conflict reward.
+Implemented in `src/model.rs`, `shaders/perceive.wgsl`,
+`shaders/decide.wgsl` and the physical execution shaders.
+One decision per simulated tick, identical in GUI, headless and preparation.
+There is no other production controller.
 
-## Candidate-v1
+## What chooses what
 
-Each agent carries 128 inherited floats. The first 16 retain movement-proposal
-traits and reserved entries; the remaining 112 are seven independent rows of
-16 signed weights. Every feasible action is scored with its own row. Mutations
-can reverse a preference and can condition it on local facts. Nearby targets
-are scored individually by the agent. The world does not assign social value.
+The controller receives 64 scalar measurements and its previous 16 state values.
+It computes the next 16 state values and 16 output values. All 1,568 weights
+belong to this body. No observer metric or another body's weights are inputs.
 
-The feature order is: bias, own energy/100, inventory/8, hunger, inventory
-space, local food, attainable collection weighted by hunger and inventory
-space, attainable ingestion weighted by squared hunger, local competition,
-candidate inventory/8, candidate proximity, recent received scalar event,
-candidate's recent scalar event, candidate velocity alignment with a movement
-proposal, movement proposal utility, and whether this repeats the last action.
-Recent scalar events expire after 32 ticks. Their sign is a physical payload,
-not a kernel classification of kindness or danger. It is deliberately ambiguous
-whether a scalar came from a signal, transfer or force outcome.
+For each state unit: `h' = tanh(W_input*x + W_state*h + bias)`.
+Outputs are a linear projection of h' plus output biases.
+State persists until updated by the next decision, death/reset or checkpoint
+restore. It is 16 float32 values (64 bytes), not sixteen labeled memories.
+There is no separately authored write/forget/rank rule. The network determines
+retention through recurrence. It can also immediately overwrite everything.
+Useful long-term memory is possible in principle, not verified by the current
+population results.
 
-The controller still has authored feature extraction and movement proposal
-generation. These are architectural biases, not learned discoveries. A more
-general recurrent controller is a future experiment, not a hidden claim about
-these weights. The bootstrap weights express collection, ingestion, waiting and
-movement competence, with a small opportunity cost for unfamiliar social acts.
-Founders start with small standing variation. That bootstrap is explicitly
-named `candidate-v1-bootstrap`; it is never labelled a pretrained GRU.
+Weights stay fixed within a lifetime. Changing state is not within-life weight
+training. There is no gradient descent, online reward, replay buffer, shared
+policy update, external database, episodic place list or automatic map.
 
-Fresh runs default to the bundled `policies/ancestor-v1.json` descendant bank,
-prepared on seeds 11 then 22 for 30,000 ticks each. `--bootstrap` explicitly
-starts from the physiological seed weights instead. The bank is compiled into
-the executable, so launching from another directory cannot silently skip it.
-The UI and reports expose the actual founder name. Loading a checkpoint restores
-that checkpoint's controller and founders, not the fresh-run defaults.
+## Inputs (zero-based indices)
 
-Birth copies the parent's weights and independently mutates each entry with
-10% probability by up to 0.03 in either direction. Bounds are +/-1 for the first
-16 entries and +/-4 for action weights. The process has fixed nonzero error.
-There is no cost-free, perfectly faithful copying trait. A child's private
-place records, event history, recurrent state and travel history start empty.
+All inputs are clamped to [-8,8] after normalization.
 
-Force stays enabled and retains its physical costs: up to 0.6 attacker energy,
-0.3 recipient energy, and a chance of spilling up to one food onto the ground.
-No direct food transfer to the attacker is implied. Transfer and emission are
-also feasible and may become preferred through signed weights. An absence of
-force in a run must not be confused with the force affordance being disabled.
+| Index | Measurement |
+| --- | --- |
+| 0 | Own energy / 100 |
+| 1 | Own inventory / 8 |
+| 2 | Food underfoot |
+| 3 | Age / 10,000 |
+| 4–5 | Previous actual voluntary velocity / 1.2 |
+| 6–9 | Previous actual food collected, ingested, energy spent, food received |
+| 10–11 | Previous actual displacement / 1.2, including force displacement |
+| 12 | Event received on the previous tick, otherwise zero |
+| 13 | Remaining reproductive recovery ticks / 240 |
+| 14 | Previous requested body action index / 6 |
+| 15 | Current sensor orientation / pi |
+| 16–39 | Eight triples: food, actual offset x / sensory radius, actual offset y / radius |
+| 40–63 | Four neighbor sextets: offset x/radius, offset y/radius, velocity x/1.2, velocity y/1.2, inventory/8, previous-tick event |
 
-## Place memory and travel
+Food is vegetation plus dropped supplies (dropped component capped at 8 for
+sensing), in food units. Sensors query grid cells at points, not area maxima.
+Four samples are at radius/6 and four at radius; their cardinal directions
+rotate with the body's attention. Boundary-clamped samples report their actual
+offsets. At default radius 24, these distances are 4 and 24 world units.
 
-Agents keep up to 16 fixed, separated observation anchors. A record is refreshed
-only for the same food cell. New records near an existing anchor do not slide
-its coordinate along with the agent. This corrects the previous loss of return
-destinations while travelling. The controller considers locally observed
-directions, affordable remembered destinations and persistent exploration.
+Neighbor sampling rotates its starting cell pseudorandomly, examines at most
+two candidates per spatial cell and keeps at most four within range. It does
+not rank wealth or behavior. It is bounded sampling, not a uniformly random
+sample of all neighbors. Dense cells can hide relevant bodies.
 
-This supplies repeatable individual navigation, not guaranteed shared trails.
-Unvisited food outside sensory range is unknown. Shared corridors require
-evidence from individual trajectories and controls; visual clusters alone are
-not proof. Signals can affect candidate scores, but no structured map is copied.
+An absent neighbor contributes six zeros. A coincident, motionless, empty body
+with no event can therefore be numerically indistinguishable from absence;
+target resolution still masks absent slots. No persistent neighbor identity
+is provided to the network. Slot/incarnation identifiers are carried separately
+to validate its selected target, not supplied as cognitive features.
 
-## Preparing founders through physical selection
+Offsets and movement use world-aligned axes with a compass convention, but no
+absolute position or destination is an input. No global food, patch ID, map,
+population, lineage, ancestry, route score, reputation, hunger utility or
+automatic navigation gradient is supplied.
 
-`training/prepare.py` runs ordinary worlds longer than a founder lifespan.
-At the end of each preparation world, it samples living descendants uniformly
-over bodies, at their actual family abundance. It starts a fresh seed with
-those inherited weights. It does not rank action histories, reward a shape or
-repair an extinct population. A world with no surviving descendants fails
-export explicitly. This is an offline experimental reseeding procedure;
-ordinary live runs never spontaneously reseed.
+Events are limited physical feedback, not language understanding: positive
+received transfer, negative contact-force feedback, or the emitted scalar
+payload. Signals and feedback can overlap numerically; there is no truth,
+trust or social-value label. A receiver observes only the last accepted event.
+Observers can inspect the event type and participants separately.
 
-Evaluation seeds never feed weights back into the bank. The script records the
-executable and bank SHA-256 hashes, all run commands, long-term births, force,
-ancestry, and separate no-force and famine controls. Persistence on tested seeds
-is evidence for that finite regime; it cannot establish universal stability.
+## Outputs
 
-```powershell
-cargo build --release
-python training/prepare.py --directory reports/new-experiment
-cargo run --release -- --founders reports/new-experiment/founders-2.json
-```
+| Output | Resolution |
+| --- | --- |
+| 0–6 | Logits for none, collect, ingest, transfer, force, emit, reproduce |
+| 7–8 | tanh movement vector, length capped at one; physical body scales it |
+| 9 | tanh angular change, at most 0.25 radians/tick |
+| 10 | Sigmoid amount in [0,1], with pre-sigmoid clamp [-20,20] |
+| 11 | tanh signal payload in [-1,1] |
+| 12–15 | Target logits over the four actually observed bodies |
 
-`--legacy-controller` preserves the original authored action scores as a named
-comparison. `--neural` is an archived shared-GRU experiment. Neither is the
-candidate controller. The GRU's weights do not evolve at reproduction; only
-private hidden state changes during a live run. Its default survival feedback
-does not credit descendants. Its reserve feedback penalizes resource transfers,
-including reproduction costs. Neither is an appropriate substitute for lineage
-selection without a separately specified experiment.
+Largest action logit wins; exact ties favor the earlier index. Target selection
+uses the same convention among present bodies. Locomotion and one body action
+can occur together. The world does not replace impossible intentions with an
+available action. Reproduction with inadequate reserves, transfer without a
+nearby receiver, or ingest with no inventory can simply accomplish nothing.
 
-## Evidence and lifecycle
+Attention affects the next observation, not one already collected this tick.
+The amount output controls collection rate, ingestion rate, transfer quantity,
+potential force spill, and offspring energy investment. It does not adjust
+force's fixed collision cost or displacement.
 
-Reports contain cumulative action ticks and overlapping birth-gate failures
-(immaturity, energy, inventory, movement, cooldown), plus all-gates-open ticks
-and requests. Force attempts and resolutions, actual energy spent and food
-spilled are separate. Resource totals are not evidence of local access.
-Counters are 32-bit and intended for bounded experiments; runs exceeding about
-4.29 billion events in a counter require a wider-counter schema.
+Nonfinite internal calculations are flagged. That tick gets zero locomotion,
+no body action and cleared recurrent state; metabolism still applies. Finite
+but ineffective output is not corrected. Fault counts must be reported.
 
-`generation` internally remains the slot-incarnation token used to prevent
-identity reuse. `ancestry_depth` is parent depth + 1 and is observer-only. The UI
-and evolutionary summaries now distinguish them. `next_birth` is an absolute
-cooldown tick; the UI shows remaining ticks and the other eligibility gates.
+## Genome and heredity
 
-Reproduction remains an automatic physical gate with stochastic timing. It is
-not an explicit agent action or proof that an agent planned parenthood. Mature,
-settled agents require at least 2 inventory and sufficient energy (75 at default),
-then receive a 3/1024 chance each eligible tick, subject to cooldown and capacity.
-Force can qualify as a settled action; loss of reserves, rather than an explicit
-anti-conflict birth rule, reduces eligibility. Parent spends 50 energy and one
-food by default; child receives 40 energy and one food. The remainder dissipates.
+Storage order: 16 rows of 81 values (64 input weights, 16 recurrent weights,
+bias), then 16 output rows of 17 values (16 state weights, bias).
 
-Checkpoint 11 captures expanded genomes, place records, ancestry and counters.
-Earlier schemas are rejected rather than reinterpreted. Old checkpoint files
-are not deleted. Exported founder weights exclude private memories.
+At an actual birth, each weight independently has an approximately 2% hashed
+mutation chance. A selected weight receives a uniform-style hashed perturbation
+in [-0.03,0.03]; resulting weights are clipped to [-4,4]. There is no reward-
+dependent mutation, action-dependent copying or mutation-rate trait. Child
+recurrent state and personal event history start at zero. Body capacities are
+fixed; offspring inherit the parent's speed/sensory capacity, not learned state.
+Maximum lifespan is freshly drawn from 9,000–11,000 ticks.
+
+## Initialization is authored and explicit
+
+Unprepared bootstrap relays normalized energy, inventory, underfoot food,
+four near samples and age into eight state units. Before standing noise:
+collect logit is 3*underfoot-state - inventory-state + 0.2;
+ingest is -3*energy-state + inventory-state + 1.7;
+reproduce is 3*energy-state + 2*inventory-state - 2.1.
+None has bias -0.1; transfer/force/emit have bias -0.3.
+Opposed near-food state pairs weakly steer x/y; amount bias is 3.
+Each bootstrap weight receives initial noise in approximately [-0.01,0.01].
+Other channels begin near zero. These are mutable starting dispositions, not
+a runtime fallback. They do not establish what a random network would learn.
+
+The bundled bank was exported from preparation seed 22 at tick 12,000 after a
+preceding preparation world on seed 11. It has 128 living-descendant genomes.
+Fresh bodies cycle through the bank without additional initialization noise,
+start with 65 energy and 2 inventory, random locations, age 0–300, empty state.
+Their initial reserves are declared world initialization, not resources invented
+by subsequent births. `--bootstrap` intentionally bypasses this bank;
+a bad requested bank fails rather than silently using bootstrap.
+
+Preparation samples up to 128 living descendants by stable hashed lineage order,
+at actual body abundance—not best routes, longest lives, most births or preferred
+actions. Each preparation world starts fresh. The inherited bank is copied into
+a new environment; personal memories never migrate between worlds.
+See [the validation record](reports/RECURRENT_VALIDATION.md) for exact provenance.
+
+## Open questions, not delivered abilities
+
+Sixteen-state ungated recurrence may forget, saturate or encode poor estimates.
+Argmax actions, finite sensing, weak initial movement and sparse mutation impose
+strong limitations. The current bank is viable in the recorded finite tests,
+but organized travel, memory usefulness, communication, cooperation and
+open-ended adaptation remain unproven. Improving these would be a new,
+explicit model decision—not a hidden scorer added underneath this controller.

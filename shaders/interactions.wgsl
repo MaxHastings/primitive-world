@@ -1,6 +1,5 @@
 struct InteractionEvent { tick:u32, actor:u32, other:u32, action:u32, amount:f32, sequence:u32, actor_lineage:u32, other_lineage:u32, position:vec2<f32>, };
 @group(0) @binding(6) var<storage,read_write> events:array<InteractionEvent>;
-@group(0) @binding(7) var<storage,read_write> relations:array<Relation>;
 fn record(actor:u32,other:u32,action:u32,amount:f32,position:vec2<f32>) {
   let sequence=atomicAdd(&stats[8],1u);
   events[sequence%65536u]=InteractionEvent(params.tick,actor,other,action,amount,sequence,agents[actor].lineage_id,agents[other].lineage_id,position);
@@ -21,13 +20,15 @@ fn propose(@builtin(global_invocation_id) id: vec3<u32>) {
   let i=id.x;
   if (i>=params.agent_count) { return; }
   let d=decisions[i];
-  if (d.target_id>=params.agent_count || d.target_id==i || (d.selected_action!=GIVE && d.selected_action!=FORCE && d.selected_action!=COMMUNICATE)) { return; }
+  if (d.target_id>=params.agent_count || d.target_id==i || (d.selected_action!=TRANSFER && d.selected_action!=APPLY_FORCE && d.selected_action!=EMIT)) { return; }
   let a=agents[i]; let b=agents[d.target_id];
   let distance=length(a.position-b.position);
-  let contact_radius=select(INTERACTION_RADIUS,min(a.sensor_radius,b.sensor_radius),d.selected_action==COMMUNICATE);
-  if (a.alive==0u || b.alive==0u || distance>contact_radius) { return; }
-  if(d.selected_action==FORCE){atomicAdd(&stats[12],1u);}
-  if (d.selected_action==GIVE && (a.food<=0.0 || b.food>=FOOD_CAPACITY)) { return; }
+  let contact_radius=select(INTERACTION_RADIUS,min(a.sensor_radius,b.sensor_radius),d.selected_action==EMIT);
+  if (a.alive==0u || b.alive==0u || b.generation!=d.target_generation || distance>contact_radius) { return; }
+  if(d.selected_action==APPLY_FORCE && params.physical.x<0.5){return;}
+  if(d.selected_action==EMIT && (params.physical.y<0.5 || params.tick<a.last_communication+4u)){return;}
+  if(d.selected_action==APPLY_FORCE){atomicAdd(&stats[12],1u);}
+  if (d.selected_action==TRANSFER && (a.food<=0.0 || b.food>=FOOD_CAPACITY)) { return; }
   atomicMin(&claims[i],priority(i)); atomicMin(&claims[d.target_id],priority(i));
 }
 @compute @workgroup_size(64)
@@ -35,35 +36,39 @@ fn resolve(@builtin(global_invocation_id) id: vec3<u32>) {
   let i=id.x;
   if (i>=params.agent_count) { return; }
   let d=decisions[i]; let j=d.target_id;
-  if (j>=params.agent_count || j==i || (d.selected_action!=GIVE && d.selected_action!=FORCE && d.selected_action!=COMMUNICATE)) { return; }
+  if (j>=params.agent_count || j==i || (d.selected_action!=TRANSFER && d.selected_action!=APPLY_FORCE && d.selected_action!=EMIT)) { return; }
   if (atomicLoad(&claims[i])!=priority(i) || atomicLoad(&claims[j])!=priority(i)) { return; }
   // Accepted pairs are disjoint. No invocation can read a record another pair writes.
   var a=agents[i]; var b=agents[j];
   let distance=length(a.position-b.position);
-  let contact_radius=select(INTERACTION_RADIUS,min(a.sensor_radius,b.sensor_radius),d.selected_action==COMMUNICATE);
-  if (distance>contact_radius) { return; }
-  if (d.selected_action==COMMUNICATE) {
+  let contact_radius=select(INTERACTION_RADIUS,min(a.sensor_radius,b.sensor_radius),d.selected_action==EMIT);
+  if (a.alive==0u || b.alive==0u || b.generation!=d.target_generation || distance>contact_radius) { return; }
+  if(d.selected_action==APPLY_FORCE && params.physical.x<0.5){return;}
+  if(d.selected_action==EMIT && (params.physical.y<0.5 || params.tick<a.last_communication+4u)){return;}
+  if (d.selected_action==EMIT) {
     // EMIT is a local signal, not a structured food report. Its meaning is
     // deliberately left to the receiver's inherited controller and memory.
-    let signal=clamp(d.amount,-1.0,1.0);
+    let signal=d.payload;
     b.event_amount=signal;
     b.event_actor=i; b.event_generation=a.generation; b.event_tick=params.tick;
     record(i,j,EMIT,signal,a.position);
     atomicAdd(&stats[9],1u);
-    a.energy=max(0.0,a.energy-0.02); a.last_communication=params.tick;
+    a.spent+=min(a.energy,0.02); a.energy=max(0.0,a.energy-0.02); a.last_communication=params.tick;
+    if(a.energy<=0.0){a.alive=0u;atomicAdd(&stats[1],1u);}
     agents[i]=a; agents[j]=b; return;
   }
-  if (d.selected_action==GIVE) {
+  if (d.selected_action==TRANSFER) {
     let amount=min(min(a.food,d.amount),max(0.0,FOOD_CAPACITY-b.food));
     if (amount<=0.0) { return; }
-    a.food-=amount; b.food+=amount;
+    a.food-=amount; b.food+=amount; b.received+=amount;
     b.event_amount=amount;
-    record(i,j,GIVE,amount,a.position);
+    record(i,j,TRANSFER,amount,a.position);
     atomicAdd(&stats[4],1u); atomicAdd(&stats[6],u32(amount*1000.0));
   } else {
     let chance=a.energy/max(a.energy+b.energy,0.001);
     atomicAdd(&stats[13],u32(round(min(a.energy,0.6)*1000.0)));
     atomicAdd(&stats[14],u32(round(min(b.energy,0.3)*1000.0)));
+    a.spent+=min(a.energy,0.6);b.spent+=min(b.energy,0.3);
     a.energy=max(0.0,a.energy-0.6); b.energy=max(0.0,b.energy-0.3);
     var taken=0.0;
     if (random01(a.rng ^ b.rng ^ params.tick)<chance) {
@@ -72,11 +77,10 @@ fn resolve(@builtin(global_invocation_id) id: vec3<u32>) {
       b.food-=taken; atomicAdd(&ground[ground_index(b.position)].dropped,u32(round(taken*1000.0)));
       var direction=unit_vector(b.position-a.position);
       if (length(direction)<0.1) { direction=vec2<f32>(1.0,0.0); }
-      b.position=clamp(b.position+direction*3.0,vec2<f32>(0.0),vec2<f32>(params.world_size));
-      b.commit_until=params.tick;
+      let old=b.position;b.position=clamp(b.position+direction*3.0,vec2<f32>(0.0),vec2<f32>(params.world_size));b.moved+=b.position-old;
     }
     b.event_amount=-max(0.3,taken);
-    record(i,j,FORCE,taken,a.position);
+    record(i,j,APPLY_FORCE,taken,a.position);
     atomicAdd(&stats[5],1u);
     if (a.energy<=0.0) { a.alive=0u; atomicAdd(&stats[7],1u); }
     if (b.energy<=0.0) { b.alive=0u; atomicAdd(&stats[7],1u); }

@@ -1,7 +1,7 @@
 @group(0) @binding(0) var<storage, read> source: array<u32>;
 @group(0) @binding(1) var<storage, read_write> destination: array<u32>;
 fn scan_step(id: u32, stride: u32) {
-  if (id >= 100000u) { return; }
+  if (id >= INVALID) { return; }
   destination[id] = select(source[id], source[id] + source[id - stride], id >= stride);
 }
 @compute @workgroup_size(64, 1, 1) fn step_1(@builtin(global_invocation_id) id: vec3<u32>) { scan_step(id.x, 1u); }

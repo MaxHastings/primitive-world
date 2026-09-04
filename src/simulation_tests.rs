@@ -1,1480 +1,564 @@
 use super::*;
-include!("controller_tests.rs");
 
-// Historical authored-controller regressions remain explicit comparison tests.
-fn legacy_sim(device: &wgpu::Device, queue: &wgpu::Queue, seed: u32) -> Simulation {
-    let mut sim = Simulation::new(device, queue, seed);
-    sim.settings.legacy_controller = true;
-    sim.reset(queue);
-    sim
+#[test]
+fn reproduction_rechecks_reserves_after_force() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut parent = body([602.0, 902.0]);
+    let amount = 1.0 / (1.0 + (-3.0f32).exp());
+    parent.energy = 50.0 * (0.2 + 0.8 * amount) + 0.2;
+    put(&s, &q, 0, parent, &fixed(6, [0.0; 2]));
+    put(&s, &q, 1, body([604.0, 902.0]), &fixed(4, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    let m = s.metrics(&d, &q).unwrap();
+    assert_eq!(m.birth_gates[5], 1);
+    assert_eq!(m.birth_gates[6], 0);
+    assert_eq!(m.events[5], 1);
+}
+#[test]
+fn dead_slot_reuse_resets_experience_and_advances_incarnation() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut dead = body([500.0, 500.0]);
+    dead.generation = 8;
+    dead.hidden = [0.9; 16];
+    put(&s, &q, 0, dead, &fixed(0, [0.0; 2]));
+    s.kill_agents_in_region(&d, &q, [500.0, 500.0], 2.0);
+    put(&s, &q, 1, body([602.0, 902.0]), &fixed(6, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    let bodies = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
+    assert_eq!(bodies[0].generation, 9);
+    assert_eq!(bodies[0].hidden, [0.0; 16]);
+    assert_eq!(bodies[0].ancestry_depth, 1);
+    assert_eq!(bodies[0].event_actor, MAX_AGENTS);
+    near(s.metrics(&d, &q).unwrap().dropped_food as f32, 2.0);
+}
+#[test]
+fn prepared_default_is_the_declared_bank_not_a_silent_fallback() {
+    let settings = SimSettings::default();
+    let bank = crate::founders::bundled();
+    assert_eq!(bank.genomes.len(), 128);
+    assert_eq!(settings.founder_genomes, bank.genomes);
+    assert_eq!(settings.founder_name, bank.name);
+    assert!(bank.name.contains("descendants"));
 }
 
 #[test]
-fn gru_contract_memory_and_checkpoint() {
-    use crate::neural::{ACTIONS, HIDDEN, NeuralPolicy, NeuralState, NeuralWeights};
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 71);
-    let mut flat = NeuralWeights::baseline().flat();
-    for (i, w) in flat.iter_mut().enumerate() {
-        *w = ((i as f32 * 0.713).sin()) * 0.12;
+fn concurrent_collection_and_pair_resolution_do_not_double_spend() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let pos = [602.0, 902.0];
+    let idx = 225 * 512 + 150;
+    q.write_buffer(&s.resource_buffer, idx * 4, bytemuck::bytes_of(&17u32));
+    for i in 0..8 {
+        let mut a = body(pos);
+        a.food = 0.0;
+        a.lineage_id = i as u32 + 1;
+        put(&s, &q, i, a, &fixed(1, [0.0; 2]));
     }
-    let weights = NeuralWeights::from_flat(&flat).unwrap();
-    sim.set_neural_weights(&queue, &weights).unwrap();
-    sim.neural_world(
-        &queue, 4, 71, true, false, false, true, None, false, false, false,
-    )
-    .unwrap();
-    let mut expected = vec![NeuralPolicy::default(); 4];
-    for t in 0..3 {
-        sim.neural_frame(&device, &queue, 4).unwrap();
-        let traces = read::<NeuralState>(&device, &queue, &sim.neural_state_buffer, 4);
-        for (i, st) in traces.iter().enumerate() {
-            assert_eq!(st.tick, t * 8);
-            assert_eq!(st.generation, 1);
-            for h in 0..HIDDEN {
-                assert!((st.before[h] - expected[i].hidden[h]).abs() < 2e-5);
-            }
-            let logits = expected[i].step(&weights, st.observation);
-            for a in 0..ACTIONS {
-                assert!((logits[a] - st.logits[a]).abs() < 2e-5);
-                if st.mask[a] == 0. {
-                    assert_eq!(st.probabilities[a], 0.);
-                }
-            }
-            assert_eq!(st.mask[st.choice as usize], 1.);
-            assert!((st.probabilities.iter().sum::<f32>() - 1.).abs() < 1e-5);
-            for h in 0..HIDDEN {
-                assert!((st.after[h] - expected[i].hidden[h]).abs() < 2e-5);
-            }
+    step(&mut s, &d, &q, 1);
+    let m = s.metrics(&d, &q).unwrap();
+    near((m.carried_food + m.vegetation) as f32, 0.017);
+    assert_eq!(m.living, 8);
+    // Every body requests transfer to the same target; accepted pairs must be disjoint.
+    for i in 0..8 {
+        let mut a = body(pos);
+        a.lineage_id = i as u32 + 1;
+        a.food = if i == 7 { 0.0 } else { 1.0 };
+        put(&s, &q, i, a, &fixed(0, [0.0; 2]));
+    }
+    let mut decisions = vec![DecisionGpu::default(); 8];
+    for item in &mut decisions[..7] {
+        item.selected_action = 3;
+        item.target = 7;
+        item.target_generation = 1;
+        item.amount = 1.0;
+    }
+    q.write_buffer(&s.decision_buffer, 0, bytemuck::cast_slice(&decisions));
+    let mut e = d.create_command_encoder(&Default::default());
+    for pass in ["interact_clear", "interact_propose", "interact_resolve"] {
+        s.dispatch(&mut e, pass, s.current_buffer, MAX_AGENTS / 64, 1);
+    }
+    q.submit(Some(e.finish()));
+    let bodies = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 8);
+    near(bodies.iter().map(|a| a.food).sum(), 7.0);
+    near(bodies[7].food, 1.0);
+}
+#[test]
+fn stale_targets_out_of_range_and_disabled_actions_cannot_claim() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings.force_enabled = false;
+    s.update_params(&q);
+    let a = body([602.0, 902.0]);
+    let mut b = body([604.0, 902.0]);
+    b.food = 0.0;
+    put(&s, &q, 0, a, &fixed(0, [0.0; 2]));
+    put(&s, &q, 1, b, &fixed(0, [0.0; 2]));
+    let run = |s: &Simulation, decisions: &[DecisionGpu]| {
+        q.write_buffer(&s.decision_buffer, 0, bytemuck::cast_slice(decisions));
+        let mut e = d.create_command_encoder(&Default::default());
+        for pass in ["interact_clear", "interact_propose", "interact_resolve"] {
+            s.dispatch(&mut e, pass, 0, MAX_AGENTS / 64, 1);
         }
-    }
-    let path = std::env::temp_dir().join(format!("gru-replay-{}.checkpoint", std::process::id()));
-    sim.save_checkpoint(&device, &queue, &path).unwrap();
-    let next = sim.neural_frame(&device, &queue, 4).unwrap();
-    sim.set_neural_weights(&queue, &NeuralWeights::baseline())
-        .unwrap();
-    sim.reset_neural_memory(&queue);
-    sim.load_checkpoint(&queue, &path).unwrap();
-    assert_eq!(
-        next,
-        sim.neural_frame(&device, &queue, 4).unwrap(),
-        "checkpoint includes model, RNG and private state"
-    );
-    // A dying body must clear working memory without losing its final decision trace.
-    let mut a = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 1)[0];
-    a.energy = 0.001;
-    a.food = 0.;
-    write_agents(&sim, &queue, &[a]);
-    let death_tick = sim.tick;
-    let terminal_frame = sim.neural_frame(&device, &queue, 4).unwrap();
-    assert_eq!(terminal_frame["rows"][0]["valid"], true);
-    assert_eq!(terminal_frame["rows"][0]["done"], true);
-    assert_eq!(terminal_frame["rows"][0]["trace"]["tick"], death_tick);
-    assert!(
-        sim.neural_inspect(&device, &queue, 0)
-            .unwrap()
-            .hidden
-            .iter()
-            .all(|h| *h == 0.)
-    );
-    // A reused identity waits for the shared boundary: no unrecorded GRU step.
-    step(&mut sim, &device, &queue, 3);
-    let born_at = sim.tick;
-    a.alive = 1;
-    a.energy = 60.;
-    a.generation += 1;
-    write_agents(&sim, &queue, &[a]);
-    assert!(sim.neural_frame(&device, &queue, 4).is_err());
-    let next_boundary = (born_at / 8 + 1) * 8;
-    step(&mut sim, &device, &queue, next_boundary - born_at);
-    assert!(
-        sim.neural_inspect(&device, &queue, 0)
-            .unwrap()
-            .hidden
-            .iter()
-            .all(|h| *h == 0.0)
-    );
-    let birth_frame = sim.neural_frame(&device, &queue, 4).unwrap();
-    let original_trace = &birth_frame["rows"][0];
-    assert_eq!(original_trace["valid"], true);
-    assert_eq!(original_trace["trace"]["tick"], next_boundary);
-    assert_eq!(original_trace["trace"]["generation"], 2);
-    assert!(
-        original_trace["trace"]["before"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|h| h.as_f64() == Some(0.0))
-    );
-    let st = sim.neural_inspect(&device, &queue, 0).unwrap();
-    assert_eq!(st.generation, 2);
-    assert_eq!(st.tick, next_boundary);
+        q.submit(Some(e.finish()));
+        read::<AgentGpu>(&d, &q, &s.agent_buffers[0], 2)
+    };
+    let mut intent = DecisionGpu {
+        selected_action: 3,
+        target: 1,
+        target_generation: 2,
+        amount: 1.0,
+        ..Default::default()
+    };
+    near(run(&s, &[intent])[1].food, 0.0);
+    intent.target_generation = 1;
+    b.position = [620.0, 902.0];
+    put(&s, &q, 1, b, &fixed(0, [0.0; 2]));
+    near(run(&s, &[intent])[1].food, 0.0);
+    b.position = [604.0, 902.0];
+    put(&s, &q, 1, b, &fixed(0, [0.0; 2]));
+    // Disabled force from receiver must not defeat a valid transfer in arbitration.
+    let force = DecisionGpu {
+        selected_action: 4,
+        target: 0,
+        target_generation: 1,
+        amount: 1.0,
+        ..Default::default()
+    };
+    near(run(&s, &[intent, force])[1].food, 1.0);
+}
+#[test]
+fn attention_amount_and_failed_actions_remain_controller_owned() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let a = body([602.0, 902.0]);
+    let mut g = fixed(3, [0.2, 0.0]); // no target exists
+    g[OUTPUT_BASE + 9 * 17 + 16] = 1.0;
+    g[OUTPUT_BASE + 10 * 17 + 16] = -2.0;
+    put(&s, &q, 0, a, &g);
+    step(&mut s, &d, &q, 1);
+    let b = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
+    let intent = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 1)[0];
+    assert_eq!(b.action, 3);
+    near(b.food, a.food);
+    assert!(b.position[0] > a.position[0]);
+    near(b.attention, 1.0f32.tanh() * 0.25);
+    near(intent.amount, 1.0 / (1.0 + 2.0f32.exp()));
+}
+#[test]
+fn founder_export_requires_descendants_and_preserves_existing_files() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    put(&s, &q, 0, body([602.0, 902.0]), &fixed(0, [0.0; 2]));
+    let path = temp("founders.json");
+    assert!(s.export_founders(&d, &q, &path).is_err());
+    assert!(!path.exists());
+    put(&s, &q, 0, body([602.0, 902.0]), &fixed(6, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    s.export_founders(&d, &q, &path).unwrap();
+    let before = std::fs::read(&path).unwrap();
+    assert!(s.export_founders(&d, &q, &path).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    s.load_founders(&path).unwrap();
+    assert_eq!(s.settings.founder_genomes.len(), 1);
+    assert_eq!(s.settings.founder_genomes[0].len(), GENOME_SIZE);
     std::fs::remove_file(path).unwrap();
 }
-
-fn gpu() -> (wgpu::Device, wgpu::Queue) {
-    pollster::block_on(async {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::VULKAN,
-            ..Default::default()
-        });
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
-            .await
-            .expect("GPU required for simulation validation");
-        eprintln!("GPU: {:?}", adapter.get_info());
-        adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("simulation test device"),
-                    required_features: wgpu::Features::empty(),
-                    required_limits: adapter.limits(),
-                    memory_hints: wgpu::MemoryHints::Performance,
-                },
-                None,
-            )
-            .await
-            .unwrap()
-    })
+#[test]
+fn checkpoint_rejects_corrupt_trace_without_mutating_live_world() {
+    use std::io::{Seek, SeekFrom, Write};
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    put(&s, &q, 0, body([602.0, 902.0]), &fixed(0, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    let path = temp("corrupt.checkpoint");
+    s.save_checkpoint(&d, &q, &path).unwrap();
+    assert!(s.save_checkpoint(&d, &q, &path).is_err());
+    let lengths = [
+        s.agent_buffers[0].size(),
+        s.resource_buffer.size(),
+        s.fertility_buffer.size(),
+        s.ground_buffer.size(),
+        s.death_stats_buffer.size(),
+        s.event_buffer.size(),
+    ];
+    let pos = 24
+        + serde_json::to_vec(&s.settings).unwrap().len() as u64
+        + lengths.iter().map(|v| v + 8).sum::<u64>()
+        + 8;
+    let mut file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+    file.seek(SeekFrom::Start(pos)).unwrap();
+    file.write_all(&f32::NAN.to_le_bytes()).unwrap();
+    drop(file);
+    let before = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1);
+    assert!(
+        s.load_checkpoint(&q, &path)
+            .unwrap_err()
+            .contains("perception")
+    );
+    let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1);
+    assert_eq!(
+        bytemuck::cast_slice::<AgentGpu, u8>(&before),
+        bytemuck::cast_slice::<AgentGpu, u8>(&after)
+    );
+    std::fs::remove_file(path).unwrap();
 }
-
+fn gpu() -> (wgpu::Device, wgpu::Queue) {
+    let instance = wgpu::Instance::new(&Default::default());
+    let adapter = pollster::block_on(instance.request_adapter(&Default::default())).expect("GPU");
+    pollster::block_on(adapter.request_device(
+        &wgpu::DeviceDescriptor {
+            label: Some("recurrent tests"),
+            required_features: wgpu::Features::empty(),
+            required_limits: adapter.limits(),
+            memory_hints: wgpu::MemoryHints::Performance,
+        },
+        None,
+    ))
+    .unwrap()
+}
 fn read<T: Pod>(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    buffer: &wgpu::Buffer,
+    b: &wgpu::Buffer,
     count: usize,
 ) -> Vec<T> {
-    let size = (count * std::mem::size_of::<T>()) as u64;
-    let staging = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("test readback"),
-        size,
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
-    let mut encoder = device.create_command_encoder(&Default::default());
-    encoder.copy_buffer_to_buffer(buffer, 0, &staging, 0, size);
-    queue.submit(Some(encoder.finish()));
+    let staging = readback(device, (count * std::mem::size_of::<T>()) as u64);
+    let mut e = device.create_command_encoder(&Default::default());
+    e.copy_buffer_to_buffer(b, 0, &staging, 0, staging.size());
+    queue.submit(Some(e.finish()));
     let (tx, rx) = mpsc::channel();
     staging.slice(..).map_async(wgpu::MapMode::Read, move |r| {
         tx.send(r).unwrap();
     });
     device.poll(wgpu::Maintain::Wait);
     rx.recv().unwrap().unwrap();
-    let result = bytemuck::cast_slice(&staging.slice(..).get_mapped_range()).to_vec();
+    let out = bytemuck::cast_slice(&staging.slice(..).get_mapped_range()).to_vec();
     staging.unmap();
-    result
+    out
 }
-
-fn step(sim: &mut Simulation, device: &wgpu::Device, queue: &wgpu::Queue, ticks: u32) {
-    let mut remaining = ticks;
-    while remaining > 0 {
-        let count = remaining.min(32);
-        let mut encoder = device.create_command_encoder(&Default::default());
-        sim.encode_ticks(&mut encoder, device, queue, count);
-        queue.submit(Some(encoder.finish()));
-        device.poll(wgpu::Maintain::Wait);
-        remaining -= count;
-    }
+fn step(s: &mut Simulation, d: &wgpu::Device, q: &wgpu::Queue, n: u32) {
+    let mut e = d.create_command_encoder(&Default::default());
+    s.encode_ticks(&mut e, d, q, n);
+    q.submit(Some(e.finish()));
+    d.poll(wgpu::Maintain::Wait);
 }
-
-fn dispatch(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    pipeline: &wgpu::ComputePipeline,
-    group: &wgpu::BindGroup,
-    count: u32,
-) {
-    let mut encoder = device.create_command_encoder(&Default::default());
-    {
-        let mut pass = encoder.begin_compute_pass(&Default::default());
-        pass.set_pipeline(pipeline);
-        pass.set_bind_group(0, group, &[]);
-        pass.dispatch_workgroups(count.div_ceil(64), 1, 1);
-    }
-    queue.submit(Some(encoder.finish()));
-    device.poll(wgpu::Maintain::Wait);
+fn scene(d: &wgpu::Device, q: &wgpu::Queue) -> Simulation {
+    let mut s = Simulation::new(d, q, 91);
+    s.settings.population = 0;
+    s.settings.resource_regeneration = 0.0;
+    s.settings.evolving_landscape = false;
+    s.reset(q);
+    q.write_buffer(&s.resource_buffer, 0, &vec![0; 512 * 512 * 4]);
+    q.write_buffer(&s.ground_buffer, 0, &vec![0; 512 * 512 * 32]);
+    s
 }
-
-fn write_agents(sim: &Simulation, queue: &wgpu::Queue, agents: &[AgentGpu]) {
-    for buffer in &sim.agent_buffers {
-        queue.write_buffer(buffer, 0, bytemuck::cast_slice(agents));
-    }
-}
-
-fn migration_episode(
-    sim: &mut Simulation,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    destination: [f32; 2],
-    ticks: u32,
-) -> (Vec<bool>, u32) {
-    // A controlled barren arena with explicitly supplied food. Procedural
-    // capacity must not clip the test patch or change between map revisions.
-    queue.write_buffer(
-        &sim.ground_buffer,
-        0,
-        &vec![0u8; (RESOURCE_GRID * RESOURCE_GRID * 32) as usize],
-    );
-    let mut food = vec![0u32; (RESOURCE_GRID * RESOURCE_GRID) as usize];
-    for y in 0..RESOURCE_GRID {
-        for x in 0..RESOURCE_GRID {
-            if (x as f32 * 4.0 + 2.0 - destination[0]).hypot(y as f32 * 4.0 + 2.0 - destination[1])
-                < 16.0
-            {
-                food[(y * RESOURCE_GRID + x) as usize] = 1000;
-            }
-        }
-    }
-    queue.write_buffer(&sim.resource_buffer, 0, bytemuck::cast_slice(&food));
-    let mut arrived = vec![false; 3];
-    let mut contact = 0;
-    for _ in 0..ticks {
-        step(sim, device, queue, 1);
-        let a = read::<AgentGpu>(device, queue, &sim.agent_buffers[sim.current_buffer], 3);
-        for i in 0..3 {
-            arrived[i] |= a[i].alive != 0
-                && (a[i].position[0] - destination[0]).hypot(a[i].position[1] - destination[1])
-                    < 16.0;
-            if i > 0
-                && a[i].alive != 0
-                && a[0].alive != 0
-                && (a[i].position[0] - a[0].position[0]).hypot(a[i].position[1] - a[0].position[1])
-                    < 24.0
-            {
-                contact += 1;
-            }
-        }
-    }
-    (arrived, contact)
-}
-
-#[test]
-fn raw_local_perception_does_not_create_a_shared_information_channel() {
-    let (device, queue) = gpu();
-    let mut report = Vec::new();
-    for mode in [
-        "full",
-        "no_reports",
-        "forget_experience",
-        "no_companion_access",
-    ] {
-        let mut sim = legacy_sim(&device, &queue, 61);
-        sim.settings.population = 0;
-        sim.settings.resource_regeneration = 0.0;
-        sim.settings.evolving_landscape = false;
-        sim.settings.force_enabled = false;
-        sim.settings.communication_enabled = mode != "no_reports";
-        sim.reset(&queue);
-        sim.tick = 100;
-        let mut agents: Vec<_> = (0..3)
-            .map(|i| AgentGpu {
-                position: [100.0 + i as f32, 100.0],
-                energy: 65.0,
-                age: 400.0,
-                max_speed: 1.2,
-                sensor_radius: 24.0,
-                alive: 1,
-                generation: 1,
-                rng: 7919 + i * 131,
-                max_age: 10000.0,
-                next_birth: 10000,
-                target: MAX_AGENTS,
-                event_actor: MAX_AGENTS,
-                guide_id: MAX_AGENTS,
-                ..Default::default()
-            })
-            .collect();
-        agents[0].places[0] = PlaceGpu {
-            position: [220.0, 100.0],
-            food: 1.0,
-            observed: 100,
-            source_id: 0,
-            source_generation: 1,
-            confidence: 1.0,
-            ..Default::default()
-        };
-        write_agents(&sim, &queue, &agents);
-        let mut relations = build_social_memory();
-        for i in 0..3 {
-            for j in 0..3 {
-                if i != j {
-                    relations[i * 8 + j] = SocialRelationGpu {
-                        target_slot: j as u32,
-                        target_generation: 1,
-                        familiarity: 0.8,
-                        last_seen_tick: 100,
-                        ..Default::default()
-                    };
-                }
-            }
-        }
-        queue.write_buffer(
-            &sim.social_memory_buffer,
-            0,
-            bytemuck::cast_slice(&relations),
-        );
-        let (first, first_contact) =
-            migration_episode(&mut sim, &device, &queue, [220.0, 100.0], 240);
-        let learned = read::<SocialRelationGpu>(&device, &queue, &sim.social_memory_buffer, 24);
-        let guidance: Vec<_> = (1..3)
-            .map(|i| {
-                learned[i * 8..i * 8 + 8]
-                    .iter()
-                    .filter(|r| r.target_slot == 0)
-                    .map(|r| r.navigation)
-                    .fold(0.0f32, f32::max)
-            })
-            .collect();
-        // A second departure from a gathered camp isolates experience. No reports
-        // are available; only the guide has new food information. Physical state
-        // is standardized while relationships retain the first episode's outcomes.
-        for (i, a) in agents.iter_mut().enumerate() {
-            a.position = [220.0 + i as f32, 100.0];
-            a.goal = a.position;
-            a.energy = 15.0;
-            a.places = [PlaceGpu::default(); PLACE_SLOTS];
-        }
-        agents[0].places[0] = PlaceGpu {
-            position: [340.0, 160.0],
-            food: 1.0,
-            observed: sim.tick,
-            source_id: 0,
-            source_generation: 1,
-            confidence: 1.0,
-            ..Default::default()
-        };
-        write_agents(&sim, &queue, &agents);
-        sim.settings.communication_enabled = false;
-        if mode == "no_companion_access" {
-            sim.settings.social_access = 0.0;
-        }
-        if mode == "forget_experience" {
-            let mut memory = learned.clone();
-            for r in &mut memory {
-                r.navigation = 0.0;
-                r.navigation_evidence = 0.0;
-                r.benefit = 0.0;
-                r.benefit_evidence = 0.0;
-            }
-            queue.write_buffer(&sim.social_memory_buffer, 0, bytemuck::cast_slice(&memory));
-        }
-        let (second, second_contact) =
-            migration_episode(&mut sim, &device, &queue, [340.0, 160.0], 600);
-        let alive = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 3)
-            .iter()
-            .filter(|a| a.alive != 0)
-            .count();
-        let row = serde_json::json!({"mode":mode,"first_arrivals":first,"first_contact_ticks":first_contact,"learned_navigation":guidance,
-            "second_arrivals":second,"second_contact_ticks":second_contact,"survivors":alive,"signals":sim.metrics(&device,&queue).unwrap().signals});
-        eprintln!("Migration: {row}");
-        report.push(row);
-    }
-    // A local signal is not a structured map update and must not become a
-    // hidden population-level information channel.
-    assert_eq!(report[0]["signals"].as_u64().unwrap(), 0);
-    assert_eq!(
-        report[0]["learned_navigation"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|v| v.as_f64().unwrap() > 0.0)
-            .count(),
-        0
-    );
-}
-
-#[test]
-fn habitat_is_patchy_seeded_and_keeps_barren_gaps() {
-    let habitat = build_habitat(1);
-    assert_eq!(habitat, build_habitat(1));
-    assert_ne!(habitat, build_habitat(2));
-    let coverage = habitat.iter().filter(|h| **h > 0.0).count() as f32 / habitat.len() as f32;
-    assert!(
-        (0.08..0.4).contains(&coverage),
-        "patch coverage: {coverage}"
-    );
-    let ground = build_ground(&habitat);
-    let productivity = ground
-        .iter()
-        .map(|g| f32::from_bits(g[7]) as f64)
-        .sum::<f64>()
-        / ground.len() as f64;
-    assert!(
-        (productivity - 1.0).abs() < 0.001,
-        "concentrate the growth budget into patches"
-    );
-
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 1);
-    sim.settings.population = 0;
-    sim.settings.evolving_landscape = false;
-    sim.reset(&queue);
-    queue.write_buffer(
-        &sim.resource_buffer,
-        0,
-        bytemuck::cast_slice(&vec![0u32; habitat.len()]),
-    );
-    step(&mut sim, &device, &queue, 640);
-    let grown = read::<u32>(&device, &queue, &sim.resource_buffer, habitat.len());
-    assert!(grown.iter().sum::<u32>() > 0);
-    assert!(
-        grown
-            .iter()
-            .zip(&habitat)
-            .all(|(food, h)| *h > 0.0 || *food == 0),
-        "rain and soil recovery must not fill the barren gaps"
-    );
-    let barren = habitat.iter().position(|h| *h == 0.0).unwrap();
-    queue.write_buffer(
-        &sim.resource_buffer,
-        barren as u64 * 4,
-        bytemuck::bytes_of(&333u32),
-    );
-    step(&mut sim, &device, &queue, 16);
-    let painted = read::<u32>(&device, &queue, &sim.resource_buffer, barren + 1);
-    assert_eq!(
-        painted[barren], 333,
-        "manually supplied food remains harvestable in barren space"
-    );
-    eprintln!(
-        "Habitat coverage {:.1}%; normalized productivity {:.4}",
-        coverage * 100.0,
-        productivity
-    );
-}
-
-#[test]
-fn landscape_evolves_smoothly_and_crosses_keyframes_in_order() {
-    let first = build_habitat_at(1, 0);
-    let later = build_habitat_at(1, 3);
-    assert!(
-        first.iter().zip(&later).any(|(a, b)| *a > 0.2 && *b < 0.01),
-        "old peaks can fade"
-    );
-    assert!(
-        first.iter().zip(&later).any(|(a, b)| *a < 0.01 && *b > 0.2),
-        "new peaks can appear elsewhere"
-    );
-    let pair = build_terrain_pair(1, 0);
-    let next = build_terrain_pair(1, 1);
-    assert!(
-        pair.iter()
-            .zip(&next)
-            .all(|(a, b)| a[1] == b[0] && a[3] == b[2]),
-        "keyframe endpoints must agree"
-    );
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 1);
-    sim.settings.population = 0;
-    sim.reset(&queue);
-    sim.tick = 4096;
-    step(&mut sim, &device, &queue, 1);
-    let midpoint = read::<u32>(&device, &queue, &sim.ground_buffer, pair.len() * 8);
-    for (i, p) in pair.iter().enumerate() {
-        assert!((f32::from_bits(midpoint[i * 8 + 6]) - (p[0] + p[1]) * 0.5).abs() < 0.00001);
-    }
-    sim.tick = 8190;
-    let path = std::env::temp_dir().join(format!(
-        "primitive-terrain-{}.checkpoint",
-        std::process::id()
-    ));
-    sim.save_checkpoint(&device, &queue, &path).unwrap();
-    step(&mut sim, &device, &queue, 4);
-    let batched = read::<u32>(&device, &queue, &sim.ground_buffer, pair.len() * 8);
-    sim.load_checkpoint(&queue, &path).unwrap();
-    for _ in 0..4 {
-        step(&mut sim, &device, &queue, 1);
-    }
-    let single = read::<u32>(&device, &queue, &sim.ground_buffer, pair.len() * 8);
-    assert_eq!(
-        batched, single,
-        "terrain copies must occur at the correct tick inside a batch"
-    );
-    std::fs::remove_file(path).unwrap();
-}
-
-#[test]
-fn an_empty_world_search_reaches_its_chosen_destination() {
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 53);
-    sim.settings.population = 0;
-    sim.settings.resource_regeneration = 0.0;
-    sim.reset(&queue);
-    queue.write_buffer(
-        &sim.resource_buffer,
-        0,
-        bytemuck::cast_slice(&vec![0u32; (RESOURCE_GRID * RESOURCE_GRID) as usize]),
-    );
-    let a = AgentGpu {
-        position: [1024.0, 1024.0],
-        energy: 65.0,
-        age: 400.0,
-        max_speed: 1.2,
-        sensor_radius: 24.0,
-        alive: 1,
-        generation: 1,
-        rng: 7919,
-        max_age: 10000.0,
-        target: MAX_AGENTS,
-        event_actor: MAX_AGENTS,
-        guide_id: MAX_AGENTS,
-        ..Default::default()
-    };
-    write_agents(&sim, &queue, &[a]);
-    step(&mut sim, &device, &queue, 1);
-    let first = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 1)[0];
-    assert_eq!(first.action, 1);
-    let mut reached = false;
-    for _ in 0..48 {
-        let now = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 1)[0];
-        let distance = (now.position[0] - first.goal[0]).hypot(now.position[1] - first.goal[1]);
-        if distance <= 2.0 {
-            reached = true;
-            break;
-        }
-        assert_eq!(
-            now.goal, first.goal,
-            "empty-space exploration should not choose a new heading before arriving"
-        );
-        step(&mut sim, &device, &queue, 1);
-    }
-    assert!(reached, "the selected search destination must be reached");
-}
-
-#[test]
-#[ignore = "population trajectory diagnostic; run explicitly"]
-fn motion_diagnostic() {
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 1);
-    step(&mut sim, &device, &queue, 4000);
-    let mut frames = Vec::new();
-    for _ in 0..257 {
-        frames.push(read::<AgentGpu>(
-            &device,
-            &queue,
-            &sim.agent_buffers[sim.current_buffer],
-            512,
-        ));
-        step(&mut sim, &device, &queue, 1);
-    }
-    let mut rows = Vec::new();
-    for i in 0..512 {
-        let first = frames[0][i];
-        let last = frames[256][i];
-        if first.alive == 0 || last.alive == 0 || first.generation != last.generation {
-            continue;
-        }
-        let mut path = 0.0f32;
-        let mut reversals = 0;
-        let mut actions = [0; 7];
-        for t in 1..frames.len() {
-            let a = frames[t][i];
-            let b = frames[t - 1][i];
-            path += ((a.position[0] - b.position[0]).powi(2)
-                + (a.position[1] - b.position[1]).powi(2))
-            .sqrt();
-            actions[a.action as usize] += 1;
-            if a.velocity[0] * b.velocity[0] + a.velocity[1] * b.velocity[1] < -0.1 {
-                reversals += 1;
-            }
-        }
-        let distance = ((last.position[0] - first.position[0]).powi(2)
-            + (last.position[1] - first.position[1]).powi(2))
-        .sqrt();
-        rows.push(serde_json::json!({"slot":i,"path":path,"distance":distance,"reversals":reversals,"actions":actions,"start_energy":first.energy,"end_energy":last.energy}));
-    }
-    rows.sort_by(|a, b| b["reversals"].as_u64().cmp(&a["reversals"].as_u64()));
-    eprintln!(
-        "Worst motion: {}",
-        serde_json::to_string_pretty(&rows[..rows.len().min(5)]).unwrap()
-    );
-    if let Some(row) = rows.first() {
-        let i = row["slot"].as_u64().unwrap() as usize;
-        let reversal = (1..frames.len())
-            .find(|&t| {
-                let a = frames[t][i];
-                let b = frames[t - 1][i];
-                a.velocity[0] * b.velocity[0] + a.velocity[1] * b.velocity[1] < -0.1
-            })
-            .unwrap_or(0);
-        for frame in frames.iter().skip(reversal.saturating_sub(3)).take(16) {
-            let a = frame[i];
-            eprintln!(
-                "slot {i}: pos {:?} goal {:?} action {} food {:.3} energy {:.3} commit {}",
-                a.position, a.goal, a.action, a.food, a.energy, a.commit_until
-            );
-        }
-    }
-}
-
-#[test]
-fn physical_actions_and_births_conserve_reserves() {
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 7);
-    sim.settings.population = 0;
-    sim.settings.metabolic_cost = 0.0;
-    sim.settings.movement_energy_cost = 0.0;
-    sim.settings.resource_regeneration = 0.0;
-    sim.reset(&queue);
-    sim.update_params(&queue);
-    let mut a = AgentGpu {
-        position: [100.0, 100.0],
-        energy: 50.0,
-        max_speed: 1.0,
-        sensor_radius: 24.0,
-        alive: 1,
-        generation: 1,
-        max_age: 10000.0,
-        ..Default::default()
-    };
-    write_agents(&sim, &queue, &[a]);
-    let ci = 25 * 512 + 25;
-    let before = read::<u32>(&device, &queue, &sim.resource_buffer, ci + 1)[ci];
-    let d = DecisionGpu {
-        selected_action: 2,
-        target: MAX_AGENTS,
-        ..Default::default()
-    };
-    queue.write_buffer(&sim._decision_buffer, 0, bytemuck::bytes_of(&d));
-    dispatch(
-        &device,
-        &queue,
-        &sim.consume_pipeline,
-        &sim.consume_bind_groups[0],
-        1,
-    );
-    dispatch(
-        &device,
-        &queue,
-        &sim.update_pipeline,
-        &sim.update_bind_groups[0][1],
-        1,
-    );
-    let harvested = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[1], 1)[0];
-    let after = read::<u32>(&device, &queue, &sim.resource_buffer, ci + 1)[ci];
-    assert!((harvested.food * 1000.0 - (before - after) as f32).abs() < 0.001);
-    assert_eq!(harvested.position, a.position, "harvest must stop movement");
-    a.food = 1.0;
-    write_agents(&sim, &queue, &[a]);
-    queue.write_buffer(
-        &sim._decision_buffer,
-        0,
-        bytemuck::bytes_of(&DecisionGpu {
-            selected_action: 3,
-            ..d
-        }),
-    );
-    queue.write_buffer(&sim._request_buffer, 0, bytemuck::bytes_of(&0u32));
-    dispatch(
-        &device,
-        &queue,
-        &sim.update_pipeline,
-        &sim.update_bind_groups[0][1],
-        1,
-    );
-    let eaten = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[1], 1)[0];
-    assert!((eaten.energy + eaten.food * 8.0 - (a.energy + a.food * 8.0)).abs() < 0.0001);
-    a.alive = 0;
-    a.food = 1.25;
-    write_agents(&sim, &queue, &[a]);
-    dispatch(
-        &device,
-        &queue,
-        &sim.death_pipeline,
-        &sim.death_bind_groups[0],
-        MAX_AGENTS,
-    );
-    let ground = read::<u32>(&device, &queue, &sim.ground_buffer, (ci + 1) * 8);
-    assert_eq!(ground[ci * 8], 1250);
-    assert_eq!(
-        ground.iter().step_by(8).sum::<u32>(),
-        1250,
-        "unused slots must not create supplies"
-    );
-    dispatch(
-        &device,
-        &queue,
-        &sim.death_pipeline,
-        &sim.death_bind_groups[0],
-        MAX_AGENTS,
-    );
-    assert_eq!(
-        read::<u32>(&device, &queue, &sim.ground_buffer, (ci + 1) * 8)[ci * 8],
-        1250,
-        "release once"
-    );
-    // Isolate the birth allocator: exactly one mature parent and one free child slot.
-    a.alive = 1;
-    a.energy = 90.0;
-    a.food = 4.0;
-    a.age = 500.0;
-    a.genome = [0.4; crate::simulation::GENOME_SIZE];
-    write_agents(&sim, &queue, &[a, AgentGpu::default()]);
-    let old_memory = crate::neural::NeuralState {
-        generation: 99,
-        valid: 1,
-        hidden: [0.75; crate::neural::HIDDEN],
-        ..Default::default()
-    };
-    queue.write_buffer(
-        &sim.neural_state_buffer,
-        std::mem::size_of_val(&old_memory) as u64,
-        bytemuck::bytes_of(&old_memory),
-    );
-    queue.write_buffer(&sim.birth_parents, 0, bytemuck::bytes_of(&0u32));
-    queue.write_buffer(&sim.free_indices, 0, bytemuck::bytes_of(&1u32));
-    for buffer in [&sim.birth_prefix[1], &sim.free_prefix[1]] {
-        queue.write_buffer(
-            buffer,
-            (MAX_AGENTS as u64 - 1) * 4,
-            bytemuck::bytes_of(&1u32),
-        );
-    }
-    // Both prefix scans have 17 steps, so birth groups bind the final index 1.
-    dispatch(
-        &device,
-        &queue,
-        &sim.birth_pipeline,
-        &sim.birth_bind_groups[0],
-        1,
-    );
-    let pair = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[0], 2);
-    assert_eq!(pair[1].alive, 1);
-    let child_memory = sim.neural_inspect(&device, &queue, 1).unwrap();
-    assert_eq!(child_memory.valid, 0);
-    assert!(child_memory.hidden.iter().all(|h| *h == 0.));
-    assert_eq!(pair[0].food + pair[1].food, a.food);
-    assert!(
-        (pair[0].energy + pair[1].energy - (a.energy - sim.settings.reproduction_cost * 0.2)).abs()
-            < 0.0001
-    );
-    assert_eq!(pair[0].next_birth, sim.settings.birth_cooldown);
-    assert_eq!(pair[1].parent_lineage, pair[0].lineage_id);
-    assert_ne!(pair[1].lineage_id, pair[0].lineage_id);
-    assert_eq!(pair[1].birth_parent_slot, 0);
-    assert_eq!(pair[1].ancestry_depth, a.ancestry_depth + 1);
-    assert_eq!(pair[0].lifetime_births, a.lifetime_births + 1);
-    assert!(
-        pair[1]
-            .genome
-            .iter()
-            .all(|gene| *gene >= -1.0 && *gene <= 1.0)
-    );
-    assert_ne!(pair[0].genome, pair[1].genome);
-}
-
-#[test]
-fn famine_survivors_recover_and_fractional_growth_accumulates() {
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 13);
-    sim.settings.population = 0;
-    sim.settings.resource_regeneration = 0.01;
-    sim.reset(&queue);
-    queue.write_buffer(
-        &sim.resource_buffer,
-        0,
-        &vec![0; (RESOURCE_GRID * RESOURCE_GRID * 4) as usize],
-    );
-    step(&mut sim, &device, &queue, 32);
-    let growth = read::<u32>(
-        &device,
-        &queue,
-        &sim.resource_buffer,
-        (RESOURCE_GRID * RESOURCE_GRID) as usize,
-    );
-    assert!(
-        growth.iter().sum::<u32>() > 0,
-        "sub-unit growth must accumulate"
-    );
-    let ground = read::<u32>(
-        &device,
-        &queue,
-        &sim.ground_buffer,
-        (RESOURCE_GRID * RESOURCE_GRID * 8) as usize,
-    );
-    assert_eq!(
-        ground.iter().step_by(8).sum::<u32>(),
-        0,
-        "no spontaneous food from unused agents"
-    );
-    // Start famine with low-reserve and high-reserve adults; no food and no regeneration.
-    sim.settings.resource_regeneration = 0.0;
-    sim.settings.maturity_age = 80.0;
-    sim.settings.birth_cooldown = 80;
-    sim.settings.force_enabled = false;
-    sim.reset(&queue);
-    queue.write_buffer(
-        &sim.resource_buffer,
-        0,
-        &vec![0; (RESOURCE_GRID * RESOURCE_GRID * 4) as usize],
-    );
-    let mut agents = Vec::new();
-    for i in 0..16 {
-        agents.push(AgentGpu {
-            position: [200.0 + i as f32 * 40.0, 500.0],
-            energy: if i < 8 { 0.1 } else { 65.0 },
-            age: 200.0,
-            max_speed: 1.2,
-            sensor_radius: 24.0,
-            alive: 1,
-            generation: 1,
-            max_age: 10000.0,
-            rng: i * 7919 + 1,
-            target: MAX_AGENTS,
-            event_actor: MAX_AGENTS,
-            ..Default::default()
-        });
-    }
-    write_agents(&sim, &queue, &agents);
-    step(&mut sim, &device, &queue, 16);
-    let famine = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 16);
-    assert_eq!(famine.iter().filter(|a| a.alive != 0).count(), 8);
-    queue.write_buffer(
-        &sim.resource_buffer,
-        0,
-        bytemuck::cast_slice(&vec![1000u32; (RESOURCE_GRID * RESOURCE_GRID) as usize]),
-    );
-    sim.settings.resource_regeneration = 1.0;
-    step(&mut sim, &device, &queue, 1200);
-    let recovered = read::<AgentGpu>(
-        &device,
-        &queue,
-        &sim.agent_buffers[sim.current_buffer],
-        MAX_AGENTS as usize,
-    );
-    let living = recovered.iter().filter(|a| a.alive != 0).count();
-    eprintln!("Famine recovery: 16 -> 8 -> {living}");
-    assert!(
-        living > 8,
-        "survivors must be able to reproduce after restored food"
-    );
-    assert!(
-        recovered
-            .iter()
-            .filter(|a| a.alive != 0)
-            .all(|a| a.energy.is_finite() && a.food >= 0.0 && a.food <= 8.001)
-    );
-}
-
-#[test]
-fn attainable_food_and_better_destinations_drive_decisions() {
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 41);
-    sim.settings.population = 0;
-    sim.settings.exploration_noise = 0.0;
-    sim.reset(&queue);
-    sim.update_params(&queue);
-    let mut a = AgentGpu {
-        position: [100.0, 100.0],
-        energy: 50.0,
-        food: 0.005,
-        max_speed: 1.2,
-        sensor_radius: 24.0,
-        alive: 1,
-        generation: 1,
-        max_age: 10000.0,
-        target: MAX_AGENTS,
-        event_actor: MAX_AGENTS,
-        guide_id: MAX_AGENTS,
-        ..Default::default()
-    };
-    let p = PerceptionGpu {
-        resource_here: 0.025,
-        projected_food: 0.025,
-        ..Default::default()
-    };
-    queue.write_buffer(&sim.perception_buffer, 0, bytemuck::bytes_of(&p));
-    write_agents(&sim, &queue, &[a]);
-    dispatch(
-        &device,
-        &queue,
-        &sim.decision_pipeline,
-        &sim.decision_bind_groups[0],
-        1,
-    );
-    assert_eq!(
-        read::<DecisionGpu>(&device, &queue, &sim._decision_buffer, 1)[0].selected_action,
-        2,
-        "collect a useful harvest rather than spend a tick eating a crumb"
-    );
-
-    a.food = 0.0;
-    a.energy = 70.0;
-    a.action = 1;
-    a.commit_until = 24;
-    a.goal = [76.0, 100.0];
-    let p = PerceptionGpu {
-        resource_east: 1.0,
-        ..Default::default()
-    };
-    queue.write_buffer(&sim.perception_buffer, 0, bytemuck::bytes_of(&p));
-    write_agents(&sim, &queue, &[a]);
-    dispatch(
-        &device,
-        &queue,
-        &sim.decision_pipeline,
-        &sim.decision_bind_groups[0],
-        1,
-    );
-    let d = read::<DecisionGpu>(&device, &queue, &sim._decision_buffer, 1)[0];
-    assert_eq!(d.selected_action, 1);
-    assert_eq!(
-        d.goal,
-        [124.0, 100.0],
-        "a better observed patch must override the old trip"
-    );
-}
-
-#[test]
-fn a_trip_survives_small_preference_changes_and_an_eating_pause() {
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 47);
-    sim.settings.population = 0;
-    sim.settings.exploration_noise = 0.0;
-    sim.reset(&queue);
-    let mut a = AgentGpu {
-        position: [100.0, 100.0],
-        energy: 10.0,
-        age: 400.0,
-        max_speed: 1.2,
-        sensor_radius: 24.0,
-        alive: 1,
-        generation: 1,
-        max_age: 10000.0,
-        target: MAX_AGENTS,
-        event_actor: MAX_AGENTS,
-        guide_id: MAX_AGENTS,
-        ..Default::default()
-    };
-    for tick in 0..16 {
-        sim.tick = tick;
-        sim.update_params(&queue);
-        if tick == 4 {
-            a.food = 0.1;
-        }
-        let p = PerceptionGpu {
-            resource_east: if tick % 2 == 0 { 0.7 } else { 0.69 },
-            resource_west: if tick % 2 == 0 { 0.69 } else { 0.7 },
-            ..Default::default()
-        };
-        queue.write_buffer(&sim.perception_buffer, 0, bytemuck::bytes_of(&p));
-        write_agents(&sim, &queue, &[a]);
-        dispatch(
-            &device,
-            &queue,
-            &sim.decision_pipeline,
-            &sim.decision_bind_groups[0],
-            1,
-        );
-        let decision = read::<DecisionGpu>(&device, &queue, &sim._decision_buffer, 1)[0];
-        assert_eq!(decision.selected_action, if tick == 4 { 3 } else { 1 });
-        dispatch(
-            &device,
-            &queue,
-            &sim.update_pipeline,
-            &sim.update_bind_groups[0][1],
-            1,
-        );
-        let next = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[1], 1)[0];
-        assert_eq!(
-            next.goal,
-            [124.0, 100.0],
-            "tick {tick}: do not chase a slightly better sample in the opposite direction"
-        );
-        assert_eq!(
-            next.commit_until, 40,
-            "pausing must not extend commitment indefinitely"
-        );
-        assert!(next.position[0] >= a.position[0]);
-        a = next;
-    }
-    assert!(a.position[0] > 117.0, "movement must make actual progress");
-
-    // Visible danger still permits abandoning the committed destination.
-    a.places = [PlaceGpu::default(); PLACE_SLOTS];
-    write_agents(&sim, &queue, &[a]);
-    let p = PerceptionGpu {
-        resource_west: 0.7,
-        ..Default::default()
-    };
-    queue.write_buffer(&sim.perception_buffer, 0, bytemuck::bytes_of(&p));
-    let social = SocialPerceptionGpu {
-        danger: 1.0,
-        give_target: MAX_AGENTS,
-        force_target: MAX_AGENTS,
-        report_target: MAX_AGENTS,
-        ..Default::default()
-    };
-    queue.write_buffer(
-        &sim._social_perception_buffer,
-        0,
-        bytemuck::bytes_of(&social),
-    );
-    dispatch(
-        &device,
-        &queue,
-        &sim.decision_pipeline,
-        &sim.decision_bind_groups[0],
-        1,
-    );
-    let decision = read::<DecisionGpu>(&device, &queue, &sim._decision_buffer, 1)[0];
-    assert!(decision.goal[0] < a.position[0]);
-}
-
-#[test]
-fn surplus_can_produce_a_physical_transfer() {
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 43);
-    sim.settings.population = 0;
-    sim.settings.exploration_noise = 0.0;
-    sim.reset(&queue);
-    let donor = AgentGpu {
-        position: [100.0, 100.0],
-        energy: 90.0,
-        food: 4.0,
-        max_speed: 1.2,
-        sensor_radius: 24.0,
-        alive: 1,
-        generation: 1,
-        max_age: 10000.0,
-        next_birth: 10000,
-        target: MAX_AGENTS,
-        event_actor: MAX_AGENTS,
-        guide_id: MAX_AGENTS,
-        ..Default::default()
-    };
-    let recipient = AgentGpu {
-        position: [102.0, 100.0],
-        food: 0.0,
-        energy: 40.0,
-        ..donor
-    };
-    write_agents(&sim, &queue, &[donor, recipient]);
-    let relation = SocialRelationGpu {
-        target_slot: 1,
-        target_generation: 1,
-        familiarity: 1.0,
-        ..Default::default()
-    };
-    queue.write_buffer(&sim.social_memory_buffer, 0, bytemuck::bytes_of(&relation));
-    step(&mut sim, &device, &queue, 1);
-    let result = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 2);
-    assert_eq!(
-        result[0].action, 4,
-        "the normal decision pipeline should choose the transfer"
-    );
-    assert!((result[0].food - 3.5).abs() < 0.001);
-    assert!(result[1].food >= 0.5);
-    assert_eq!(sim.metrics(&device, &queue).unwrap().events[4], 1);
-}
-
-#[test]
-fn place_memory_guides_travel_and_urgent_eating_interrupts_it() {
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 17);
-    sim.settings.population = 0;
-    sim.settings.resource_regeneration = 0.0;
-    sim.reset(&queue);
-    sim.update_params(&queue);
-    let mut a = AgentGpu {
-        position: [100.0, 100.0],
-        energy: 70.0,
-        max_speed: 1.2,
-        sensor_radius: 24.0,
-        alive: 1,
-        generation: 1,
-        max_age: 10000.0,
-        rng: 1,
-        ..Default::default()
-    };
-    a.places[0] = PlaceGpu {
-        position: [160.0, 100.0],
-        food: 1.0,
-        observed: 0,
-        confidence: 1.0,
-        ..Default::default()
-    };
-    write_agents(&sim, &queue, &[a]);
-    dispatch(
-        &device,
-        &queue,
-        &sim.decision_pipeline,
-        &sim.decision_bind_groups[0],
-        1,
-    );
-    let decision = read::<DecisionGpu>(&device, &queue, &sim._decision_buffer, 1)[0];
-    assert_eq!(decision.selected_action, 1);
-    assert_eq!(decision.goal, [160.0, 100.0]);
-    a.energy = 0.04;
-    a.food = 0.5;
-    a.action = 1;
-    a.goal = [160.0, 100.0];
-    a.commit_until = 24;
-    write_agents(&sim, &queue, &[a]);
-    dispatch(
-        &device,
-        &queue,
-        &sim.decision_pipeline,
-        &sim.decision_bind_groups[0],
-        1,
-    );
-    assert_eq!(
-        read::<DecisionGpu>(&device, &queue, &sim._decision_buffer, 1)[0].selected_action,
-        3
-    );
-}
-
-#[test]
-fn completed_transfers_conserve_matter_and_remote_people_are_not_tracked() {
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 19);
-    sim.settings.population = 0;
-    sim.settings.social_access = 0.0;
-    sim.settings.social_concern = 0.0;
-    sim.settings.reciprocity = 0.0;
-    sim.reset(&queue);
-    sim.update_params(&queue);
-    let mut donor = AgentGpu {
-        position: [100.0, 100.0],
+fn body(pos: [f32; 2]) -> AgentGpu {
+    AgentGpu {
+        position: pos,
         energy: 80.0,
-        food: 4.0,
-        alive: 1,
-        generation: 1,
-        max_age: 10000.0,
-        sensor_radius: 24.0,
-        ..Default::default()
-    };
-    let recipient = AgentGpu {
-        position: [104.0, 100.0],
-        food: 0.0,
-        ..donor
-    };
-    write_agents(&sim, &queue, &[donor, recipient]);
-    let ds = [
-        DecisionGpu {
-            selected_action: 4,
-            target: 1,
-            amount: 0.5,
-            ..Default::default()
-        },
-        DecisionGpu {
-            target: MAX_AGENTS,
-            ..Default::default()
-        },
-    ];
-    queue.write_buffer(&sim._decision_buffer, 0, bytemuck::cast_slice(&ds));
-    for pipeline in &sim.interaction_pipelines {
-        dispatch(
-            &device,
-            &queue,
-            pipeline,
-            &sim.interaction_bind_groups[0],
-            2,
-        );
-    }
-    let after = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[0], 2);
-    assert_eq!(after[0].food + after[1].food, 4.0);
-    assert_eq!(after[1].food, 0.5);
-    sim.tick = 1;
-    sim.update_params(&queue);
-    dispatch(
-        &device,
-        &queue,
-        &sim.social_pipeline,
-        &sim.social_bind_groups[0],
-        2,
-    );
-    // The transfer is a physical consequence, not a reputation update.
-    assert!(
-        read::<SocialRelationGpu>(&device, &queue, &sim.social_memory_buffer, 16)
-            .iter()
-            .all(|r| r.target_slot >= MAX_AGENTS)
-    );
-    // Remote bodies do not enter the local candidate set.
-    donor = after[0];
-    donor.position = [1000.0, 1000.0];
-    queue.write_buffer(&sim.agent_buffers[0], 0, bytemuck::bytes_of(&donor));
-    sim.tick = 2;
-    sim.update_params(&queue);
-    dispatch(
-        &device,
-        &queue,
-        &sim.social_pipeline,
-        &sim.social_bind_groups[0],
-        2,
-    );
-    let social = read::<SocialPerceptionGpu>(&device, &queue, &sim._social_perception_buffer, 2);
-    assert_eq!(social[1].avoidance, [0.0, 0.0]);
-    assert_eq!(
-        social[1].companion_value, 0.0,
-        "remote helpers must not influence movement"
-    );
-    assert!(
-        read::<SocialRelationGpu>(&device, &queue, &sim.social_memory_buffer, 16)
-            .iter()
-            .all(|r| r.target_slot >= MAX_AGENTS)
-    );
-}
-
-#[test]
-fn emitted_signal_is_local_and_does_not_create_a_shared_map() {
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 21);
-    sim.settings.population = 0;
-    sim.settings.communication_enabled = true;
-    sim.reset(&queue);
-    sim.tick = 100;
-    sim.update_params(&queue);
-    let a = AgentGpu {
-        position: [100.0, 100.0],
-        energy: 80.0,
-        alive: 1,
-        generation: 4,
-        max_age: 10000.0,
-        sensor_radius: 24.0,
-        rng: 1,
-        ..Default::default()
-    };
-    let b = AgentGpu {
-        position: [103.0, 100.0],
-        generation: 2,
-        ..a
-    };
-    write_agents(&sim, &queue, &[a, b]);
-    let d = DecisionGpu {
-        selected_action: 6,
-        target: 1,
-        amount: 0.75,
-        ..Default::default()
-    };
-    queue.write_buffer(
-        &sim._decision_buffer,
-        0,
-        bytemuck::cast_slice(&[
-            d,
-            DecisionGpu {
-                target: MAX_AGENTS,
-                ..Default::default()
-            },
-        ]),
-    );
-    for pipeline in &sim.interaction_pipelines {
-        dispatch(
-            &device,
-            &queue,
-            pipeline,
-            &sim.interaction_bind_groups[0],
-            2,
-        );
-    }
-    let before = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[0], 2);
-    for pipeline in &sim.interaction_pipelines {
-        dispatch(
-            &device,
-            &queue,
-            pipeline,
-            &sim.interaction_bind_groups[0],
-            2,
-        );
-    }
-    let after = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[0], 2);
-    assert_eq!(after[1].event_actor, 0);
-    assert!((after[1].event_amount - 0.75).abs() < 0.001);
-    assert_eq!(after[1].places, before[1].places);
-}
-
-#[test]
-fn apply_force_spills_matter_without_direct_transfer() {
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 22);
-    sim.settings.population = 0;
-    sim.settings.force_enabled = true;
-    sim.reset(&queue);
-    let a = AgentGpu {
-        position: [100.0, 100.0],
-        energy: 100.0,
-        food: 0.0,
-        alive: 1,
-        generation: 1,
-        sensor_radius: 24.0,
-        ..Default::default()
-    };
-    let b = AgentGpu {
-        position: [102.0, 100.0],
-        energy: 0.01,
         food: 2.0,
+        age: 500.0,
+        max_speed: 1.2,
+        sensor_radius: 24.0,
+        max_age: 11000.0,
         alive: 1,
         generation: 1,
-        sensor_radius: 24.0,
+        event_actor: MAX_AGENTS,
+        target: MAX_AGENTS,
+        lineage_id: 1,
         ..Default::default()
-    };
-    write_agents(&sim, &queue, &[a, b]);
-    queue.write_buffer(
-        &sim._decision_buffer,
-        0,
-        bytemuck::bytes_of(&DecisionGpu {
-            selected_action: 5,
-            target: 1,
-            amount: 1.0,
-            ..Default::default()
-        }),
-    );
-    for pipeline in &sim.interaction_pipelines {
-        dispatch(
-            &device,
-            &queue,
-            pipeline,
-            &sim.interaction_bind_groups[0],
-            2,
+    }
+}
+fn fixed(action: usize, motion: [f32; 2]) -> [f32; GENOME_SIZE] {
+    let mut g = [0.0; GENOME_SIZE];
+    g[OUTPUT_BASE + action * 17 + 16] = 2.0;
+    g[OUTPUT_BASE + 7 * 17 + 16] = motion[0];
+    g[OUTPUT_BASE + 8 * 17 + 16] = motion[1];
+    g[OUTPUT_BASE + 10 * 17 + 16] = 3.0;
+    g
+}
+fn put(s: &Simulation, q: &wgpu::Queue, slot: usize, a: AgentGpu, g: &[f32; GENOME_SIZE]) {
+    for b in &s.agent_buffers {
+        q.write_buffer(
+            b,
+            (slot * std::mem::size_of::<AgentGpu>()) as u64,
+            bytemuck::bytes_of(&a),
         );
     }
-    let pair = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[0], 2);
-    let ci = 25 * 512 + 25;
-    let dropped =
-        read::<u32>(&device, &queue, &sim.ground_buffer, (ci + 1) * 8)[ci * 8] as f32 / 1000.0;
-    assert_eq!(pair[0].food, 0.0);
-    assert!((pair[0].food + pair[1].food + dropped - 2.0).abs() < 0.001);
-    assert!(pair[1].event_amount < 0.0);
-    assert!(pair[0].energy < 100.0);
-    let counters = read::<u32>(
-        &device,
-        &queue,
-        &sim.death_stats_buffer,
-        DEATH_STATS_COUNT as usize,
+    q.write_buffer(
+        &s.genome_buffer,
+        (slot * GENOME_SIZE * 4) as u64,
+        bytemuck::cast_slice(g),
     );
-    assert_eq!(counters[12], 1);
-    assert_eq!(counters[13], 600);
-    assert_eq!(
-        counters[14], 10,
-        "diagnostics count actual victim energy, not the nominal charge"
-    );
-    assert_eq!(counters[15], (dropped * 1000.0).round() as u32);
+}
+fn near(a: f32, b: f32) {
+    assert!((a - b).abs() < 0.002, "{a} != {b}");
+}
+fn temp(name: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("recurrent-{}-{name}", std::process::id()))
 }
 
 #[test]
-fn generic_force_and_contended_transfers_conserve_matter() {
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 23);
-    sim.settings.population = 0;
-    sim.settings.force_enabled = true;
-    sim.reset(&queue);
-    let a = AgentGpu {
-        position: [100.0, 100.0],
-        energy: 90.0,
-        food: 4.0,
-        alive: 1,
-        generation: 1,
-        max_age: 10000.0,
-        sensor_radius: 24.0,
+fn layout_and_cli_contract() {
+    assert_eq!(GENOME_SIZE, 1568);
+    assert_eq!(std::mem::size_of::<AgentGpu>(), 208);
+    assert_eq!(std::mem::size_of::<PerceptionGpu>(), 272);
+    assert_eq!(std::mem::size_of::<DecisionGpu>(), 384);
+    assert_eq!(std::mem::size_of::<SelectionOutput>(), 872);
+    assert_eq!(std::mem::size_of::<SimParams>(), 96);
+    assert!(MAX_AGENTS as usize * GENOME_SIZE * 4 <= 128 * 1024 * 1024);
+    for flag in ["--neural", "--legacy-controller", "--travel-diagnostic"] {
+        assert!(crate::headless::arguments(&["world".into(), flag.into()]).is_err());
+    }
+    let settings = SimSettings {
+        sensor_radius: f32::NAN,
         ..Default::default()
     };
-    // Two donors contend over the same recipient; accepted pairs may not overlap.
-    let agents = [a, a, AgentGpu { food: 0.0, ..a }];
-    write_agents(&sim, &queue, &agents);
-    let ds = [
-        DecisionGpu {
-            selected_action: 4,
-            target: 2,
-            amount: 0.5,
-            ..Default::default()
-        },
-        DecisionGpu {
-            selected_action: 4,
-            target: 2,
-            amount: 0.5,
-            ..Default::default()
-        },
-        DecisionGpu {
-            target: MAX_AGENTS,
-            ..Default::default()
-        },
-    ];
-    queue.write_buffer(&sim._decision_buffer, 0, bytemuck::cast_slice(&ds));
-    for pipeline in &sim.interaction_pipelines {
-        dispatch(
-            &device,
-            &queue,
-            pipeline,
-            &sim.interaction_bind_groups[0],
-            3,
-        );
-    }
-    let pair = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[0], 3);
-    assert_eq!(pair.iter().map(|a| a.food).sum::<f32>(), 8.0);
-    assert_eq!(
-        pair[2].food, 0.5,
-        "exactly one disjoint transfer may resolve"
-    );
+    assert!(settings.validate().is_err());
+    assert!(crate::founders::validate_genomes(&[vec![0.0; 128]]).is_err());
 }
-
 #[test]
-fn gpu_pipeline_and_clock_validation() {
-    assert_eq!(std::mem::size_of::<crate::neural::NeuralState>(), 672);
-    assert_eq!(std::mem::size_of::<AgentGpu>(), 1184);
-    assert_eq!(std::mem::size_of::<SocialRelationGpu>(), 48);
-    assert_eq!(std::mem::size_of::<SocialPerceptionGpu>(), 640);
-    let (device, queue) = gpu();
-    let mut sim = legacy_sim(&device, &queue, 9);
-    // Validate render shaders/layouts as well as every compute pipeline, without a window.
-    let _renderer = crate::renderer::Renderer::new(
-        &device,
-        wgpu::TextureFormat::Rgba8UnormSrgb,
-        &sim,
-        800,
-        600,
-    );
-    sim.settings.population = 1;
-    sim.reset(&queue);
-    step(&mut sim, &device, &queue, 8);
-    let batched = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 1);
-    let resources = read::<u32>(
-        &device,
-        &queue,
-        &sim.resource_buffer,
-        (RESOURCE_GRID * RESOURCE_GRID) as usize,
-    );
-    sim.reset(&queue);
-    for _ in 0..8 {
-        step(&mut sim, &device, &queue, 1);
+fn recurrent_cpu_gpu_parity_and_observer_isolation() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.update_params(&q);
+    let mut a = body([602.0, 902.0]);
+    a.hidden = [0.1; 16];
+    let mut g = [0.0; GENOME_SIZE];
+    for (i, x) in g.iter_mut().enumerate() {
+        *x = ((i % 17) as f32 - 8.0) * 0.015;
     }
-    let single = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 1);
-    assert_eq!(
-        bytemuck::bytes_of(&batched[0]),
-        bytemuck::bytes_of(&single[0])
+    put(&s, &q, 0, a, &g);
+    let mut e = d.create_command_encoder(&Default::default());
+    s.dispatch(&mut e, "decide", 0, 1, 1);
+    q.submit(Some(e.finish()));
+    let expected = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 1)[0];
+    let mut hidden = [0.0; 16];
+    for (h, value) in hidden.iter_mut().enumerate() {
+        let row = h * 81;
+        let mut v = g[row + 80];
+        for k in 0..64 {
+            v += g[row + k] * expected.inputs[k];
+        }
+        for k in 0..16 {
+            v += g[row + 64 + k] * a.hidden[k];
+        }
+        *value = v.tanh();
+        near(*value, expected.hidden[h]);
+    }
+    for o in 0..7 {
+        let row = 1296 + o * 17;
+        let mut v = g[row + 16];
+        for h in 0..16 {
+            v += g[row + h] * hidden[h];
+        }
+        near(v, expected.scores[o]);
+    }
+    a.lineage_id = 123456;
+    a.ancestry_depth = 100;
+    a.lifetime_births = 1000;
+    a.distance_travelled = 30000.0;
+    put(&s, &q, 0, a, &g);
+    let mut e = d.create_command_encoder(&Default::default());
+    s.dispatch(&mut e, "decide", 0, 1, 1);
+    q.submit(Some(e.finish()));
+    let actual = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 1)[0];
+    assert_eq!(bytemuck::bytes_of(&actual), bytemuck::bytes_of(&expected));
+    step(&mut s, &d, &q, 1);
+    let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
+    assert_ne!(after.hidden, a.hidden);
+    assert_eq!(read::<f32>(&d, &q, &s.genome_buffer, GENOME_SIZE), g);
+}
+#[test]
+fn perception_is_local_and_attention_uses_true_coordinates() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut a = body([602.0, 902.0]);
+    a.attention = std::f32::consts::FRAC_PI_2;
+    put(&s, &q, 0, a, &fixed(0, [0.0; 2]));
+    let mut food = vec![0u32; 512 * 512];
+    food[225 * 512 + 151] = 700;
+    q.write_buffer(&s.resource_buffer, 0, bytemuck::cast_slice(&food));
+    let mut far = body([1000.0, 1000.0]);
+    far.lineage_id = 2;
+    put(&s, &q, 1, far, &fixed(0, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    let p = read::<PerceptionGpu>(&d, &q, &s.perception_buffer, 1)[0];
+    near(p.samples[0].offset[0], 4.0);
+    near(p.samples[0].offset[1], 0.0);
+    near(p.samples[0].food, 0.7);
+    assert!(
+        p.samples
+            .iter()
+            .all(|p| p.offset[0].hypot(p.offset[1]) <= 24.001)
     );
-    assert_eq!(
-        resources,
-        read::<u32>(&device, &queue, &sim.resource_buffer, resources.len())
+    assert!(p.bodies.iter().all(|b| b.slot == MAX_AGENTS));
+    let renderer =
+        crate::renderer::Renderer::new(&d, wgpu::TextureFormat::Rgba8UnormSrgb, &s, 800, 600);
+    drop(renderer);
+}
+#[test]
+fn physical_collection_ingestion_and_movement_conserve_reserves() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut a = body([602.0, 902.0]);
+    a.food = 0.0;
+    a.energy = 50.0;
+    put(&s, &q, 0, a, &fixed(1, [0.5, 0.0]));
+    let idx = 225 * 512 + 150;
+    q.write_buffer(&s.resource_buffer, idx * 4, bytemuck::bytes_of(&1000u32));
+    step(&mut s, &d, &q, 1);
+    let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
+    let food = read::<u32>(&d, &q, &s.resource_buffer, 512 * 512);
+    near(food[idx as usize] as f32 / 1000.0 + after.food, 1.0);
+    near(after.food, after.collected);
+    near(after.energy + after.spent, 50.0);
+    assert!(after.velocity[0] > 0.0);
+    assert!(after.collected > 0.0);
+    let mut a = after;
+    a.energy = 50.0;
+    a.food = 1.0;
+    put(&s, &q, 0, a, &fixed(2, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
+    near(after.energy + after.food * 8.0 + after.spent, 58.0);
+    assert!(after.ingested > 0.0);
+}
+#[test]
+fn reproduction_is_requested_can_coexist_with_motion_and_conserves() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut a = body([602.0, 902.0]);
+    a.energy = 90.0;
+    a.hidden = [0.5; 16];
+    let g = fixed(6, [0.5, 0.0]);
+    put(&s, &q, 0, a, &g);
+    step(&mut s, &d, &q, 1);
+    let agents = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
+    let p = agents[0];
+    let c = agents[1];
+    assert_eq!(c.alive, 1);
+    assert_eq!(c.ancestry_depth, 1);
+    assert_eq!(c.parent_lineage, p.lineage_id);
+    assert_eq!(c.hidden, [0.0; 16]);
+    assert!(p.velocity[0] > 0.0);
+    near(p.food + c.food, a.food);
+    near(
+        p.energy + c.energy + 0.06 + p.velocity[0].abs() * 0.01 + 10.0,
+        90.0,
     );
-    assert_eq!(sim.tick, 8);
-    assert!(single[0].energy.is_finite());
-    assert!((0.0..=8.0).contains(&single[0].food));
-    let selected = sim
-        .select_agent(&device, &queue, single[0].position, 10.0)
-        .expect("selection works with new layouts");
-    assert_eq!(selected.agent.generation, single[0].generation);
-    let metrics = sim.metrics(&device, &queue).unwrap();
-    assert_eq!(metrics.living, 1);
-    let evolution = sim.evolution_snapshot(&device, &queue).unwrap();
-    assert_eq!(evolution.living, 1);
-    assert_eq!(evolution.unique_lineages, 1);
-    assert_eq!(evolution.mean_genome.len(), GENOME_SIZE);
-    let checkpoint = std::env::temp_dir().join(format!(
-        "primitive-world-{}-test.checkpoint",
-        std::process::id()
-    ));
-    sim.save_checkpoint(&device, &queue, &checkpoint).unwrap();
-    step(&mut sim, &device, &queue, 4);
-    let expected = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 1);
-    sim.load_checkpoint(&queue, &checkpoint).unwrap();
-    step(&mut sim, &device, &queue, 4);
-    assert_eq!(
-        bytemuck::bytes_of(&expected[0]),
-        bytemuck::bytes_of(
-            &read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 1)[0]
-        )
-    );
-    let header = std::fs::read(&checkpoint).unwrap();
-    assert_eq!(&header[..12], b"PRIMWORLD011");
-    std::fs::remove_file(checkpoint).unwrap();
+    assert_eq!(s.metrics(&d, &q).unwrap().events[3], 1);
+    step(&mut s, &d, &q, 1);
+    assert_eq!(s.metrics(&d, &q).unwrap().events[3], 1);
+    let genes = read::<f32>(&d, &q, &s.genome_buffer, 2 * GENOME_SIZE);
+    assert_eq!(&genes[..GENOME_SIZE], &g);
+    assert!(genes.iter().all(|x| x.is_finite() && x.abs() <= 4.0));
+}
+#[test]
+fn abundant_reserves_do_not_trigger_automatic_birth() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut a = body([602.0, 902.0]);
+    a.energy = 100.0;
+    a.food = 8.0;
+    put(&s, &q, 0, a, &fixed(0, [0.0; 2]));
+    step(&mut s, &d, &q, 32);
+    assert_eq!(s.metrics(&d, &q).unwrap().events[3], 0);
+}
+#[test]
+fn transfer_and_signal_are_local_and_payload_is_controller_owned() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let a = body([602.0, 902.0]);
+    let mut b = body([604.0, 902.0]);
+    b.food = 0.0;
+    b.lineage_id = 2;
+    put(&s, &q, 0, a, &fixed(3, [0.0; 2]));
+    put(&s, &q, 1, b, &fixed(0, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    let bodies = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
+    near(bodies[0].food + bodies[1].food, 2.0);
+    assert!(bodies[1].received > 0.0);
+    let mut g = fixed(5, [0.0; 2]);
+    g[1296 + 11 * 17 + 16] = -0.7;
+    let mut a = bodies[0];
+    a.last_communication = 0;
+    s.tick = 10;
+    put(&s, &q, 0, a, &g);
+    put(&s, &q, 1, bodies[1], &fixed(0, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    let bodies = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
+    near(bodies[1].event_amount, (-0.7f32).tanh());
+    assert_eq!(bodies[1].event_actor, 0);
+}
+#[test]
+fn force_spills_instead_of_directly_stealing_and_costs_energy() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut a = body([602.0, 902.0]);
+    a.energy = 90.0;
+    let mut b = body([604.0, 902.0]);
+    b.energy = 10.0;
+    b.lineage_id = 2;
+    put(&s, &q, 0, a, &fixed(4, [0.0; 2]));
+    put(&s, &q, 1, b, &fixed(0, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    let agents = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
+    let m = s.metrics(&d, &q).unwrap();
+    near(agents[0].food, a.food);
+    near((m.carried_food + m.dropped_food) as f32, 4.0);
+    assert_eq!(m.events[5], 1);
+    near((m.energy + m.force_energy_spent) as f32, 99.88);
+}
+#[test]
+fn nonfinite_controller_output_is_contained() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let a = body([602.0, 902.0]);
+    let mut g = fixed(1, [1.0, 1.0]);
+    g[0] = f32::NAN;
+    put(&s, &q, 0, a, &g);
+    step(&mut s, &d, &q, 1);
+    let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
+    assert_eq!(after.action, 0);
+    assert_eq!(after.position, a.position);
+    assert!(after.hidden.iter().all(|x| x.is_finite()));
+    assert_eq!(s.metrics(&d, &q).unwrap().invalid_outputs, 1);
+}
+#[test]
+fn batching_checkpoint_and_selection_preserve_state() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let a = body([602.0, 902.0]);
+    let g = fixed(0, [0.1, 0.2]);
+    put(&s, &q, 0, a, &g);
+    step(&mut s, &d, &q, 12);
+    let expected = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
+    s.reset(&q);
+    put(&s, &q, 0, a, &g);
+    for _ in 0..12 {
+        step(&mut s, &d, &q, 1);
+    }
+    let actual = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
+    assert_eq!(bytemuck::bytes_of(&expected), bytemuck::bytes_of(&actual));
+    let selection = s.select_agent(&d, &q, actual.position, 2.0).unwrap();
+    assert_eq!(selection.selected, 1);
+    let path = temp("state.checkpoint");
+    s.save_checkpoint(&d, &q, &path).unwrap();
+    step(&mut s, &d, &q, 8);
+    let expected = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
+    s.load_checkpoint(&q, &path).unwrap();
+    step(&mut s, &d, &q, 8);
+    let actual = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
+    assert_eq!(bytemuck::bytes_of(&expected), bytemuck::bytes_of(&actual));
+    std::fs::remove_file(path).unwrap();
+    let path = temp("old.checkpoint");
+    std::fs::write(&path, b"PRIMWORLD011").unwrap();
+    let tick = s.tick;
+    assert!(s.load_checkpoint(&q, &path).is_err());
+    assert_eq!(s.tick, tick);
+    assert!(path.exists());
+    std::fs::remove_file(path).unwrap();
 }

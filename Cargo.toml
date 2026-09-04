@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-bytemuck = { version = "1.23", features = ["derive"] }
+bytemuck = { version = "1.23", features = ["derive", "min_const_generics"] }
 egui = "0.31"
 egui-wgpu = "0.31"
 egui-winit = "0.31"

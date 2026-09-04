@@ -11,10 +11,10 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   if (i>=params.agent_count) { return; }
   requests[i]=0u;
   let a=agents[i];
-  if (a.alive==0u || decisions[i].selected_action!=HARVEST) { return; }
+  if (a.alive==0u || decisions[i].selected_action!=COLLECT) { return; }
   let cell=vec2<u32>(clamp(a.position/params.world_size*512.0,vec2<f32>(0.0),vec2<f32>(511.0)));
   let ri=cell.y*512u+cell.x;
-  let requested=min(u32(params.resource_and_noise.x),u32(max(0.0,FOOD_CAPACITY-a.food)*1000.0));
+  let requested=min(u32(params.resource_and_noise.x*decisions[i].amount),u32(max(0.0,FOOD_CAPACITY-a.food)*1000.0));
   // Pick up dropped supplies first, then harvest only the remaining requested amount.
   for (var attempt=0u; attempt<16u; attempt++) {
     let available=atomicLoad(&ground[ri].dropped);
@@ -32,4 +32,5 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
       requests[i]+=taken; atomicAdd(&ground[ri].extracted,taken); break;
     }
   }
+  atomicAdd(&ground[ri].collected,requests[i]);
 }

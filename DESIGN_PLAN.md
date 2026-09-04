@@ -1,9 +1,12 @@
 # Primitive World: clean cutover plan
 
-Status: agreed architectural direction, written 2026-09-04; **not yet implemented**.
-The application still runs candidate-v1. This plan supersedes the incremental
-research priorities previously recorded here. CONTROLLER.md describes current
-behavior; reports/ preserves measured history.
+Status: **implemented and validated**, 2026-09-04. The delivered model is
+recurrent-v1 / checkpoint 12, with one bundled descendant bank prepared on
+seeds 11 and 22. All three held-out worlds reproduced across generations.
+See reports/RECURRENT_VALIDATION.md for the bounded evidence and limitations.
+CONTROLLER.md describes the active implementation; the original model remains
+recoverable from Git tag pre-recurrent-cutover. The plan below records the
+cutover decision, not an outstanding migration or a second runtime.
 
 ## Decision
 
@@ -16,8 +19,10 @@ verify its integrity, evaluate it as a whole, then make one deliberate cutover.
 use them.** This is a finite evolutionary model, not a promise of open-ended
 intelligence, organized routes, cooperation, or population equilibrium.
 
-This documentation change does not implement the model, migrate checkpoints,
-start founder preparation, or authorize deleting the user's existing artifacts.
+The original plan-only commit did not implement the model. The subsequent
+execution delivered this cutover without migrating old checkpoints or deleting
+the user's existing artifacts. Founder competence is finite evidence, not a
+claim of organized travel, social balance or open-ended intelligence.
 
 ## Ownership contract
 

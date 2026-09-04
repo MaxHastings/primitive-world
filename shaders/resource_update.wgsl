@@ -54,7 +54,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   // source into abundance and scarcity at the same time.
   let season = 0.65 + 0.35 * sin(f32(params.tick) * 0.0011 + spatial_wave * 6.2831853);
   let harvested = atomicExchange(&ground[index].extracted, 0u);
-  ground[index].collected += harvested;
+  // Collection accounting is recorded atomically at physical collection time.
   let depletion = f32(harvested) / MAX_RESOURCE;
 
   var soil = fertility[index];
