@@ -1,0 +1,14 @@
+[package]
+name = "primitive_world"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+bytemuck = { version = "1.23", features = ["derive"] }
+egui = "0.31"
+egui-wgpu = "0.31"
+egui-winit = "0.31"
+pollster = "0.4"
+wgpu = "24"
+winit = "0.30"
