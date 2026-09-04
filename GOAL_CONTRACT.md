@@ -51,7 +51,13 @@ candidate is the released founder bank. See `reports/PLAYABLE_RELEASE.md`.
 
 ## Next decision
 
-Test the suspected sensor-slot / motor-coordinate initialization mismatch on the
-actual GPU before changing the controller. Then test a coherent representation
-in development worlds, separately from training changes. Build migration-event
-evidence before final validation. No final holdouts have been drawn or consumed.
+The GPU confirmed the sensor-slot / motor-coordinate initialization mismatch.
+Six development worlds with/without sensor rotation found longer survival on two
+seeds but universal extinction. See `reports/FOUNDATION_FRAME_AUDIT.md`.
+
+The sampled journey observer recorded depleted departures and poor-space
+crossings, but no complete journeys in one98k-tick control world. Next retain
+failed departure trajectories/energy so losses after departure can be examined.
+Establish a clean versioned sensory/motor contract instead of releasing a dead
+attention actuator, then evaluate preparation separately. Major-relocation
+attribution is still missing. No final holdouts have been drawn or consumed.

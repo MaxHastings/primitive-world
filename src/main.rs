@@ -1,5 +1,6 @@
 mod founders;
 mod headless;
+mod journey_observer;
 mod model;
 mod renderer;
 mod simulation;

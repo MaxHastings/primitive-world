@@ -1,5 +1,34 @@
 use super::*;
 
+#[test]
+fn journey_observation_does_not_modify_physical_state() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let a = body([602.0, 902.0]);
+    let g = fixed(0, [0.1, 0.2]);
+    put(&s, &q, 0, a, &g);
+    step(&mut s, &d, &q, 32);
+    let expected = s.agent_snapshot(&d, &q).unwrap();
+    s.reset(&q);
+    put(&s, &q, 0, a, &g);
+    let mut observer = crate::journey_observer::JourneyObserver::default();
+    for _ in 0..4 {
+        step(&mut s, &d, &q, 8);
+        observer
+            .observe(
+                s.tick,
+                &s.agent_snapshot(&d, &q).unwrap(),
+                &s.vegetation_snapshot(&d, &q).unwrap(),
+            )
+            .unwrap();
+    }
+    let actual = s.agent_snapshot(&d, &q).unwrap();
+    assert_eq!(
+        bytemuck::cast_slice::<AgentGpu, u8>(&expected),
+        bytemuck::cast_slice::<AgentGpu, u8>(&actual)
+    );
+}
+
 /// Diagnostic of the released bank, not a required behavior for future models.
 /// Paired gradients cancel unconditional drift; only the food field changes.
 #[test]

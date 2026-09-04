@@ -6,6 +6,24 @@ contract is in `GOAL_CONTRACT.md`. No survival, migration or user-experience gat
 in that contract has yet been demonstrated. Passing integrity tests is not
 evidence that adaptation works.
 
+Current progress: the GPU probe confirms the released bank's sensor-slot /
+world-motor initialization mismatch. Six registered development worlds tested
+fixed food-sensor axes: two lifetimes increased, but all six worlds went extinct
+before200k. The ablation is isolated in `ClownSimulator-frame`; it is not a final
+controller. See `reports/FOUNDATION_FRAME_AUDIT.md` for complete endpoints.
+
+An optional sampled journey recorder now distinguishes departure / poor-space
+crossing / new collection / ingestion / reproduction sequences. It does not
+attribute them to major geography renewals yet. Next work must establish a clean
+versioned sensory/motor contract and evaluate preparation under it, while finishing
+relocation attribution. No final fresh holdout seeds have been consumed.
+
+The longer journey control recorded246 depleted departures and47 poor-space
+crossings, but no destination collections qualifying under the sampled definition;
+it died at98,304ticks. Before adding agent complexity, retain failed departure
+trajectories and energy to examine where these attempts end. See
+`reports/JOURNEY_DEVELOPMENT.md`. This is not a migration or training success.
+
 Goal: a usable, understandable artificial-life playground with a small coherent
 foundation, not scripted travel or unsupported intelligence claims.
 

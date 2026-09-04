@@ -1,5 +1,8 @@
 # Playable-world release 0.2.0
 
+This is a historical release milestone, **not completion of the user's project
+goal**. The active, unmet acceptance criteria are in `../GOAL_CONTRACT.md`.
+
 2026-09-04. Runnable launcher, explicit physical defaults, founder controls and
 read-only travel diagnostics. No scripted migration, compulsory movement,
 population rescue, semantic memory, new sensor or travel reward was added.

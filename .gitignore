@@ -17,3 +17,4 @@
 /reports/**/*.json
 /reports/**/*.log
 /reports/**/*.exe
+/reports/**/*.jsonl

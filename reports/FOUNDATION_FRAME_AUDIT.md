@@ -62,3 +62,41 @@ reproduction to benefit descendants. Aggregate displacement misses those events.
 The existing food, physiology and birth-accounting tests establish narrower
 invariants, not adaptive capability. These distinctions remain required in all
 future reporting.
+
+## Completed development comparison
+
+Six worlds, 588,800 actual ticks. Frozen bank SHA256
+`b99a0682a3f9bfc4593446a3d297ad3bbc879060e1cb52c8d41d8b864e3edd0a`;
+gain4, costs0.06/0.01, regeneration0.01, 1000 initial bodies, 200k cap.
+
+| Seed | Original extinction sample | Fixed-sensor extinction sample |
+| --- | ---: | ---: |
+| 808 | 98,304 | 98,304 |
+| 909 | 49,152 | 122,880 |
+| 1001 | 73,728 | 146,432 |
+
+All six populations died; none produced a 200k survivor. No invalid outputs or
+95%-capacity samples. Counts are sampled extinction endpoints, not exact death
+times. Parallel GPU resource competition means repeated worlds need not have
+identical birth counts. These were previously used development seeds, not fresh
+heldouts. Two longer lifetimes suggest the mismatch matters ecologically; this
+single paired run per seed does not estimate effect uncertainty or establish it
+as the sole cause of extinction.
+
+The fixed-sensor GPU probe produced a positive paired food response for128/128
+genomes at all four angles (mean x0.13055..0.13087). The intended manipulation
+worked. It is still not a clean final model: the attention actuator no longer
+affects food sensing. Do not promote it unchanged or claim training improved.
+
+Artifacts and registered plan are preserved in the sibling `ClownSimulator-frame`
+worktree, branch `codex/sensor-frame-diagnostic`, commit `d4f2fbe`, under
+`reports/sensor-frame-20260904`. Raw reports and frozen executables remain local;
+plan/summary are committed. The runner's decimal-precision verification error
+and continuation without rerunning the completed world are documented in that
+worktree's `reports/SENSOR_FRAME_RUNNER_NOTE.md`.
+
+Next: use a versioned, coherent sensory/motor contract instead of leaving the
+ablation's dead actuator in production; separately measure whether surviving
+descendant banks improve survival after preparation under that contract. The
+new sampled journey observer provides sequence evidence, but major-relocation
+attribution and final heldout validation are still outstanding.

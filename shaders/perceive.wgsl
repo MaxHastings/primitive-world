@@ -19,7 +19,11 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  for(var k=0u;k<8u;k++){
   let range=select(a.sensor_radius/6.0,a.sensor_radius,k>=4u);
   let pos=clamp(a.position+rotate(dirs[k%4u],a.attention)*range,vec2<f32>(0),vec2<f32>(params.world_size));
-  p.samples[k]=Sample(pos-a.position,food_at(pos),0.0);
+  // Field stores avoid a Sample-valued temporary that intermittently hits
+  // Naga24's unsupported HLSL write_value_type(Struct) compilation path.
+  p.samples[k].offset=pos-a.position;
+  p.samples[k].food=food_at(pos);
+  p.samples[k].padding=0.0;
  }
  // Bounded neutral sampling; no preference based on food, conduct or identity.
  let radius=min(6,i32(ceil(a.sensor_radius/8.0)));let side=u32(2*radius+1);let cells=side*side;

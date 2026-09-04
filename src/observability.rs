@@ -72,6 +72,19 @@ pub fn read_buffer(
 }
 
 impl Simulation {
+    /// Vegetation only, for optional read-only journey diagnostics.
+    pub fn vegetation_snapshot(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<Vec<u32>, String> {
+        let bytes = read_buffer(device, queue, &self.resource_buffer)?;
+        Ok(bytes
+            .chunks_exact(4)
+            .map(bytemuck::pod_read_unaligned::<u32>)
+            .collect())
+    }
+
     /// Read the current body buffer without changing simulation state.
     pub fn agent_snapshot(
         &self,

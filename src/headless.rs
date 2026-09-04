@@ -1,6 +1,6 @@
 use crate::simulation::{MAX_AGENTS, MODEL_ID, Simulation};
 use std::{collections::HashMap, io::Write, path::Path};
-pub const HELP: &str = "Primitive World recurrent-v1 (checkpoint 12)\nRun: primitive_world [--seed N] [--founders PATH] [--bootstrap]\nHeadless: --headless --ticks N --sample N --output PATH\nOptions: --population N --regeneration X --no-force --no-signals --static-landscape\n         --metabolic-cost X --movement-cost X --motor-gain X\n         --checkpoint PATH --save-checkpoint PATH --export-founders PATH\n         --famine-at T --restore-at T --help --version\nFresh runs use the bundled recurrent-v1 descendants. --bootstrap explicitly uses UNPREPARED mutable seed weights.\nMotor gain calibrates continuous effort, not minimum movement or maximum speed.\nCheckpoint settings take precedence; physical overrides cannot accompany --checkpoint.\nLegacy controllers, neural bridges and old diagnostic flags are not supported.";
+pub const HELP: &str = "Primitive World recurrent-v1 (checkpoint 12)\nRun: primitive_world [--seed N] [--founders PATH] [--bootstrap]\nHeadless: --headless --ticks N --sample N --output PATH\nOptions: --population N --regeneration X --no-force --no-signals --static-landscape\n         --metabolic-cost X --movement-cost X --motor-gain X\n         --checkpoint PATH --save-checkpoint PATH --export-founders PATH\n         --journeys PATH [--journey-sample N] (read-only sampled JSONL evidence)\n         --famine-at T --restore-at T --help --version\nFresh runs use the bundled recurrent-v1 descendants. --bootstrap explicitly uses UNPREPARED mutable seed weights.\nMotor gain calibrates continuous effort, not minimum movement or maximum speed.\nCheckpoint settings take precedence; physical overrides cannot accompany --checkpoint.\nLegacy controllers, neural bridges and old diagnostic flags are not supported.";
 pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
     let flags = [
         "--headless",
@@ -25,6 +25,8 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
         "--checkpoint",
         "--save-checkpoint",
         "--export-founders",
+        "--journeys",
+        "--journey-sample",
         "--famine-at",
         "--restore-at",
     ];
@@ -117,6 +119,25 @@ pub fn run(args: &[String]) -> Result<(), String> {
     };
     let ticks = number("--ticks", 2000)?;
     let sample = number("--sample", 1000)?;
+    let journey_sample = number("--journey-sample", 32)?;
+    if journey_sample == 0 || journey_sample > 1024 {
+        return Err("Journey sample must be in 1..=1024".into());
+    }
+    if a.contains_key("--journey-sample") && !a.contains_key("--journeys") {
+        return Err("--journey-sample requires --journeys PATH".into());
+    }
+    let mut journey_file = a
+        .get("--journeys")
+        .map(|path| {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)
+                .map(std::io::BufWriter::new)
+                .map_err(|e| format!("{path}: {e}"))
+        })
+        .transpose()?;
+    let mut journeys = crate::journey_observer::JourneyObserver::default();
     if sample == 0 || ticks > 1_000_000 {
         return Err("Sample must be positive; ticks must be <= 1000000".into());
     }
@@ -159,6 +180,16 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let mut history = vec![sim.metrics(&device, &queue)?];
     let mut travel = crate::travel_observer::TravelObserver::default();
     travel.observe(sim.tick, &sim.agent_snapshot(&device, &queue)?)?;
+    if let Some(file) = &mut journey_file {
+        journeys.observe(
+            sim.tick,
+            &sim.agent_snapshot(&device, &queue)?,
+            &sim.vegetation_snapshot(&device, &queue)?,
+        )?;
+        let header = serde_json::json!({"type": "header", "model": MODEL_ID, "seed": sim.seed,
+            "initial_tick": sim.tick, "observer": journeys.report(journey_sample)});
+        writeln!(file, "{header}").map_err(|e| e.to_string())?;
+    }
     let start = std::time::Instant::now();
     let target = sim.tick.checked_add(ticks).ok_or("Tick overflow")?;
     while sim.tick < target {
@@ -171,6 +202,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
         let next_sample = (sim.tick / sample + 1).saturating_mul(sample);
         let mut n = (target - sim.tick).min(32).min(next_sample - sim.tick);
+        if journey_file.is_some() {
+            n = n.min(journey_sample - sim.tick % journey_sample);
+        }
         for event in [famine, restore] {
             if event > sim.tick {
                 n = n.min(event - sim.tick);
@@ -179,6 +213,21 @@ pub fn run(args: &[String]) -> Result<(), String> {
         let mut encoder = device.create_command_encoder(&Default::default());
         sim.encode_ticks(&mut encoder, &device, &queue, n);
         queue.submit(Some(encoder.finish()));
+        if let Some(file) = &mut journey_file
+            && (sim.tick.is_multiple_of(journey_sample)
+                || sim.tick == target
+                || sim.tick.is_multiple_of(sample))
+        {
+            let events = journeys.observe(
+                sim.tick,
+                &sim.agent_snapshot(&device, &queue)?,
+                &sim.vegetation_snapshot(&device, &queue)?,
+            )?;
+            for event in events {
+                let line = serde_json::json!({"type": "journey", "evidence": event});
+                writeln!(file, "{line}").map_err(|e| e.to_string())?;
+            }
+        }
         if sim.tick.is_multiple_of(sample) || sim.tick == target {
             let m = sim.metrics(&device, &queue)?;
             travel.observe(sim.tick, &sim.agent_snapshot(&device, &queue)?)?;
@@ -193,6 +242,12 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
     }
     let evolution = sim.evolution_snapshot(&device, &queue)?;
+    if let Some(file) = &mut journey_file {
+        let footer =
+            serde_json::json!({"type": "summary", "observer": journeys.report(journey_sample)});
+        writeln!(file, "{footer}").map_err(|e| e.to_string())?;
+        file.flush().map_err(|e| e.to_string())?;
+    }
     let export = a
         .get("--export-founders")
         .map(|path| sim.export_founders(&device, &queue, Path::new(path)));
@@ -203,6 +258,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
   "initial_tick":initial_tick,"requested_ticks":ticks,"elapsed_ticks":sim.tick-initial_tick,"adapter":format!("{info:?}"),
   "initial_settings":settings,"final_settings":sim.settings,"history":history,"evolution":evolution,
   "travel_observer":travel.report(sample),
+  "journey_observer":journey_file.as_ref().map(|_| journeys.report(journey_sample)),
   "famine_at":famine,"restore_at":restore,"wall_seconds":start.elapsed().as_secs_f64(),"founder_export":export,
   "scope":"One recurrent inherited controller. No within-life weight training, reseeding or population objective."});
     file.write_all(&serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?)
