@@ -2,6 +2,10 @@
 
 A GPU simulation of local survival, reproduction, remembered places, material exchange, local signals, and costly physical interaction. The active boundary is defined in [KERNEL_SPEC.md](KERNEL_SPEC.md), with the research direction in [DESIGN_PLAN.md](DESIGN_PLAN.md). Social labels are observer interpretations, not agent objectives or world laws.
 
+**Planned clean cutover:** [DESIGN_PLAN.md](DESIGN_PLAN.md) specifies one coherent
+replacement of the agent model, not an incremental migration. It is not yet
+implemented; the run instructions and candidate-v1 behavior below remain current.
+
 ## Run
 
 ```powershell
