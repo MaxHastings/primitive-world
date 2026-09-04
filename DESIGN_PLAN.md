@@ -35,15 +35,15 @@ The active action vocabulary is:
 
 `wait`, `move`, `collect`, `ingest`, `transfer`, `apply force`, `emit`.
 
-The default controller is a viable inherited local controller. Founders share
-the founding controller; offspring inherit eight mutable controller traits,
-including copying fidelity with an irreducible mutation floor. This makes
-survival and reproduction the current selection pressures without adding a
-novelty, complexity, diversity, or group-shape reward.
+The default candidate-v1 controller has independent signed, inherited action
+weights over local observations and private movement proposals. A transparent
+physiological bootstrap starts with standing variation. Offline preparation can
+carry actual living descendants into fresh seeds; held-out evaluation never
+feeds weights back. Reproduction is the selection boundary. See CONTROLLER.md.
 
-The controller is still a bootstrap, not open-ended strategy evolution. Its
-decision formulas are authored and the genome currently modifies their scales.
-That limitation is explicit and is the next major research problem.
+The fixed feature extractor and movement proposals remain architectural biases.
+This is finite controller evolution, not open-ended strategy invention. Neither
+survival on a few seeds nor attractive trails demonstrate general intelligence.
 
 ## What we measure
 
@@ -58,16 +58,16 @@ world as objectives, selection bonuses, or emergency corrections.
 
 ## Immediate research priorities
 
-1. Replace the authored controller with a compact evolvable controller whose
-   outputs are generic intents over raw observations. Do not add more semantic
-   social motives first.
-2. Give that controller access to bounded generic message observations, or
-   remove `emit` until signals can have receiver-side causal consequences.
+1. Evaluate the signed candidate controller across unseen seeds and stress
+   regimes. Compare its fixed feature extractor with a broader recurrent
+   architecture only after the latter has credible multigeneration validation.
+2. Measure causal effects of the raw event inputs already exposed to the
+   candidate controller. Do not interpret a scalar as a shared map or social label.
 3. Decide whether reproduction should become an explicit agent intent. The
    current world-side eligibility gate is useful ecology, but it means agents
    do not literally choose reproduction.
-4. Couple copying fidelity to a real time, energy, or resource tradeoff while
-   retaining a nonzero error floor.
+4. Keep fixed nonzero mutation unless a physical copying-cost experiment is
+   explicitly designed; the previous cost-free fidelity gene has been removed.
 5. Remove dormant relationship, guide, report, and archived-controller paths
    from the kernel once their comparison value is no longer needed. Historical
    experiments belong outside the active contract.

@@ -25,8 +25,8 @@ some of those intents, not a promise about what agents should do.
 
 ## Heredity owns
 
-Reproduction copies controller traits and mutates them. Copying fidelity is
-itself heritable, but an irreducible mutation floor prevents perfect copying.
+Reproduction copies signed controller weights with sparse bounded mutation.
+The mutation process has fixed nonzero error; there is no free fidelity trait.
 Private memories are not copied. Lineage identifiers and parent links are
 observer-only and never influence decisions.
 

@@ -26,6 +26,7 @@ fn propose(@builtin(global_invocation_id) id: vec3<u32>) {
   let distance=length(a.position-b.position);
   let contact_radius=select(INTERACTION_RADIUS,min(a.sensor_radius,b.sensor_radius),d.selected_action==COMMUNICATE);
   if (a.alive==0u || b.alive==0u || distance>contact_radius) { return; }
+  if(d.selected_action==FORCE){atomicAdd(&stats[12],1u);}
   if (d.selected_action==GIVE && (a.food<=0.0 || b.food>=FOOD_CAPACITY)) { return; }
   atomicMin(&claims[i],priority(i)); atomicMin(&claims[d.target_id],priority(i));
 }
@@ -61,10 +62,13 @@ fn resolve(@builtin(global_invocation_id) id: vec3<u32>) {
     atomicAdd(&stats[4],1u); atomicAdd(&stats[6],u32(amount*1000.0));
   } else {
     let chance=a.energy/max(a.energy+b.energy,0.001);
+    atomicAdd(&stats[13],u32(round(min(a.energy,0.6)*1000.0)));
+    atomicAdd(&stats[14],u32(round(min(b.energy,0.3)*1000.0)));
     a.energy=max(0.0,a.energy-0.6); b.energy=max(0.0,b.energy-0.3);
     var taken=0.0;
     if (random01(a.rng ^ b.rng ^ params.tick)<chance) {
       taken=min(b.food,d.amount);
+      atomicAdd(&stats[15],u32(round(taken*1000.0)));
       b.food-=taken; atomicAdd(&ground[ground_index(b.position)].dropped,u32(round(taken*1000.0)));
       var direction=unit_vector(b.position-a.position);
       if (length(direction)<0.1) { direction=vec2<f32>(1.0,0.0); }

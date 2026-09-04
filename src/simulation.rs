@@ -10,9 +10,10 @@ pub const OCCUPANCY_GRID: u32 = 256;
 pub const SPATIAL_CELL_COUNT: u32 = OCCUPANCY_GRID * OCCUPANCY_GRID;
 pub const WORLD_SIZE: f32 = 2048.0;
 pub const RESOURCE_SCALE: f32 = 1000.0;
-pub const DEATH_STATS_COUNT: u32 = 12;
+pub const DEATH_STATS_COUNT: u32 = 32;
 pub const SOCIAL_SLOTS: u32 = 8;
-pub const GENOME_SIZE: usize = 8;
+pub const GENOME_SIZE: usize = 128;
+pub const PLACE_SLOTS: usize = 16;
 pub const EVENT_RING_SIZE: u32 = 65_536;
 
 #[repr(C)]
@@ -27,7 +28,7 @@ pub struct PlaceGpu {
     pub _padding: u32,
 }
 #[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
+#[derive(Clone, Copy, Pod, Zeroable, Debug)]
 pub struct AgentGpu {
     pub position: [f32; 2],
     pub velocity: [f32; 2],
@@ -57,16 +58,47 @@ pub struct AgentGpu {
     pub guide_expected: f32,
     pub guide_result: f32,
     pub guide_position: [f32; 2],
-    pub places: [PlaceGpu; 4],
-    /// Heritable controller traits. Zero is the authored ancestor; births
-    /// inherit these values with bounded mutation.
+    pub places: [PlaceGpu; PLACE_SLOTS],
+    /// Candidate-v1: 16 proposal/reserved entries followed by seven independent
+    /// 16-feature action rows. Births copy and sparsely mutate signed weights.
     pub genome: [f32; GENOME_SIZE],
     /// Observer-only ancestry. These identifiers never enter agent decisions.
     pub lineage_id: u32,
     pub parent_lineage: u32,
     pub birth_tick: u32,
     pub birth_parent_slot: u32,
+    pub ancestry_depth: u32,
+    pub lifetime_births: u32,
+    pub distance_travelled: f32,
+    pub _observer_padding: u32,
 }
+impl Default for AgentGpu {
+    fn default() -> Self {
+        Self::zeroed()
+    }
+}
+
+fn default_founder_name() -> String {
+    "candidate-v1-bootstrap".into()
+}
+
+/// Transparent hand-authored physiological bootstrap. Preparation exports actual
+/// descendant genomes; the name never claims this initial vector was trained.
+pub fn bootstrap_genome() -> [f32; GENOME_SIZE] {
+    let mut g = [0.0; GENOME_SIZE];
+    g[16] = 0.02; // wait bias
+    g[32 + 14] = 1.0; // movement proposal utility
+    g[48 + 6] = 0.3; // attainable collection
+    g[48 + 8] = -0.04; // competition
+    g[64 + 7] = 1.4; // ingestion
+    // Unfamiliar physical actions start with a small opportunity cost. Their
+    // entire signed feature weights can mutate; no action is forbidden.
+    g[80] = -0.02;
+    g[96] = -0.02;
+    g[112] = -0.02;
+    g
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
 pub struct PerceptionGpu {
@@ -221,10 +253,17 @@ pub struct SimSettings {
     pub neural_flags: u32,
     #[serde(default)]
     pub neural_model: String,
+    #[serde(default)]
+    pub legacy_controller: bool,
+    #[serde(default)]
+    pub founder_genomes: Vec<Vec<f32>>,
+    #[serde(default = "default_founder_name")]
+    pub founder_name: String,
 }
 
 impl Default for SimSettings {
     fn default() -> Self {
+        let founders = crate::founders::bundled();
         Self {
             population: 1_000,
             resource_regeneration: 0.01,
@@ -249,6 +288,9 @@ impl Default for SimSettings {
             neural_greedy: false,
             neural_flags: 0,
             neural_model: "untrained-zero-policy".into(),
+            legacy_controller: false,
+            founder_genomes: founders.genomes,
+            founder_name: founders.name,
         }
     }
 }
@@ -3104,7 +3146,7 @@ fn params_for(tick: u32, settings: &SimSettings, seed: u32) -> SimParams {
             u32::from(settings.neural_policy),
             u32::from(settings.neural_greedy),
             crate::neural::INTERVAL,
-            settings.neural_flags,
+            settings.neural_flags | if settings.legacy_controller { 4 } else { 0 },
         ],
     }
 }
@@ -3135,9 +3177,24 @@ fn build_agents(seed: u32, settings: &SimSettings) -> Vec<AgentGpu> {
                 event_actor: MAX_AGENTS,
                 guide_id: MAX_AGENTS,
                 max_age: 9000.0 + random01(&mut rng) * 2000.0,
-                // The founding population starts as the known viable authored
-                // controller. Variation begins at reproduction.
-                genome: [0.0; GENOME_SIZE],
+                // Founder provenance is explicit in saved settings.
+                genome: if settings.legacy_controller || settings.neural_policy {
+                    [0.0; GENOME_SIZE]
+                } else if !settings.founder_genomes.is_empty() {
+                    let index =
+                        (random01(&mut rng) * settings.founder_genomes.len() as f32) as usize;
+                    settings.founder_genomes[index.min(settings.founder_genomes.len() - 1)]
+                        .as_slice()
+                        .try_into()
+                        .expect("validated founder genome")
+                } else {
+                    let mut genome = bootstrap_genome();
+                    // Standing variation supplies selection from the first births.
+                    for gene in &mut genome[16..] {
+                        *gene += (random01(&mut rng) - 0.5) * 0.02;
+                    }
+                    genome
+                },
                 lineage_id: if i < settings.population { i + 1 } else { 0 },
                 ..Default::default()
             }

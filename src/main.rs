@@ -1,3 +1,4 @@
+mod founders;
 mod headless;
 mod neural;
 mod renderer;
@@ -196,6 +197,27 @@ impl AppState {
 
         let mut simulation = Simulation::new(&device, &queue, 1);
         let args: Vec<_> = std::env::args().collect();
+        if args.iter().any(|a| a == "--bootstrap") {
+            simulation.use_bootstrap_founders();
+        }
+        simulation.settings.force_enabled = !args.iter().any(|a| a == "--no-force");
+        simulation.settings.communication_enabled = !args.iter().any(|a| a == "--no-signals");
+        simulation.settings.evolving_landscape = !args.iter().any(|a| a == "--static-landscape");
+        if let Some(i) = args.iter().position(|a| a == "--seed") {
+            simulation.seed = args
+                .get(i + 1)
+                .expect("Missing seed")
+                .parse()
+                .expect("Invalid seed");
+        }
+        simulation.settings.legacy_controller = args.iter().any(|a| a == "--legacy-controller");
+        if let Some(i) = args.iter().position(|a| a == "--founders") {
+            simulation
+                .load_founders(std::path::Path::new(
+                    args.get(i + 1).expect("Missing --founders path"),
+                ))
+                .expect("Invalid founder bank");
+        }
         let neural_path = args
             .iter()
             .position(|a| a == "--neural-weights")
@@ -214,6 +236,7 @@ impl AppState {
             }
         }
         simulation.settings.neural_greedy = args.iter().any(|a| a == "--neural-greedy");
+        simulation.reset(&queue);
         simulation.update_params(&queue);
         let renderer = Renderer::new(
             &device,
@@ -233,6 +256,7 @@ impl AppState {
         );
         let egui_renderer = egui_wgpu::Renderer::new(&device, config.format, None, 1, false);
         let initial_population = simulation.settings.population;
+        let initial_seed = simulation.seed;
 
         Self {
             window,
@@ -267,7 +291,7 @@ impl AppState {
             selected: None,
             neural_inspection: None,
             neural_path,
-            seed_input: 1,
+            seed_input: initial_seed,
             shock_mode: ShockMode::Select,
             shock_radius: 45.0,
             last_submit_ms: 0.0,
@@ -350,8 +374,18 @@ impl AppState {
     fn update_title(&self) {
         let lens = Lens::from_u32(self.renderer.camera.lens).name();
         self.window.set_title(&format!(
-            "Primitive World  |  {:>6} / {} living  |  {:>5.1} FPS  |  {}",
-            self.living_agents, MAX_AGENTS, self.render_fps, lens
+            "Primitive World / {} / checkpoint 11  |  {:>6} / {} living  |  {:>5.1} FPS  |  {}",
+            if self.simulation.settings.neural_policy {
+                "GRU experimental"
+            } else if self.simulation.settings.legacy_controller {
+                "legacy"
+            } else {
+                "candidate-v1"
+            },
+            self.living_agents,
+            MAX_AGENTS,
+            self.render_fps,
+            lens
         ));
     }
 
@@ -652,8 +686,8 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
                     };
                 }
                 if let Some(snapshot) = &state.evolution_snapshot {
-                    ui.small(format!("Evolution observer: {} lineages, {} parent links, max generation {}, fidelity {:.2}", snapshot.unique_lineages, snapshot.parent_lineages_present, snapshot.maximum_generation, snapshot.mean_copy_fidelity));
-                    ui.small(format!("Genome variance: {:?}", snapshot.genome_variance.map(|v| (v * 1000.0).round() / 1000.0)));
+                    ui.small(format!("Evolution observer: {} individuals, {} distinct parents, max ancestry depth {}", snapshot.unique_lineages, snapshot.parent_lineages_present, snapshot.maximum_generation));
+                    ui.small(format!("Mean weight variance: {:.6}",snapshot.genome_variance.iter().sum::<f64>()/snapshot.genome_variance.len().max(1) as f64));
                 }
             });
             ui.collapsing("Recent interactions",|ui| {
@@ -675,14 +709,14 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
                         Ok(())=>{state.simulation.settings.neural_policy=true;state.simulation.reset_neural_memory(&state.queue);state.neural_inspection=None;"Loaded GRU; private memories reset".into()},Err(e)=>e,
                     };
                 }
-                if ui.button("Use evolved local controller").clicked(){state.simulation.settings.neural_policy=false;state.neural_inspection=None;}
+                if ui.button("Reset world with inherited founders").clicked(){state.simulation.settings.neural_policy=false;state.simulation.settings.legacy_controller=false;reset=true;state.file_status="Reset with inherited founder weights".into();}
                 ui.checkbox(&mut state.simulation.settings.neural_greedy,"Choose most probable neural action");
-                ui.small("Founders use the authored controller; births inherit and mutate eight controller traits. The GRU is an opt-in comparison.");
+                ui.small(format!("Founder bank: {}. Signed candidate weights mutate at birth. Archived GRU is experimental.",state.simulation.settings.founder_name));
             });
             ui.small(if state.simulation.settings.neural_policy {
                 "Policy: learned GRU forager (8-tick decisions)"
             } else {
-                "Policy: evolved local-rule controller"
+                if state.simulation.settings.legacy_controller {"Policy: legacy authored scores"} else {"Policy: candidate-v1 inherited weights"}
             });
             if ui
                 .add(
@@ -803,6 +837,13 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
                 ui.checkbox(&mut state.simulation.settings.force_enabled,"Enable physical-force affordance");
             });
             ui.label(format!("Transfers: {}  matter moved: {:.2}  force: {}  force deaths: {}",state.interaction_stats[0],state.interaction_stats[2] as f32/1000.0,state.interaction_stats[1],state.interaction_stats[3]));
+            if let Some(m)=state.history.back(){
+                ui.collapsing("Reproduction and conflict diagnostics",|ui|{
+                    ui.small("Cumulative living-agent ticks; gate failures overlap.");
+                    for (label,count) in ["Immature","Low energy","Below 2 food","Moving","Cooldown","All gates open","Birth requests"].into_iter().zip(m.birth_gates){ui.small(format!("{label}: {count}"));}
+                    ui.small(format!("Force attempts: {}  energy spent: {:.1}  food spilled: {:.2}",m.force_attempts,m.force_energy_spent,m.force_food_spilled));
+                });
+            }
             if state.living_agents==0 { ui.colored_label(egui::Color32::YELLOW,"Extinct. Resources continue recovering; Reset world explicitly reseeds."); }
             if state.living_agents==MAX_AGENTS { ui.label("Population is at the GPU capacity limit."); }
             ui.horizontal(|ui| {
@@ -919,9 +960,10 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
                     "Destination: {:.1}, {:.1}",
                     selected.agent.goal[0], selected.agent.goal[1]
                 ));
-                ui.label(format!("Generation: {}  age limit: {:.0}  next birth eligible: {}",selected.agent.generation,selected.agent.max_age,selected.agent.next_birth));
+                ui.label(format!("Ancestry depth: {}  slot incarnation: {}  age limit: {:.0}",selected.agent.ancestry_depth,selected.agent.generation,selected.agent.max_age));
+                ui.small(format!("Births: {}  cooldown remaining: {} ticks; reproduction also requires maturity, energy and 2 food",selected.agent.lifetime_births,selected.agent.next_birth.saturating_sub(state.simulation.tick)));
                 ui.small(format!("Lineage {}  parent {}  born tick {}",selected.agent.lineage_id,selected.agent.parent_lineage,selected.agent.birth_tick));
-                ui.small(format!("Controller genome: {:?}", selected.agent.genome.map(|v| (v * 100.0).round() / 100.0)));
+                ui.collapsing("Inherited controller weights",|ui|{for (index,row) in selected.agent.genome.chunks(16).enumerate(){ui.small(format!("{}: {:?}",index,row.iter().map(|v|(v*100.0).round()/100.0).collect::<Vec<_>>()));}});
                 if state.simulation.settings.neural_policy {
                     ui.small("Place records are private state; they are not objective scores.");
                 }
@@ -996,7 +1038,7 @@ impl ApplicationHandler for App {
             event_loop
                 .create_window(
                     WindowAttributes::default()
-                        .with_title("Primitive World")
+                        .with_title("Primitive World — candidate-v1 / checkpoint 11")
                         .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 820.0)),
                 )
                 .expect("window creation failed"),
@@ -1016,7 +1058,6 @@ impl ApplicationHandler for App {
             return;
         };
         let egui_response = state.egui_state.on_window_event(&state.window, &event);
-        if egui_response.consumed { /* UI gets first chance to consume text and sliders. */ }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
@@ -1025,7 +1066,7 @@ impl ApplicationHandler for App {
                 state.resize(size.width, size.height);
             }
             WindowEvent::CursorMoved { position, .. } => state.cursor_position = position,
-            WindowEvent::MouseWheel { delta, .. } => {
+            WindowEvent::MouseWheel { delta, .. } if !egui_response.consumed => {
                 let amount = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y,
                     MouseScrollDelta::PixelDelta(position) => position.y as f32 / 80.0,
@@ -1051,7 +1092,7 @@ impl ApplicationHandler for App {
                         ..
                     },
                 ..
-            } => {
+            } if !egui_response.consumed => {
                 let pan = 80.0 / state.renderer.camera.zoom;
                 match code {
                     KeyCode::Space => state.paused = !state.paused,

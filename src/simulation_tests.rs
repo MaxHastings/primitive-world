@@ -1,10 +1,19 @@
 use super::*;
+include!("controller_tests.rs");
+
+// Historical authored-controller regressions remain explicit comparison tests.
+fn legacy_sim(device: &wgpu::Device, queue: &wgpu::Queue, seed: u32) -> Simulation {
+    let mut sim = Simulation::new(device, queue, seed);
+    sim.settings.legacy_controller = true;
+    sim.reset(queue);
+    sim
+}
 
 #[test]
 fn gru_contract_memory_and_checkpoint() {
     use crate::neural::{ACTIONS, HIDDEN, NeuralPolicy, NeuralState, NeuralWeights};
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 71);
+    let mut sim = legacy_sim(&device, &queue, 71);
     let mut flat = NeuralWeights::baseline().flat();
     for (i, w) in flat.iter_mut().enumerate() {
         *w = ((i as f32 * 0.713).sin()) * 0.12;
@@ -56,7 +65,11 @@ fn gru_contract_memory_and_checkpoint() {
     a.energy = 0.001;
     a.food = 0.;
     write_agents(&sim, &queue, &[a]);
-    sim.neural_frame(&device, &queue, 4).unwrap();
+    let death_tick = sim.tick;
+    let terminal_frame = sim.neural_frame(&device, &queue, 4).unwrap();
+    assert_eq!(terminal_frame["rows"][0]["valid"], true);
+    assert_eq!(terminal_frame["rows"][0]["done"], true);
+    assert_eq!(terminal_frame["rows"][0]["trace"]["tick"], death_tick);
     assert!(
         sim.neural_inspect(&device, &queue, 0)
             .unwrap()
@@ -64,18 +77,38 @@ fn gru_contract_memory_and_checkpoint() {
             .iter()
             .all(|h| *h == 0.)
     );
-    // A reused identity starts immediately, then keeps its own eight-tick cadence.
+    // A reused identity waits for the shared boundary: no unrecorded GRU step.
     step(&mut sim, &device, &queue, 3);
     let born_at = sim.tick;
     a.alive = 1;
     a.energy = 60.;
     a.generation += 1;
     write_agents(&sim, &queue, &[a]);
-    sim.neural_frame(&device, &queue, 4).unwrap();
+    assert!(sim.neural_frame(&device, &queue, 4).is_err());
+    let next_boundary = (born_at / 8 + 1) * 8;
+    step(&mut sim, &device, &queue, next_boundary - born_at);
+    assert!(
+        sim.neural_inspect(&device, &queue, 0)
+            .unwrap()
+            .hidden
+            .iter()
+            .all(|h| *h == 0.0)
+    );
+    let birth_frame = sim.neural_frame(&device, &queue, 4).unwrap();
+    let original_trace = &birth_frame["rows"][0];
+    assert_eq!(original_trace["valid"], true);
+    assert_eq!(original_trace["trace"]["tick"], next_boundary);
+    assert_eq!(original_trace["trace"]["generation"], 2);
+    assert!(
+        original_trace["trace"]["before"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|h| h.as_f64() == Some(0.0))
+    );
     let st = sim.neural_inspect(&device, &queue, 0).unwrap();
     assert_eq!(st.generation, 2);
-    assert_eq!(st.tick, born_at);
-    assert!(st.before.iter().all(|h| *h == 0.));
+    assert_eq!(st.tick, next_boundary);
     std::fs::remove_file(path).unwrap();
 }
 
@@ -225,7 +258,7 @@ fn raw_local_perception_does_not_create_a_shared_information_channel() {
         "forget_experience",
         "no_companion_access",
     ] {
-        let mut sim = Simulation::new(&device, &queue, 61);
+        let mut sim = legacy_sim(&device, &queue, 61);
         sim.settings.population = 0;
         sim.settings.resource_regeneration = 0.0;
         sim.settings.evolving_landscape = false;
@@ -299,7 +332,7 @@ fn raw_local_perception_does_not_create_a_shared_information_channel() {
             a.position = [220.0 + i as f32, 100.0];
             a.goal = a.position;
             a.energy = 15.0;
-            a.places = [PlaceGpu::default(); 4];
+            a.places = [PlaceGpu::default(); PLACE_SLOTS];
         }
         agents[0].places[0] = PlaceGpu {
             position: [340.0, 160.0],
@@ -372,7 +405,7 @@ fn habitat_is_patchy_seeded_and_keeps_barren_gaps() {
     );
 
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 1);
+    let mut sim = legacy_sim(&device, &queue, 1);
     sim.settings.population = 0;
     sim.settings.evolving_landscape = false;
     sim.reset(&queue);
@@ -431,7 +464,7 @@ fn landscape_evolves_smoothly_and_crosses_keyframes_in_order() {
         "keyframe endpoints must agree"
     );
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 1);
+    let mut sim = legacy_sim(&device, &queue, 1);
     sim.settings.population = 0;
     sim.reset(&queue);
     sim.tick = 4096;
@@ -463,7 +496,7 @@ fn landscape_evolves_smoothly_and_crosses_keyframes_in_order() {
 #[test]
 fn an_empty_world_search_reaches_its_chosen_destination() {
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 53);
+    let mut sim = legacy_sim(&device, &queue, 53);
     sim.settings.population = 0;
     sim.settings.resource_regeneration = 0.0;
     sim.reset(&queue);
@@ -512,7 +545,7 @@ fn an_empty_world_search_reaches_its_chosen_destination() {
 #[ignore = "population trajectory diagnostic; run explicitly"]
 fn motion_diagnostic() {
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 1);
+    let mut sim = legacy_sim(&device, &queue, 1);
     step(&mut sim, &device, &queue, 4000);
     let mut frames = Vec::new();
     for _ in 0..257 {
@@ -577,7 +610,7 @@ fn motion_diagnostic() {
 #[test]
 fn physical_actions_and_births_conserve_reserves() {
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 7);
+    let mut sim = legacy_sim(&device, &queue, 7);
     sim.settings.population = 0;
     sim.settings.metabolic_cost = 0.0;
     sim.settings.movement_energy_cost = 0.0;
@@ -719,6 +752,8 @@ fn physical_actions_and_births_conserve_reserves() {
     assert_eq!(pair[1].parent_lineage, pair[0].lineage_id);
     assert_ne!(pair[1].lineage_id, pair[0].lineage_id);
     assert_eq!(pair[1].birth_parent_slot, 0);
+    assert_eq!(pair[1].ancestry_depth, a.ancestry_depth + 1);
+    assert_eq!(pair[0].lifetime_births, a.lifetime_births + 1);
     assert!(
         pair[1]
             .genome
@@ -731,7 +766,7 @@ fn physical_actions_and_births_conserve_reserves() {
 #[test]
 fn famine_survivors_recover_and_fractional_growth_accumulates() {
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 13);
+    let mut sim = legacy_sim(&device, &queue, 13);
     sim.settings.population = 0;
     sim.settings.resource_regeneration = 0.01;
     sim.reset(&queue);
@@ -824,7 +859,7 @@ fn famine_survivors_recover_and_fractional_growth_accumulates() {
 #[test]
 fn attainable_food_and_better_destinations_drive_decisions() {
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 41);
+    let mut sim = legacy_sim(&device, &queue, 41);
     sim.settings.population = 0;
     sim.settings.exploration_noise = 0.0;
     sim.reset(&queue);
@@ -893,7 +928,7 @@ fn attainable_food_and_better_destinations_drive_decisions() {
 #[test]
 fn a_trip_survives_small_preference_changes_and_an_eating_pause() {
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 47);
+    let mut sim = legacy_sim(&device, &queue, 47);
     sim.settings.population = 0;
     sim.settings.exploration_noise = 0.0;
     sim.reset(&queue);
@@ -956,7 +991,7 @@ fn a_trip_survives_small_preference_changes_and_an_eating_pause() {
     assert!(a.position[0] > 117.0, "movement must make actual progress");
 
     // Visible danger still permits abandoning the committed destination.
-    a.places = [PlaceGpu::default(); 4];
+    a.places = [PlaceGpu::default(); PLACE_SLOTS];
     write_agents(&sim, &queue, &[a]);
     let p = PerceptionGpu {
         resource_west: 0.7,
@@ -989,7 +1024,7 @@ fn a_trip_survives_small_preference_changes_and_an_eating_pause() {
 #[test]
 fn surplus_can_produce_a_physical_transfer() {
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 43);
+    let mut sim = legacy_sim(&device, &queue, 43);
     sim.settings.population = 0;
     sim.settings.exploration_noise = 0.0;
     sim.reset(&queue);
@@ -1036,7 +1071,7 @@ fn surplus_can_produce_a_physical_transfer() {
 #[test]
 fn place_memory_guides_travel_and_urgent_eating_interrupts_it() {
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 17);
+    let mut sim = legacy_sim(&device, &queue, 17);
     sim.settings.population = 0;
     sim.settings.resource_regeneration = 0.0;
     sim.reset(&queue);
@@ -1092,7 +1127,7 @@ fn place_memory_guides_travel_and_urgent_eating_interrupts_it() {
 #[test]
 fn completed_transfers_conserve_matter_and_remote_people_are_not_tracked() {
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 19);
+    let mut sim = legacy_sim(&device, &queue, 19);
     sim.settings.population = 0;
     sim.settings.social_access = 0.0;
     sim.settings.social_concern = 0.0;
@@ -1184,7 +1219,7 @@ fn completed_transfers_conserve_matter_and_remote_people_are_not_tracked() {
 #[test]
 fn emitted_signal_is_local_and_does_not_create_a_shared_map() {
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 21);
+    let mut sim = legacy_sim(&device, &queue, 21);
     sim.settings.population = 0;
     sim.settings.communication_enabled = true;
     sim.reset(&queue);
@@ -1251,7 +1286,7 @@ fn emitted_signal_is_local_and_does_not_create_a_shared_map() {
 #[test]
 fn apply_force_spills_matter_without_direct_transfer() {
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 22);
+    let mut sim = legacy_sim(&device, &queue, 22);
     sim.settings.population = 0;
     sim.settings.force_enabled = true;
     sim.reset(&queue);
@@ -1301,12 +1336,25 @@ fn apply_force_spills_matter_without_direct_transfer() {
     assert!((pair[0].food + pair[1].food + dropped - 2.0).abs() < 0.001);
     assert!(pair[1].event_amount < 0.0);
     assert!(pair[0].energy < 100.0);
+    let counters = read::<u32>(
+        &device,
+        &queue,
+        &sim.death_stats_buffer,
+        DEATH_STATS_COUNT as usize,
+    );
+    assert_eq!(counters[12], 1);
+    assert_eq!(counters[13], 600);
+    assert_eq!(
+        counters[14], 10,
+        "diagnostics count actual victim energy, not the nominal charge"
+    );
+    assert_eq!(counters[15], (dropped * 1000.0).round() as u32);
 }
 
 #[test]
 fn generic_force_and_contended_transfers_conserve_matter() {
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 23);
+    let mut sim = legacy_sim(&device, &queue, 23);
     sim.settings.population = 0;
     sim.settings.force_enabled = true;
     sim.reset(&queue);
@@ -1362,11 +1410,11 @@ fn generic_force_and_contended_transfers_conserve_matter() {
 #[test]
 fn gpu_pipeline_and_clock_validation() {
     assert_eq!(std::mem::size_of::<crate::neural::NeuralState>(), 672);
-    assert_eq!(std::mem::size_of::<AgentGpu>(), 304);
+    assert_eq!(std::mem::size_of::<AgentGpu>(), 1184);
     assert_eq!(std::mem::size_of::<SocialRelationGpu>(), 48);
     assert_eq!(std::mem::size_of::<SocialPerceptionGpu>(), 640);
     let (device, queue) = gpu();
-    let mut sim = Simulation::new(&device, &queue, 9);
+    let mut sim = legacy_sim(&device, &queue, 9);
     // Validate render shaders/layouts as well as every compute pipeline, without a window.
     let _renderer = crate::renderer::Renderer::new(
         &device,
@@ -1410,7 +1458,7 @@ fn gpu_pipeline_and_clock_validation() {
     let evolution = sim.evolution_snapshot(&device, &queue).unwrap();
     assert_eq!(evolution.living, 1);
     assert_eq!(evolution.unique_lineages, 1);
-    assert!(evolution.mean_copy_fidelity >= 0.0 && evolution.mean_copy_fidelity <= 1.0);
+    assert_eq!(evolution.mean_genome.len(), GENOME_SIZE);
     let checkpoint = std::env::temp_dir().join(format!(
         "primitive-world-{}-test.checkpoint",
         std::process::id()
@@ -1427,6 +1475,6 @@ fn gpu_pipeline_and_clock_validation() {
         )
     );
     let header = std::fs::read(&checkpoint).unwrap();
-    assert_eq!(&header[..12], b"PRIMWORLD010");
+    assert_eq!(&header[..12], b"PRIMWORLD011");
     std::fs::remove_file(checkpoint).unwrap();
 }

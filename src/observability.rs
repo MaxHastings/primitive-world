@@ -20,6 +20,13 @@ pub struct WorldMetrics {
     pub moving_agents: u64,
     pub eating_agents: u64,
     pub harvested: f64,
+    /// Cumulative, overlapping agent-tick gate failures: age, energy, food,
+    /// movement, cooldown; followed by all-gates-open and requests.
+    pub birth_gates: [u32; 7],
+    pub action_ticks: [u32; 7],
+    pub force_attempts: u32,
+    pub force_energy_spent: f64,
+    pub force_food_spilled: f64,
 }
 
 /// A read-only population snapshot for studying evolution. Nothing in this
@@ -32,9 +39,8 @@ pub struct EvolutionSnapshot {
     pub parent_lineages_present: u64,
     pub maximum_generation: u32,
     pub mean_generation: f64,
-    pub mean_genome: [f64; crate::simulation::GENOME_SIZE],
-    pub genome_variance: [f64; crate::simulation::GENOME_SIZE],
-    pub mean_copy_fidelity: f64,
+    pub mean_genome: Vec<f64>,
+    pub genome_variance: Vec<f64>,
 }
 
 pub fn read_buffer(
@@ -77,6 +83,8 @@ impl Simulation {
         let mut parent_lineages = HashSet::new();
         let mut snapshot = EvolutionSnapshot {
             tick: self.tick,
+            mean_genome: vec![0.0; GENOME_SIZE],
+            genome_variance: vec![0.0; GENOME_SIZE],
             ..Default::default()
         };
         let mut genome_squares = [0.0; crate::simulation::GENOME_SIZE];
@@ -86,8 +94,8 @@ impl Simulation {
             if agent.parent_lineage != 0 {
                 parent_lineages.insert(agent.parent_lineage);
             }
-            snapshot.maximum_generation = snapshot.maximum_generation.max(agent.generation);
-            snapshot.mean_generation += agent.generation as f64;
+            snapshot.maximum_generation = snapshot.maximum_generation.max(agent.ancestry_depth);
+            snapshot.mean_generation += agent.ancestry_depth as f64;
             for (index, gene) in agent.genome.iter().enumerate() {
                 snapshot.mean_genome[index] += *gene as f64;
                 genome_squares[index] += (*gene as f64) * (*gene as f64);
@@ -103,7 +111,6 @@ impl Simulation {
                 snapshot.genome_variance[index] =
                     (genome_squares[index] / count - snapshot.mean_genome[index].powi(2)).max(0.0);
             }
-            snapshot.mean_copy_fidelity = (snapshot.mean_genome[7] + 1.0) * 0.5;
         }
         Ok(snapshot)
     }
@@ -129,6 +136,7 @@ impl Simulation {
             }
         }
         let events = read_buffer(device, queue, &self.death_stats_buffer)?;
+        let counters: &[u32] = bytemuck::cast_slice(&events);
         Ok(WorldMetrics {
             tick: self.tick,
             living: total[0],
@@ -148,6 +156,15 @@ impl Simulation {
             moving_agents: total[13],
             harvested: total[14] as f64 / 1000.0,
             eating_agents: total[15],
+            birth_gates: counters[16..23]
+                .try_into()
+                .map_err(|_| "Invalid birth counters")?,
+            action_ticks: counters[24..31]
+                .try_into()
+                .map_err(|_| "Invalid action counters")?,
+            force_attempts: counters[12],
+            force_energy_spent: (counters[13] as f64 + counters[14] as f64) / 1000.0,
+            force_food_spilled: counters[15] as f64 / 1000.0,
         })
     }
 
@@ -175,7 +192,7 @@ impl Simulation {
             .map(|b| read_buffer(device, queue, b))
             .collect::<Result<_, _>>()?;
         let mut file = std::fs::File::create(path).map_err(|e| e.to_string())?;
-        file.write_all(b"PRIMWORLD010").map_err(|e| e.to_string())?;
+        file.write_all(b"PRIMWORLD011").map_err(|e| e.to_string())?;
         for n in [self.seed, self.tick, settings.len() as u32] {
             file.write_all(&n.to_le_bytes())
                 .map_err(|e| e.to_string())?;
@@ -197,7 +214,7 @@ impl Simulation {
         let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
         let mut magic = [0; 12];
         file.read_exact(&mut magic).map_err(|e| e.to_string())?;
-        if &magic != b"PRIMWORLD010" {
+        if &magic != b"PRIMWORLD011" {
             return Err("Unsupported checkpoint version".into());
         }
         let mut fields = [0; 12];
@@ -205,12 +222,13 @@ impl Simulation {
         let seed = u32::from_le_bytes(fields[0..4].try_into().unwrap());
         let tick = u32::from_le_bytes(fields[4..8].try_into().unwrap());
         let settings_len = u32::from_le_bytes(fields[8..12].try_into().unwrap()) as usize;
-        if settings_len > 65536 {
+        if settings_len > 4_194_304 {
             return Err("Invalid settings length".into());
         }
         let mut json = vec![0; settings_len];
         file.read_exact(&mut json).map_err(|e| e.to_string())?;
         let settings: SimSettings = serde_json::from_slice(&json).map_err(|e| e.to_string())?;
+        crate::founders::validate_genomes(&settings.founder_genomes)?;
         let mut buffers = vec![
             &self.agent_buffers[0],
             &self.resource_buffer,

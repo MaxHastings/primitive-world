@@ -50,12 +50,16 @@ def collect(world, population, seed, steps, blind, memory_reset=False, greedy=Fa
     for t in range(steps+1):
         if forget_cue and t==1:world.call(op='forget')
         frames.append(world.call(op='step'))
+        if t==steps-1:
+            outcome=world.call(op='metrics')
     for t, frame in enumerate(frames):
         assert frame['tick'] == t*8 and frame['elapsed_ticks']==8
         for i,row in enumerate(frame['rows']):
             if row['valid']:
                 tr=row['trace']
                 assert row['slot']==i and tr['tick']==frame['tick'] and tr['generation']==row['generation']
+    # The extra frame supplies a value bootstrap, not another evaluation step.
+    frames[-1]['world_outcome'] = outcome
     return frames
 
 def tensors(frames, reward):
@@ -76,11 +80,11 @@ def summarize(frames):
     rows=[r for f in frames for r in f['rows'] if r['valid']]
     final=frames[-1]['rows']
     # Food harvested is reserve-equivalent improvement plus actual costs, not a reward target.
-    return dict(survival=float(np.mean([r['alive']!=0 for r in final])),
+    return dict(sampled_slot_occupancy=float(np.mean([r['alive']!=0 for r in final])),
                 energy=float(np.mean([r['energy'] for r in final])),
                 food=float(np.mean([r['food'] for r in final])),
                 physiology_return=float(sum(r['reward_physiology'] for r in rows)/len(final)),
-                reached_food=float(np.mean([any(f['rows'][i]['trace']['observation'][2]>.001 for f in frames) for i in range(len(final))])))
+                reached_food=float(np.mean([any(f['rows'][i]['valid'] and f['rows'][i]['trace']['observation'][2]>.001 for f in frames) for i in range(len(final))])))
 
 def evaluate(world, model, args):
     world.call(op='weights',weights=model.export('evaluation'))
@@ -89,7 +93,8 @@ def evaluate(world, model, args):
         for mode in ['recurrent','forget_cue','memory_reset']:
             samples=[]
             for seed in [args.eval_seed,args.eval_seed+18,args.eval_seed+42]:
-                fs=collect(world,args.population,seed,args.eval_steps,blind,mode=='memory_reset',not args.eval_stochastic,forget_cue=mode=='forget_cue')[:-1]
+                full=collect(world,args.population,seed,args.eval_steps,blind,mode=='memory_reset',not args.eval_stochastic,forget_cue=mode=='forget_cue')
+                outcome=full[-1]['world_outcome'];fs=full[:-1]
                 if mode=='recurrent':
                     batch=tensors(fs,'physiology')
                     with torch.no_grad():
@@ -99,6 +104,7 @@ def evaluate(world, model, args):
                         if error>2e-4:raise RuntimeError(f'Exported evaluation policy mismatch: {error}')
                         parity=max(parity,error)
                 row=summarize(fs)
+                row.update(world_living=outcome['world']['living'],world_births=outcome['world']['events'][3],max_ancestry_depth=outcome['evolution']['maximum_generation'])
                 samples.append(dict(seed=seed,**row))
             results.append(dict(blind=blind,mode=mode,mean={k:float(np.mean([s[k] for s in samples])) for k in samples[0] if k!='seed'},seeds=samples))
     return results,parity
@@ -113,7 +119,7 @@ def main():
     ap.add_argument('--seed',type=int,default=7)
     ap.add_argument('--reward',choices=['physiology','survival'],default='survival',
                     help='Survival is the default; physiology is an explicit reserve-scoring experiment')
-    ap.add_argument('--output',default=str(ROOT/'policies/forager-v3.json'))
+    ap.add_argument('--output',default=str(ROOT/'reports/experimental-gru-v3.json'))
     ap.add_argument('--load')
     ap.add_argument('--resume',help='Resume complete actor/critic PyTorch state')
     ap.add_argument('--eval-seed',type=int,default=100001)
@@ -164,6 +170,7 @@ def main():
                         advantages[t]=gae
                     returns=advantages+values[:T]
                     active=batch['valid'][:T].bool()
+                    if active.sum()<2:raise RuntimeError('Insufficient valid life transitions; no update was applied')
                     advantage=(advantages-advantages[active].mean())/(advantages[active].std()+1e-8)
                 for epoch in range(4):
                     lp,new_values,entropy,_,_=model.sequence(batch['obs'][:T],batch['masks'][:T],batch['done'][:T])

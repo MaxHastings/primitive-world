@@ -9,3 +9,5 @@
 /policies/evaluation-*.json
 /reports/*.json
 /reports/*.log
+/reports/**/*.json
+/reports/**/*.log

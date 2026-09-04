@@ -60,6 +60,15 @@ pub fn run(args: &[String]) -> Result<(), String> {
         return sim.neural_bridge(&device, &queue);
     }
     sim.settings.population = population;
+    if args.iter().any(|a| a == "--bootstrap") {
+        sim.use_bootstrap_founders();
+    }
+    sim.settings.legacy_controller = args.iter().any(|a| a == "--legacy-controller");
+    if let Some(i) = args.iter().position(|a| a == "--founders") {
+        sim.load_founders(std::path::Path::new(
+            args.get(i + 1).ok_or("Missing --founders path")?,
+        ))?;
+    }
     if let Some(i) = args.iter().position(|a| a == "--regeneration") {
         let regeneration: f32 = args
             .get(i + 1)
@@ -138,7 +147,22 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
     }
     let seconds = start.elapsed().as_secs_f64();
-    let report = serde_json::json!({"seed":seed,"initial_population":population,"ticks":ticks,"elapsed_seconds":seconds,"ticks_per_second":ticks as f64/seconds,"adapter":adapter_info.name,"backend":format!("{:?}",adapter_info.backend),"settings":initial_settings,"final_settings":sim.settings,"treatments":{"famine_at":(famine<ticks).then_some(famine),"restore_at":(restore<ticks).then_some(restore)},"history":history});
+    let evolution = sim.evolution_snapshot(&device, &queue)?;
+    if let Some(i) = args.iter().position(|a| a == "--export-founders") {
+        sim.export_founders(
+            &device,
+            &queue,
+            std::path::Path::new(args.get(i + 1).ok_or("Missing --export-founders path")?),
+        )?;
+    }
+    let controller = if initial_settings.neural_policy {
+        "gru-v3-experimental"
+    } else if initial_settings.legacy_controller {
+        "legacy-authored"
+    } else {
+        "candidate-v1"
+    };
+    let report = serde_json::json!({"schema":2,"controller_contract":controller,"checkpoint_schema":11,"seed":seed,"initial_population":population,"ticks":ticks,"elapsed_seconds":seconds,"ticks_per_second":ticks as f64/seconds,"adapter":adapter_info.name,"backend":format!("{:?}",adapter_info.backend),"settings":initial_settings,"final_settings":sim.settings,"treatments":{"famine_at":(famine<ticks).then_some(famine),"restore_at":(restore<ticks).then_some(restore)},"history":history,"evolution":evolution});
     std::fs::write(
         output,
         serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,

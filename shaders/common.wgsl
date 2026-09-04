@@ -5,7 +5,8 @@ struct Agent {
   food: f32, action: u32, target_id: u32, commit_until: u32,
   goal: vec2<f32>, rng: u32, alive: u32,
   generation: u32, event_actor: u32, event_generation: u32, event_tick: u32,
-  event_amount: f32, goal_score: f32, next_birth: u32, max_age: f32, last_communication: u32, guide_id: u32, guide_generation: u32, guide_started: u32, guide_expected: f32, guide_result: f32, guide_position: vec2<f32>, places: array<Place, 4>, genome: array<f32, 8>, lineage_id: u32, parent_lineage: u32, birth_tick: u32, birth_parent_slot: u32,
+  event_amount: f32, goal_score: f32, next_birth: u32, max_age: f32, last_communication: u32, guide_id: u32, guide_generation: u32, guide_started: u32, guide_expected: f32, guide_result: f32, guide_position: vec2<f32>, places: array<Place, 16>, genome: array<f32, 128>, lineage_id: u32, parent_lineage: u32, birth_tick: u32, birth_parent_slot: u32,
+  ancestry_depth: u32, lifetime_births: u32, distance_travelled: f32, observer_padding: u32,
 };
 struct Perception {
   resource_here: f32, resource_north: f32, resource_east: f32, resource_south: f32,

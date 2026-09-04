@@ -14,20 +14,27 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   birth_flags[i]=0u;
   if (a.alive==0u) { destination_agents[i]=a; return; }
   let d=decisions[i]; let p=perceptions[i];
+  atomicAdd(&stats[24u+min(d.selected_action,6u)],1u);
   var foods = array<f32,5>(p.resource_here,p.resource_north,p.resource_east,p.resource_south,p.resource_west);
   var dirs = array<vec2<f32>,5>(vec2<f32>(0),vec2<f32>(0,-1),vec2<f32>(1,0),vec2<f32>(0,1),vec2<f32>(-1,0));
   // Refresh observed places (including depleted ones); replace only weaker stale estimates.
   for (var sample=0u; sample<5u; sample++) {
     let position=clamp(a.position+dirs[sample]*a.sensor_radius,vec2<f32>(0.0),vec2<f32>(params.world_size));
     var slot=0u; var weakest=1000.0; var matched=false;
-    for (var k=0u; k<4u; k++) {
-      if (length(a.places[k].position-position)<a.sensor_radius*0.4 && a.places[k].food>=0.0 && a.places[k].observed>0u) {
+    for (var k=0u; k<16u; k++) {
+      if (ground_index(a.places[k].position)==ground_index(position) && a.places[k].confidence>0.0) {
         slot=k; matched=true; break;
       }
-      let value=a.places[k].food*exp(-f32(params.tick-a.places[k].observed)/1800.0);
+      let value=a.places[k].confidence*a.places[k].food*exp(-f32(params.tick-a.places[k].observed)/6000.0);
       if (value<weakest) { weakest=value; slot=k; }
     }
-    if (matched || foods[sample]>weakest+0.02) { a.places[slot]=Place(position,foods[sample],params.tick,i,a.generation,1.0,0u); }
+    var duplicate=false;
+    for(var k=0u;k<16u;k++){
+      if(a.places[k].confidence>0.0 && length(a.places[k].position-position)<a.sensor_radius*1.5){duplicate=true;}
+    }
+    // Keep geographically distinct fixed anchors. Never slide an old coordinate
+    // along with the body, which erased the route back to a previously visited patch.
+    if (matched || (!duplicate && foods[sample]>weakest+0.02)) { a.places[slot]=Place(position,foods[sample],params.tick,i,a.generation,1.0,0u); }
   }
   if (a.guide_result!=0.0) { a.guide_id=INVALID; }
   a.guide_result=0.0;
@@ -52,7 +59,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (length(a.goal-d.goal)>1.0 || params.tick>=a.commit_until) {
       // Refining the route locally must not erase who supplied the destination.
       if (a.guide_result==0.0 && length(d.goal-a.guide_position)>a.sensor_radius) { a.guide_id=INVALID; }
-      for (var k=0u; k<4u; k++) {
+      for (var k=0u; k<16u; k++) {
         if (a.guide_id==INVALID && a.guide_result==0.0 && length(a.places[k].position-d.goal)<1.0 && a.places[k].source_id!=i && a.places[k].source_id<INVALID) {
           a.guide_id=a.places[k].source_id; a.guide_generation=a.places[k].source_generation;
           a.guide_expected=a.places[k].food; a.guide_started=params.tick;
@@ -61,6 +68,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
       }
     }
     a.position=clamp(a.position+a.velocity,vec2<f32>(0.0),vec2<f32>(params.world_size));
+    a.distance_travelled+=distance;
     a.energy-=distance*params.time_and_costs.z;
     if (length(a.goal-d.goal)>1.0 || params.tick>=a.commit_until) {
       let travel_ticks=length(delta)/max(a.max_speed*juvenile*params.time_and_costs.x,0.1);
@@ -83,5 +91,17 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   // reproducing on the same tick it is paying travel costs or arriving at a
   // newly found patch; this removes the depletion -> migration -> birth pulse.
   birth_flags[i]=u32(a.alive!=0u && d.selected_action!=MOVE && a.age>=params.sensor_and_padding.y && params.tick>=a.next_birth && a.energy>=max(params.sensor_and_padding.z,params.sensor_and_padding.w+10.0) && a.food>=2.0 && (a.rng&1023u)<3u);
+  if(a.alive!=0u){
+    let mature=a.age>=params.sensor_and_padding.y;
+    let energetic=a.energy>=max(params.sensor_and_padding.z,params.sensor_and_padding.w+10.0);
+    let stocked=a.food>=2.0;
+    let settled=d.selected_action!=MOVE;
+    let ready=params.tick>=a.next_birth;
+    atomicAdd(&stats[16],u32(!mature));atomicAdd(&stats[17],u32(!energetic));
+    atomicAdd(&stats[18],u32(!stocked));atomicAdd(&stats[19],u32(!settled));
+    atomicAdd(&stats[20],u32(!ready));
+    atomicAdd(&stats[21],u32(mature && energetic && stocked && settled && ready));
+    atomicAdd(&stats[22],birth_flags[i]);
+  }
   destination_agents[i]=a;
 }

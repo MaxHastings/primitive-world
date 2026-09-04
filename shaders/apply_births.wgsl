@@ -16,6 +16,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   let cost=params.sensor_and_padding.w;
   if (parent.alive==0u || agents[ci].alive!=0u || parent.energy<max(params.sensor_and_padding.z,cost+10.0) || parent.food<2.0) { return; }
   parent.next_birth=params.tick+params.lifecycle.y;
+  parent.lifetime_births+=1u;
   var child: Agent;
   let angle=random01(parent.rng)*6.2831853;
   child.position=clamp(parent.position+vec2<f32>(cos(angle),sin(angle))*2.0,vec2<f32>(0.0),vec2<f32>(params.world_size));
@@ -25,15 +26,13 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   child.food=1.0; parent.food-=1.0;
   child.max_age=9000.0+random01(parent.rng ^ ci)*2000.0;
   child.max_speed=parent.max_speed; child.sensor_radius=parent.sensor_radius;
-  // Reproduction is the selection boundary: controller traits persist with
-  // mutable copying fidelity, while private memories remain blank. Gene 7 is
-  // fidelity: it can suppress copying errors, but never remove them. Perfect
-  // heredity is not free or available as a simulator constant.
-  let fidelity=clamp((parent.genome[7]+1.0)*0.5,0.0,1.0);
-  let mutation_amplitude=max(0.01,0.20*(1.0-0.95*fidelity));
-  for (var k=0u; k<8u; k++) {
-    let mutation=(random01(parent.rng ^ ci ^ (k*0x9e3779b9u) ^ params.tick)-0.5)*mutation_amplitude;
-    child.genome[k]=clamp(parent.genome[k]+mutation,-1.0,1.0);
+  // Sparse, signed mutation preserves most of a functional controller. The
+  // mutation process is fixed; no cost-free copying-fidelity gene is selected.
+  for (var k=0u; k<128u; k++) {
+    let key=parent.rng ^ ci ^ (k*0x9e3779b9u) ^ params.tick;
+    let mutation=select(0.0,(random01(key)-0.5)*0.06,random01(key ^ 0xb5297a4du)<0.1);
+    let bound=select(4.0,1.0,k<16u);
+    child.genome[k]=clamp(parent.genome[k]+mutation,-bound,bound);
   }
   child.rng=hash_u32(parent.rng ^ ci ^ params.tick); child.alive=1u;
   child.generation=agents[ci].generation+1u;
@@ -41,6 +40,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   child.parent_lineage=parent.lineage_id;
   child.birth_tick=params.tick;
   child.birth_parent_slot=pi;
+  child.ancestry_depth=parent.ancestry_depth+1u;
   child.guide_id=INVALID; child.target_id=INVALID; child.event_actor=INVALID;
   agents[pi]=parent; agents[ci]=child;
   var blank:NeuralState; neural_state[ci]=blank;

@@ -25,6 +25,24 @@ fn social_travel_value(a: Agent, s: SocialPerception, destination: vec2<f32>) ->
 fn genome_scale(a: Agent, index: u32, amplitude: f32) -> f32 {
   return clamp(1.0+a.genome[index]*amplitude,0.1,2.0);
 }
+// Agent-owned linear candidate network. Inputs are local body/environment facts
+// and private movement proposals. Every action has independent signed weights.
+fn candidate_score(a: Agent, p: Perception, action: u32, movement: f32,
+    target_food: f32, closeness: f32, target_event: f32, alignment: f32) -> f32 {
+  let hunger=clamp(1.0-a.energy/100.0,0.0,1.0);
+  let stock=clamp(1.0-a.food/FOOD_CAPACITY,0.0,1.0);
+  let limit=max(params.resource_and_noise.x/1000.0,0.001);
+  let attainable=min(min(p.resource_here,limit),max(0.0,FOOD_CAPACITY-a.food))/limit;
+  let bite=min(min(a.food,0.1),max(0.0,100.0-a.energy)/max(params.resource_and_noise.y,0.001))/0.1;
+  let received=select(0.0,clamp(a.event_amount,-1.0,1.0),params.tick-a.event_tick<32u && a.event_actor<INVALID);
+  let features=array<f32,16>(1.0,a.energy/100.0,a.food/8.0,hunger,stock,min(p.resource_here,1.0),
+    attainable*stock*(0.7+hunger),hunger*hunger*bite,p.competition_pressure,
+    target_food/8.0,closeness,received,target_event,alignment,clamp(movement,-2.0,2.0),
+    f32(a.action==action));
+  var score=0.0;
+  for(var k=0u;k<16u;k++){score+=a.genome[16u+action*16u+k]*features[k];}
+  return score;
+}
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   let i=id.x;
@@ -87,7 +105,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
       - max(0.0,p.crowd[k]-1.0)*0.015 - params.time_and_costs.z*8.0;
     if (length(candidate-a.position)>1.0 && score>best_move) { best_move=score; goal=candidate; }
   }
-  for (var k=0u; k<4u; k++) {
+  for (var k=0u; k<16u; k++) {
     let place=a.places[k];
     if (place.confidence<=0.0) { continue; }
     let distance=length(place.position-a.position);
@@ -137,13 +155,43 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   if (params.lifecycle.z!=0u && emit_target<INVALID && a.energy>30.0 && params.tick>=a.last_communication+4u) {
     d.scores[EMIT]=emit_value*genome_scale(a,6u,1.0);
   }
+  if ((params.neural_config.w&4u)==0u) {
+    let movement=d.scores[MOVE];
+    for(var action=0u;action<7u;action++) { d.scores[action]=-1000.0; }
+    d.scores[WAIT]=candidate_score(a,p,WAIT,movement,0.0,0.0,0.0,0.0);
+    d.scores[MOVE]=candidate_score(a,p,MOVE,movement,0.0,0.0,0.0,0.0);
+    if(a.food<7.999 && p.resource_here>0.001){d.scores[HARVEST]=candidate_score(a,p,HARVEST,movement,0.0,0.0,0.0,0.0);}
+    if(a.food>0.001 && a.energy<99.0){d.scores[EAT]=candidate_score(a,p,EAT,movement,0.0,0.0,0.0,0.0);}
+    transfer_target=INVALID;force_target=INVALID;emit_target=INVALID;
+    for(var k=0u;k<8u;k++) {
+      let c=s.candidates[k];
+      if(c.target_slot>=params.agent_count || c.target_generation==0u){continue;}
+      let closeness=1.0-clamp(c.distance/max(a.sensor_radius,1.0),0.0,1.0);
+      let event=select(0.0,clamp(c.event_amount,-1.0,1.0),params.tick-c.event_tick<32u && c.event_actor<INVALID);
+      let alignment=dot(unit_vector(d.goal-a.position),c.velocity/max(a.max_speed,0.1));
+      if(c.distance<=INTERACTION_RADIUS){
+        if(a.food>0.001 && c.food<7.999){
+          let value=candidate_score(a,p,TRANSFER,movement,c.food,closeness,event,alignment);
+          if(value>d.scores[TRANSFER]){d.scores[TRANSFER]=value;transfer_target=c.target_slot;}
+        }
+        if(params.social_weights.w>0.5){
+          let value=candidate_score(a,p,APPLY_FORCE,movement,c.food,closeness,event,alignment);
+          if(value>d.scores[APPLY_FORCE]){d.scores[APPLY_FORCE]=value;force_target=c.target_slot;}
+        }
+      }
+      if(params.lifecycle.z!=0u && params.tick>=a.last_communication+4u){
+        let value=candidate_score(a,p,EMIT,movement,c.food,closeness,event,alignment);
+        if(value>d.scores[EMIT]){d.scores[EMIT]=value;emit_target=c.target_slot;}
+      }
+    }
+  }
   var best=-10000.0;
   for (var k=0u; k<7u; k++) {
     // Small bounded tie-breaking noise; never turns an unavailable action into an available one.
     let score=d.scores[k]+(random01(a.rng ^ k*0x9e3779b9u)-0.5)*params.resource_and_noise.w*0.15;
     if (score>best) { best=score; d.selected_action=k; }
   }
-  if (d.selected_action==TRANSFER) { d.target_id=transfer_target; d.amount=min(0.5,max(0.0,a.food-1.5)); }
+  if (d.selected_action==TRANSFER) { d.target_id=transfer_target; d.amount=min(0.5,max(0.0,a.food-select(0.0,1.5,(params.neural_config.w&4u)!=0u))); }
   if (d.selected_action==APPLY_FORCE) { d.target_id=force_target; d.amount=1.0; }
   if (d.selected_action==EMIT) { d.target_id=emit_target; d.amount=clamp(a.genome[6],-1.0,1.0); }
   decisions[i]=d;

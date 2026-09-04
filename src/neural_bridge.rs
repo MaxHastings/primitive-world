@@ -127,6 +127,9 @@ impl Simulation {
         n: usize,
     ) -> Result<Value, String> {
         let start = self.tick;
+        if start % crate::neural::INTERVAL != 0 {
+            return Err("Neural frame must start on an eight-tick boundary".into());
+        }
         let before: Vec<AgentGpu> = read_items(
             device,
             queue,
@@ -135,9 +138,14 @@ impl Simulation {
             n,
         )?;
         let mut encoder = device.create_command_encoder(&Default::default());
-        self.encode_ticks(&mut encoder, device, queue, crate::neural::INTERVAL);
+        // Capture the decision from the original life before later deaths or
+        // slot reuse can overwrite it during the eight-tick outcome window.
+        self.encode_ticks(&mut encoder, device, queue, 1);
         queue.submit(Some(encoder.finish()));
         let trace: Vec<NeuralState> = read_items(device, queue, &self.neural_state_buffer, 0, n)?;
+        let mut remainder = device.create_command_encoder(&Default::default());
+        self.encode_ticks(&mut remainder, device, queue, crate::neural::INTERVAL - 1);
+        queue.submit(Some(remainder.finish()));
         let after: Vec<AgentGpu> = read_items(
             device,
             queue,
@@ -155,15 +163,15 @@ impl Simulation {
                 let old_age = a.alive == 0 && a.age >= a.max_age;
                 // Energy-equivalent reserves: eating is a conversion, not new intake.
                 let conversion = self.settings.conversion_efficiency.max(0.001);
-                let delta =
-                    (a.energy + conversion * a.food - b.energy - conversion * b.food) / conversion;
+                let delta = if generation_changed { -(b.energy/conversion+b.food) } else {
+                    (a.energy + conversion * a.food - b.energy - conversion * b.food) / conversion };
                 json!({
                     "slot": i,
                     "generation": b.generation,
-                    "valid": b.alive != 0,
+                    "valid": b.alive != 0 && trace[i].valid!=0 && trace[i].generation==b.generation && trace[i].tick==start,
                     "trace": trace[i],
                     "done": died,
-                    "death_cause": if starvation { "starvation" } else if old_age { "age" } else { "none" },
+                    "death_cause": if generation_changed {"life_replaced"} else if starvation { "energy_depletion" } else if old_age { "age" } else { "none" },
                     "had_carried_food_at_start": b.food > 0.001,
                     "ground_food_observed": trace[i].observation[2],
                     "energy_before": b.energy,
@@ -218,6 +226,9 @@ impl Simulation {
                     Ok(json!({"loaded":w.name}))
                 }
                 "step" => self.neural_frame(device, queue, n),
+                "metrics" => Ok(
+                    json!({"world":self.metrics(device,queue)?,"evolution":self.evolution_snapshot(device,queue)?}),
+                ),
                 "forget" => {
                     self.reset_neural_memory(queue);
                     Ok(json!({"forgotten":true,"tick":self.tick}))

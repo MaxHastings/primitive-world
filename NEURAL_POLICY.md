@@ -1,10 +1,11 @@
 # Archived learned-policy contract
 
-The active project direction is now an inherited local controller. This GRU
+The active project direction is now candidate-v1 inherited action weights (see
+CONTROLLER.md). This GRU
 remains available through `--neural` as a comparison and historical experiment;
 it is not the default evolutionary mechanism.
 
-The simulator has one physical world and two decision implementations. The
+The simulator has one physical world and three decision implementations. The
 authored controller is a readable control for debugging the world. The learned
 controller is a shared GRU with one private state per individual. A live run
 does not update weights. It only changes the individual's hidden state through
@@ -12,8 +13,8 @@ what that individual can sense and what the body actually does.
 
 The policy is an archived experiment, not part of the active evolutionary
 kernel. It remains useful for numerical parity and controller comparisons, but
-its older observation schema contains reserved social slots that are zeroed by
-the current raw-perception pass. Do not use this path as evidence for social
+its older observation schema contains compatibility social slots, including
+authored transfer/force opportunity values. Do not use this path as evidence for social
 emergence.
 
 ## First principles
@@ -51,7 +52,7 @@ Observations at each eight-tick decision are:
 | 3–10 | food samples at eight directions at sensory radius |
 | 11 | local occupancy density |
 | 12–15 | four clipped boundary distances |
-| 16–21 | reserved compatibility slots; zero under the active raw-perception pass |
+| 16–21 | legacy social compatibility values; includes authored transfer/force opportunity scores |
 | 22–23 | previous body velocity, normalized by maximum speed |
 
 The last two values are proprioception. Without them, a policy cannot tell the
@@ -60,7 +61,9 @@ direction. Social values are observations of experienced consequences, not
 instructions to cooperate or attack.
 
 Actions are `wait`, `collect`, `ingest`, eight movement headings, `transfer`,
-`apply force`, and `emit`. The choice is held for eight physical ticks so a
+`apply force`, and `emit`. Decisions align to the global eight-tick boundary;
+newborns wait until the next boundary (at most seven ticks). This avoids an
+unrecorded recurrent step between training frames. The choice is held until the next boundary so a
 direction has time to produce a visible trip. If a held action becomes
 impossible, the body waits; the policy is not silently replaced by an authored
 score.
@@ -90,6 +93,14 @@ Survival feedback is the default experiment. Physiological reserve scoring is
 available only when explicitly requested because it encourages hoarding and
 does not transfer cleanly to ordinary-world reproduction. Neither is a target
 number; they are ways to inspect which consequences the policy currently uses.
+
+The trainer now exports experiments into reports/ by default. Five failed PPO
+updates are not evidence of a fundamental inability to learn. Surviving occupied
+sampled slots are not lineage survival: evaluations separately report complete
+world population, births and ancestry. Traces are captured after the first tick
+before deaths or slot reuse later in the outcome window can replace them.
+Neither existing reward credits descendants, and the shared GRU does not inherit
+mutated network weights. It must not be promoted as the evolutionary default.
 
 ## Reading an extinction
 

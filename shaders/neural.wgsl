@@ -11,7 +11,11 @@ fn neural_decision(i:u32,a:Agent,p:Perception,s:SocialPerception)->Decision {
   var d:Decision; d.target_id=INVALID;d.goal=a.position;
   var st=neural_state[i];
   let fresh=st.generation!=a.generation || st.valid==0u;
-  if (fresh || params.tick-st.tick>=max(params.neural_config.z,1u)) {
+  // A newborn waits until the next shared boundary. An unrecorded recurrent
+  // step between bridge frames would invalidate sequence-training parity.
+  let boundary=params.tick%max(params.neural_config.z,1u)==0u;
+  if (fresh && !boundary) {return d;}
+  if (boundary) {
     if (fresh || (params.neural_config.w&1u)!=0u) {for(var h=0u;h<NEURAL_HIDDEN;h++){st.hidden[h]=0.0;}}
     st.generation=a.generation;st.tick=params.tick;st.valid=1u;st.energy=a.energy;st.food=a.food;
     st.observation[0]=clamp(a.energy/100.0,0.0,1.0);st.observation[1]=clamp(a.food/8.0,0.0,1.0);
