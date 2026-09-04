@@ -16,10 +16,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   let d=decisions[i]; let p=perceptions[i];
   atomicAdd(&stats[24u+min(d.selected_action,6u)],1u);
   var foods = array<f32,5>(p.resource_here,p.resource_north,p.resource_east,p.resource_south,p.resource_west);
-  var dirs = array<vec2<f32>,5>(vec2<f32>(0),vec2<f32>(0,-1),vec2<f32>(1,0),vec2<f32>(0,1),vec2<f32>(-1,0));
   // Refresh observed places (including depleted ones); replace only weaker stale estimates.
   for (var sample=0u; sample<5u; sample++) {
-    let position=clamp(a.position+dirs[sample]*a.sensor_radius,vec2<f32>(0.0),vec2<f32>(params.world_size));
+    let position=clamp(a.position+food_sample_offset(sample,a.sensor_radius,params.tick,params.neural_config.w),vec2<f32>(0.0),vec2<f32>(params.world_size));
     var slot=0u; var weakest=1000.0; var matched=false;
     for (var k=0u; k<16u; k++) {
       if (ground_index(a.places[k].position)==ground_index(position) && a.places[k].confidence>0.0) {

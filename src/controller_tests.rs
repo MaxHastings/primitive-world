@@ -1,4 +1,195 @@
 #[test]
+fn diagnostic_sweep_phase_survives_batching_and_checkpoint_replay() {
+    let (device, queue) = gpu();
+    let mut sim = Simulation::new(&device, &queue, 99);
+    sim.settings.population = 1;
+    sim.settings.neural_flags = 16;
+    sim.reset(&queue);
+    step(&mut sim, &device, &queue, 12);
+    let expected = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 1)[0];
+    let expected_perception = read::<PerceptionGpu>(&device, &queue, &sim.perception_buffer, 1)[0];
+    sim.reset(&queue);
+    for _ in 0..12 {
+        step(&mut sim, &device, &queue, 1);
+    }
+    let actual = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 1)[0];
+    let actual_perception = read::<PerceptionGpu>(&device, &queue, &sim.perception_buffer, 1)[0];
+    assert_eq!(bytemuck::bytes_of(&expected), bytemuck::bytes_of(&actual));
+    assert_eq!(
+        bytemuck::bytes_of(&expected_perception),
+        bytemuck::bytes_of(&actual_perception)
+    );
+    step(&mut sim, &device, &queue, 5); // Save at a nonzero sweep phase.
+    let path = std::env::temp_dir().join(format!("sweep-replay-{}.checkpoint", std::process::id()));
+    sim.save_checkpoint(&device, &queue, &path).unwrap();
+    step(&mut sim, &device, &queue, 13);
+    let expected = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 1)[0];
+    sim.settings.neural_flags = 0;
+    sim.load_checkpoint(&queue, &path).unwrap();
+    assert_eq!(sim.tick, 17);
+    assert_eq!(sim.settings.neural_flags, 16);
+    step(&mut sim, &device, &queue, 13);
+    let actual = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 1)[0];
+    assert_eq!(bytemuck::bytes_of(&expected), bytemuck::bytes_of(&actual));
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn visible_modest_food_can_lose_to_authored_exploration() {
+    // Characterize the current bottleneck, not a desired behavioral contract.
+    // Remove/update this test when destination valuation is intentionally replaced.
+    let (device, queue) = gpu();
+    let mut sim = Simulation::new(&device, &queue, 98);
+    sim.settings.population = 0;
+    sim.settings.neural_flags = 8; // Four-unit samples, no distant food knowledge.
+    sim.settings.exploration_noise = 0.0;
+    sim.reset(&queue);
+    sim.update_params(&queue);
+    let a = AgentGpu {
+        position: [600.0, 900.0],
+        goal: [600.0, 900.0],
+        energy: 81.0,
+        food: 0.0,
+        age: 500.0,
+        alive: 1,
+        generation: 1,
+        max_speed: 1.2,
+        sensor_radius: 24.0,
+        max_age: 10000.0,
+        genome: bootstrap_genome(),
+        event_actor: MAX_AGENTS,
+        ..Default::default()
+    };
+    write_agents(&sim, &queue, &[a]);
+    for food in [0.3, 0.9] {
+        let p = PerceptionGpu {
+            resource_east: food,
+            ..Default::default()
+        };
+        queue.write_buffer(&sim.perception_buffer, 0, bytemuck::bytes_of(&p));
+        dispatch(
+            &device,
+            &queue,
+            &sim.decision_pipeline,
+            &sim.decision_bind_groups[0],
+            1,
+        );
+        let d = read::<DecisionGpu>(&device, &queue, &sim._decision_buffer, 1)[0];
+        assert_eq!(d.selected_action, 1);
+        if food < 0.5 {
+            let length = (d.goal[0] - a.position[0]).hypot(d.goal[1] - a.position[1]);
+            assert!(
+                (length - 48.0).abs() < 0.001,
+                "visible modest food still loses to a blind exploratory destination"
+            );
+            assert!((d.scores[1] - 0.078).abs() < 0.0001);
+        } else {
+            assert_eq!(d.goal, [604.0, 900.0], "sufficiently rich local food wins");
+        }
+    }
+}
+
+#[test]
+fn diagnostic_sensing_reads_and_remembers_actual_sample_coordinates() {
+    let (device, queue) = gpu();
+    let mut sim = Simulation::new(&device, &queue, 97);
+    sim.settings.population = 0;
+    sim.settings.exploration_noise = 0.0;
+    sim.reset(&queue);
+    queue.write_buffer(
+        &sim.ground_buffer,
+        0,
+        &vec![0u8; (RESOURCE_GRID * RESOURCE_GRID * 32) as usize],
+    );
+    for flags in [0, 8, 16] {
+        for tick in 0..6 {
+            sim.tick = tick;
+            sim.settings.neural_flags = flags;
+            sim.update_params(&queue);
+            let mut a = AgentGpu {
+                position: [602.0, 902.0],
+                goal: [602.0, 902.0],
+                energy: 65.0,
+                food: 2.0,
+                age: 500.0,
+                alive: 1,
+                generation: 1,
+                max_speed: 1.2,
+                sensor_radius: 24.0,
+                max_age: 10000.0,
+                next_birth: u32::MAX,
+                genome: bootstrap_genome(),
+                event_actor: MAX_AGENTS,
+                ..Default::default()
+            };
+            let mut food = vec![0u32; (RESOURCE_GRID * RESOURCE_GRID) as usize];
+            let values = [100, 200, 300, 900];
+            let mut positions = [[0.0; 2]; 4];
+            for k in 0..4 {
+                let offset = travel_diagnostic::sample_offset(k + 1, a.sensor_radius, tick, flags);
+                assert!(offset[0].hypot(offset[1]) <= a.sensor_radius + 0.0001);
+                positions[k] = [a.position[0] + offset[0], a.position[1] + offset[1]];
+                let cell =
+                    (positions[k][1] / 4.0) as usize * 512 + (positions[k][0] / 4.0) as usize;
+                food[cell] = values[k];
+            }
+            // An existing exact anchor must refresh the actual west/sample-4 cell.
+            a.places[0] = PlaceGpu {
+                position: positions[3],
+                confidence: 1.0,
+                food: 0.5,
+                ..Default::default()
+            };
+            write_agents(&sim, &queue, &[a]);
+            queue.write_buffer(&sim.resource_buffer, 0, bytemuck::cast_slice(&food));
+            dispatch(
+                &device,
+                &queue,
+                &sim.perception_pipeline,
+                &sim.perception_bind_groups[0],
+                1,
+            );
+            let p = read::<PerceptionGpu>(&device, &queue, &sim.perception_buffer, 1)[0];
+            for (actual, expected) in [
+                p.resource_north,
+                p.resource_east,
+                p.resource_south,
+                p.resource_west,
+            ]
+            .into_iter()
+            .zip([0.1, 0.2, 0.3, 0.9])
+            {
+                assert!((actual - expected).abs() < 0.000001);
+            }
+            assert_eq!(p.resource_here, 0.0);
+            dispatch(
+                &device,
+                &queue,
+                &sim.decision_pipeline,
+                &sim.decision_bind_groups[0],
+                1,
+            );
+            let d = read::<DecisionGpu>(&device, &queue, &sim._decision_buffer, 1)[0];
+            assert_eq!(d.selected_action, 1);
+            assert_eq!(
+                d.goal, positions[3],
+                "movement must use the observed coordinate"
+            );
+            dispatch(
+                &device,
+                &queue,
+                &sim.update_pipeline,
+                &sim.update_bind_groups[0][1],
+                1,
+            );
+            let after = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[1], 1)[0];
+            assert_eq!(after.places[0].position, positions[3]);
+            assert!((after.places[0].food - 0.9).abs() < 0.000001);
+        }
+    }
+}
+
+#[test]
 fn signed_controller_weights_can_choose_or_reject_force_and_read_events() {
     let (device, queue) = gpu();
     let mut sim = Simulation::new(&device, &queue, 91);

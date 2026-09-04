@@ -20,10 +20,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   let a = agents[i];
   if (a.alive == 0u) { perceptions[i] = p; return; }
   let r = a.sensor_radius;
-  var dirs = array<vec2<f32>, 4>(vec2<f32>(0,-1), vec2<f32>(1,0), vec2<f32>(0,1), vec2<f32>(-1,0));
   var foods: array<f32, 4>;
   for (var k=0u; k<4u; k++) {
-    let pos = a.position + dirs[k] * r;
+    let pos = a.position + food_sample_offset(k+1u,r,params.tick,params.neural_config.w);
     foods[k] = food_at(pos);
     if ((params.neural_config.w&2u)!=0u && params.tick>=8u) {foods[k]=0.0;}
     p.crowd[k] = crowd_at(pos);

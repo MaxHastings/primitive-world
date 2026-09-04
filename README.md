@@ -45,6 +45,9 @@ For individual discovery, known-target travel, and place-memory ablations, see
 [headless travel diagnostics](experiments/README.md) and the
 [measured travel findings](reports/TRAVEL_DIAGNOSTIC.md). These use an explicitly
 isolated two-patch fixture, not the ordinary population benchmark.
+The [matched sensing follow-up](reports/SENSING_DIAGNOSTIC.md) separates
+sensor coverage from the destination-ranking bottleneck. Experimental sensing
+modes are headless diagnostic options; ordinary sensing remains unchanged.
 
 The world is a bounded 2048-unit square with a 512-squared food/fertility grid and a 256-squared spatial index. Seeded geography creates large and small rich hubs joined by lower-yield forage bands, with irregular edges and some barren gaps. Rain, drought, soil depletion from harvesting, and fractional regeneration affect food within those regions. The variation slider controls variation within regions; changing the seed and resetting changes their placement. Agents have sixteen fixed, separated private place memories and observe a bounded set of raw nearby bodies. The action intent vocabulary is wait, move, collect, ingest, transfer, apply force, and emit; semantic labels belong to the observer, not the kernel. Collection and ingestion are separate actions; agents do not automatically feed while walking.
 

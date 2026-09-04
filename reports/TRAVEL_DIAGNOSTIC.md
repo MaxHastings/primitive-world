@@ -69,6 +69,11 @@ resource abundance.
 
 ## Diagnosis and next change
 
+**Follow-up:** the matched sensor-geometry experiment and destination-score
+characterization are recorded in [SENSING_DIAGNOSTIC.md](SENSING_DIAGNOSTIC.md).
+The hypotheses below describe what motivated that experiment, not proof that
+changing sensing alone fixes travel.
+
 1. **Destination choice is still an authored bottleneck.** `decide.wgsl` chooses
    one movement destination before evaluating inherited action weights. Fresh
    moderate-food memories lose to short exploration in the tested starting

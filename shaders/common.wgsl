@@ -85,3 +85,22 @@ fn ground_index(position: vec2<f32>) -> u32 {
   let c=vec2<u32>(clamp(position/4.0,vec2<f32>(0.0),vec2<f32>(511.0)));
   return c.y*512u+c.x;
 }
+// Diagnostic-only sensing treatments (flags 8/16). No extra food reads, RNG,
+// distant knowledge, or changed storage ABI. Channels are sample slots rather
+// than compass labels in sweep mode. All consumers use this exact geometry.
+fn food_sample_offset(slot: u32, radius: f32, tick: u32, flags: u32) -> vec2<f32> {
+  if (slot==0u) { return vec2<f32>(0.0); }
+  var dirs=array<vec2<f32>,4>(vec2<f32>(0,-1),vec2<f32>(1,0),vec2<f32>(0,1),vec2<f32>(-1,0));
+  var direction=dirs[slot-1u];
+  var range=radius;
+  if ((flags&8u)!=0u) { range=radius/6.0; }
+  if ((flags&16u)!=0u) {
+    let phase=tick%6u;
+    var ranges=array<f32,3>(radius/6.0,radius/2.0,radius);
+    range=ranges[phase%3u];
+    if (phase>=3u) {
+      direction=vec2<f32>(direction.x-direction.y,direction.x+direction.y)*0.7071067811865476;
+    }
+  }
+  return direction*range;
+}

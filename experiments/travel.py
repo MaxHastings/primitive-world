@@ -18,6 +18,7 @@ def main():
     parser.add_argument('--modes', nargs='+', choices=['discovery', 'known-target'], default=['discovery', 'known-target'])
     parser.add_argument('--food', type=float, default=0.3)
     parser.add_argument('--radius', type=float, default=16)
+    parser.add_argument('--sensing', choices=['baseline', 'near', 'sweep'], default='baseline')
     args = parser.parse_args()
     if not 1 <= args.ticks <= 10000:
         parser.error('ticks must be 1..10000')
@@ -37,7 +38,8 @@ def main():
                         command = [str(executable), '--headless', '--travel-diagnostic', '--seed', str(seed),
                                    '--ticks', str(args.ticks), '--travel-distance', str(separation),
                                    '--regeneration', str(regeneration), '--travel-genome', str(index % 128),
-                                   '--travel-mode', mode, '--travel-food', str(args.food), '--travel-radius', str(args.radius), '--output', str(report)]
+                                   '--travel-mode', mode, '--travel-food', str(args.food), '--travel-radius', str(args.radius),
+                                   '--travel-sensing', args.sensing, '--output', str(report)]
                         if erase:
                             command.append('--erase-place-memory')
                         print(json.dumps({'run': label}), flush=True)
@@ -45,7 +47,7 @@ def main():
                                        creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
                         data = json.loads(report.read_text())
                         row = dict(label=label, mode=mode, separation=separation, regeneration=regeneration,
-                                   seed=seed, erase=erase, genome=index % 128, report=str(report), command=command,
+                                   seed=seed, erase=erase, genome=index % 128, sensing=args.sensing, report=str(report), command=command,
                                    **data['outcome'])
                         rows.append(row)
                         summary = dict(schema=1, executable_sha256=fingerprint, complete=False, runs=rows,

@@ -57,6 +57,27 @@ fn reserves(a: &AgentGpu, conversion: f32) -> f32 {
     a.energy + a.food * conversion
 }
 
+// Observer mirror of common.wgsl; GPU tests check each sweep phase against
+// uniquely painted cells. Keep coordinates attached to their actual readings.
+pub(super) fn sample_offset(slot: usize, radius: f32, tick: u32, flags: u32) -> [f32; 2] {
+    if slot == 0 {
+        return [0.0; 2];
+    }
+    let mut dir = [[0.0, -1.0], [1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]][slot - 1];
+    let mut range = if flags & 8 != 0 { radius / 6.0 } else { radius };
+    if flags & 16 != 0 {
+        let phase = tick % 6;
+        range = [radius / 6.0, radius / 2.0, radius][(phase % 3) as usize];
+        if phase >= 3 {
+            dir = [
+                (dir[0] - dir[1]) * std::f32::consts::FRAC_1_SQRT_2,
+                (dir[0] + dir[1]) * std::f32::consts::FRAC_1_SQRT_2,
+            ];
+        }
+    }
+    [dir[0] * range, dir[1] * range]
+}
+
 fn finish_trip(
     j: Journey,
     a: &AgentGpu,
@@ -101,6 +122,7 @@ impl Simulation {
             "--output",
             "--erase-place-memory",
             "--bootstrap",
+            "--travel-sensing",
         ];
         if let Some(flag) = args
             .iter()
@@ -137,6 +159,13 @@ impl Simulation {
             .parse()
             .map_err(|_| "Invalid genome index")?;
         let mode = arg("--travel-mode", "discovery")?;
+        let sensing = arg("--travel-sensing", "baseline")?;
+        let sensing_flags = match sensing.as_str() {
+            "baseline" => 0,
+            "near" => 8,
+            "sweep" => 16,
+            _ => return Err("Travel sensing must be baseline|near|sweep".into()),
+        };
         let output = arg("--output", "reports/travel-diagnostic.json")?;
         let erase = args.iter().any(|a| a == "--erase-place-memory");
         let bootstrap = args.iter().any(|a| a == "--bootstrap");
@@ -167,6 +196,7 @@ impl Simulation {
         self.settings.population = 1;
         self.settings.resource_regeneration = regeneration;
         self.settings.evolving_landscape = false;
+        self.settings.neural_flags = sensing_flags;
         self.reset(queue);
         let mut a: AgentGpu =
             neural_bridge::read_items(device, queue, &self.agent_buffers[0], 0, 1)?[0];
@@ -308,15 +338,13 @@ impl Simulation {
                 p.resource_south,
                 p.resource_west,
             ];
-            for (k, dir) in [[0.0, 0.0], [0.0, -1.0], [1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]]
-                .iter()
-                .enumerate()
-            {
+            for k in 0..5 {
+                let offset = sample_offset(k, before.sensor_radius, self.tick - 1, sensing_flags);
                 if samples[k] > 0.001 {
                     if let Some(patch) = patch_at(
                         [
-                            before.position[0] + dir[0] * before.sensor_radius,
-                            before.position[1] + dir[1] * before.sensor_radius,
+                            (before.position[0] + offset[0]).clamp(0.0, WORLD_SIZE),
+                            (before.position[1] + offset[1]).clamp(0.0, WORLD_SIZE),
                         ],
                         &centers,
                         radius,
@@ -422,7 +450,7 @@ impl Simulation {
             }
         }
         let report = json!({"schema":1,"experiment":"isolated-two-patch-travel","seed":self.seed,"requested_ticks":ticks,"elapsed_ticks":self.tick,
-            "configuration":{"mode":mode,"erase_place_memory":erase,"distance":separation,"patch_radius":radius,"patch_cells":patch_cells,"regeneration":regeneration,"initial_food_per_cell":initial_food,
+            "configuration":{"mode":mode,"sensing":sensing,"sensing_flags":sensing_flags,"erase_place_memory":erase,"distance":separation,"patch_radius":radius,"patch_cells":patch_cells,"regeneration":regeneration,"initial_food_per_cell":initial_food,
                 "centers":centers,"founder_name":if bootstrap {"candidate-v1-bootstrap"}else{&self.settings.founder_name},"genome_index":genome_index,"genome":initial.genome.to_vec(),
                 "births_suppressed":true,"geography_static":true,"weather_active":true,"patch_productivity":1.0,"initial_energy":initial.energy,"initial_inventory":initial.food},
             "outcome":{"alive":a.alive!=0,"observed_patch_tick":observed,"entered_patch_tick":entry,"inter_patch_transitions":completed,"returns_after_other_patch":completed.saturating_sub(1),

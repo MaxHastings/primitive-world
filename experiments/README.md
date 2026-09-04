@@ -57,7 +57,36 @@ The batch runner accepts `--distances`, `--regenerations`, `--seeds`, `--modes`,
 Unrelated simulation options are rejected by the diagnostic rather than silently
 changing or being ignored by the trial.
 
-### Reading results
+### Matched sensing experiment
+
+`--travel-sensing baseline|near|sweep` (batch runner: `--sensing`) changes
+only the geometry of the four remote food/crowd samples. Underfoot sensing is
+unchanged. Default `baseline` is the ordinary controller's four cardinal points
+at radius 24. `near` puts those four points at radius/6 (4 units). `sweep` cycles
+through radii 4, 12, 24 at cardinal directions, then the same radii at diagonal
+directions, repeating every six ticks. This is sparse scanning, not a filled
+sensor disk; it adds neither sample reads per tick nor random draws.
+
+Movement candidates and private memories use the actual sampled coordinates.
+The authored destination scores, goal commitment, genomes, costs, resource
+production and reproduction rules are unchanged. Sweep trades temporal
+coverage for instantaneous coverage; its channels are sample slots, not fixed
+compass labels. These modes are restricted to the headless diagnostic CLI and
+are not promoted to GUI/default sensing or the archived neural controller.
+They use reserved flag bits 8/16 in the existing GPU experiment flag word;
+storage layouts and checkpoint version are unchanged.
+
+Matched example (use a separate new directory for each sensing mode):
+
+```powershell
+python experiments/travel.py --directory reports/my-sensing-baseline --sensing baseline --distances 300 --regenerations 0.002 0.02 --seeds 7 19 31 43 --modes discovery --ticks 3000
+```
+
+Repeat with `--sensing near` and `--sensing sweep`. These are 16 conditions
+per mode but only four seed/genome pairs, not 16 independent samples. Compare
+each condition directly across modes; do not compare only the best trajectories.
+
+### Metric definitions
 
 - `observed_patch_tick`: first positive food sample belonging to each patch;
   does not count the supplied initial memory as an observation.
@@ -82,3 +111,5 @@ changing or being ignored by the trial.
 
 Findings from the first batch and controls are recorded in
 [TRAVEL_DIAGNOSTIC.md](../reports/TRAVEL_DIAGNOSTIC.md).
+The matched sensor-geometry results and destination-score characterization are
+in [SENSING_DIAGNOSTIC.md](../reports/SENSING_DIAGNOSTIC.md).

@@ -92,13 +92,12 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   let hunger=clamp(1.0-a.energy/100.0,0.0,1.0);
   let stock_need=clamp(1.0-a.food/FOOD_CAPACITY,0.0,1.0);
   let urgency=(0.3+0.7*hunger)*genome_scale(a,0u,0.7);
-  var dirs=array<vec2<f32>,4>(vec2<f32>(0,-1),vec2<f32>(1,0),vec2<f32>(0,1),vec2<f32>(-1,0));
   var foods=array<f32,4>(p.resource_north,p.resource_east,p.resource_south,p.resource_west);
   var best_move=-1000.0;
   var goal=a.goal;
   // Compare destination-specific food and crowding, plus accessibility of observed people.
   for (var k=0u; k<4u; k++) {
-    let candidate=clamp(a.position+dirs[k]*a.sensor_radius,vec2<f32>(0.0),vec2<f32>(params.world_size));
+    let candidate=clamp(a.position+food_sample_offset(k+1u,a.sensor_radius,params.tick,params.neural_config.w),vec2<f32>(0.0),vec2<f32>(params.world_size));
     let supply=foods[k]/(1.0+p.crowd[k]*0.25);
     let score=(supply-p.projected_food)*stock_need*urgency
       + social_travel_value(a,s,candidate)
