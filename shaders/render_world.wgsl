@@ -54,7 +54,9 @@ fn fs(input: VertexOutput) -> @location(0) vec4<f32> {
     tint = mix(vec3<f32>(0.01, 0.02, 0.10), vec3<f32>(0.92, 0.12, 0.04), smoothstep(0.0, 0.9, density));
   }
   let dropped = f32(ground_words[(cell.y*GRID+cell.x)*2u].x)/1000.0;
-  tint=mix(tint,vec3<f32>(0.25,0.55,0.8),clamp(dropped/2.0,0.0,0.8));
+  // Painted/death-dropped food shares the natural food palette. Add a small
+  // brightness lift for visibility without turning it into a different color.
+  tint = min(tint + vec3<f32>(0.06, 0.10, 0.04) * clamp(dropped / 2.0, 0.0, 0.8), vec3<f32>(1.0));
   if (camera.lens==9u) {
     let habitat=clamp(bitcast<f32>(ground_words[(cell.y*GRID+cell.x)*2u+1u].z),0.0,1.0);
     let potential=sqrt(habitat);
