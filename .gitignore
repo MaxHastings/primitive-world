@@ -2,3 +2,10 @@
 /world.checkpoint
 /history.json
 /headless-report.json
+/training/__pycache__/
+/training/runtime.log
+/policies/*.pt
+/policies/*.report.json
+/policies/evaluation-*.json
+/reports/*.json
+/reports/*.log

@@ -25,6 +25,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   for (var k=0u; k<4u; k++) {
     let pos = a.position + dirs[k] * r;
     foods[k] = food_at(pos);
+    if ((params.neural_config.w&2u)!=0u && params.tick>=8u) {foods[k]=0.0;}
     p.crowd[k] = crowd_at(pos);
   }
   p.resource_here = food_at(a.position);

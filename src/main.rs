@@ -50,12 +50,15 @@ struct AppState {
     starvation_deaths: u32,
     age_deaths: u32,
     births: u32,
-    social_stats: [u32; 4],
+    interaction_stats: [u32; 4],
     history: std::collections::VecDeque<simulation::observability::WorldMetrics>,
     file_status: String,
     recent_events: Vec<simulation::observability::InteractionEvent>,
+    evolution_snapshot: Option<simulation::observability::EvolutionSnapshot>,
     cursor_position: PhysicalPosition<f64>,
     selected: Option<SelectionOutput>,
+    neural_inspection: Option<(u32, neural::NeuralState)>,
+    neural_path: String,
     seed_input: u32,
     shock_mode: ShockMode,
     shock_radius: f32,
@@ -192,10 +195,26 @@ impl AppState {
             };
 
         let mut simulation = Simulation::new(&device, &queue, 1);
-        if std::env::args().any(|arg| arg == "--neural") {
-            simulation.settings.neural_policy = true;
-            simulation.update_params(&queue);
+        let args: Vec<_> = std::env::args().collect();
+        let neural_path = args
+            .iter()
+            .position(|a| a == "--neural-weights")
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+            .unwrap_or_else(|| "policies/forager-v3.json".into());
+        if args
+            .iter()
+            .any(|arg| arg == "--neural" || arg == "--neural-weights")
+        {
+            match neural::NeuralWeights::load_json(std::path::Path::new(&neural_path))
+                .and_then(|w| simulation.set_neural_weights(&queue, &w))
+            {
+                Ok(()) => simulation.settings.neural_policy = true,
+                Err(e) => eprintln!("Neural policy not enabled: {e}"),
+            }
         }
+        simulation.settings.neural_greedy = args.iter().any(|a| a == "--neural-greedy");
+        simulation.update_params(&queue);
         let renderer = Renderer::new(
             &device,
             config.format,
@@ -239,12 +258,15 @@ impl AppState {
             starvation_deaths: 0,
             age_deaths: 0,
             births: 0,
-            social_stats: [0; 4],
+            interaction_stats: [0; 4],
             history: Default::default(),
             file_status: String::new(),
             recent_events: Vec::new(),
+            evolution_snapshot: None,
             cursor_position: PhysicalPosition::new(0.0, 0.0),
             selected: None,
+            neural_inspection: None,
+            neural_path,
             seed_input: 1,
             shock_mode: ShockMode::Select,
             shock_radius: 45.0,
@@ -465,9 +487,9 @@ impl AppState {
                     starvation_deaths,
                     age_deaths,
                     births,
-                    gifts,
+                    transfers,
                     force,
-                    shared,
+                    transferred_matter,
                     force_deaths,
                     ..,
                 ],
@@ -477,7 +499,7 @@ impl AppState {
                 self.starvation_deaths = starvation_deaths;
                 self.age_deaths = age_deaths;
                 self.births = births;
-                self.social_stats = [gifts, force, shared, force_deaths];
+                self.interaction_stats = [transfers, force, transferred_matter, force_deaths];
             }
         }
         if sample_gpu {
@@ -534,11 +556,11 @@ fn action_name(action: u32) -> &'static str {
     [
         "wait",
         "move",
-        "harvest",
-        "eat",
-        "give",
-        "force",
-        "communicate",
+        "collect",
+        "ingest",
+        "transfer",
+        "apply force",
+        "emit",
     ]
     .get(action as usize)
     .copied()
@@ -601,7 +623,7 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
             if let Some(m)=state.history.back() {
                 ui.label(format!("Juveniles: {}  vegetation: {:.0}  dropped: {:.1}  carried: {:.1}",m.juveniles,m.vegetation,m.dropped_food,m.carried_food));
                 ui.small(format!("Food per agent: {:.2}; reserves ≥1.5: {}; energy <20: {}",m.carried_food/m.living.max(1) as f64,m.stocked_agents,m.hungry_agents));
-                ui.small(format!("Useful ties: {} ({} nearby), mean distance {:.1}; food reports {}",m.strong_ties,m.nearby_strong_ties,m.mean_tie_distance,m.reports));
+                ui.small(format!("Local signals observed: {}", m.signals));
             }
             ui.collapsing("Population history",|ui| {
                 let (rect,_)=ui.allocate_exact_size(egui::vec2(330.0,80.0),egui::Sense::hover());
@@ -616,12 +638,22 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
                 }
                 if ui.button("Load checkpoint").clicked() {
                     state.file_status=match state.simulation.load_checkpoint(&state.queue,std::path::Path::new("world.checkpoint")) {
-                        Ok(())=>{state.selected=None;state.renderer.camera.selected_id=u32::MAX;state.history.clear();state.paused=true;
+                        Ok(())=>{state.selected=None;state.neural_inspection=None;state.renderer.camera.selected_id=u32::MAX;state.history.clear();state.paused=true;
                             if let Ok(m)=state.simulation.metrics(&state.device,&state.queue) {state.living_agents=m.living as u32;state.history.push_back(m);}
                             "Loaded world.checkpoint (paused)".into()},Err(e)=>e};
                 }
                 if ui.button("Export history").clicked() {
                     state.file_status=match serde_json::to_vec_pretty(&state.history).map_err(|e|e.to_string()).and_then(|bytes|std::fs::write("history.json",bytes).map_err(|e|e.to_string())) {Ok(())=>"Exported history.json".into(),Err(e)=>e};
+                }
+                if ui.button("Inspect evolution").clicked() {
+                    state.evolution_snapshot = match state.simulation.evolution_snapshot(&state.device, &state.queue) {
+                        Ok(snapshot) => { state.file_status = "Captured observer-only evolution snapshot".into(); Some(snapshot) },
+                        Err(error) => { state.file_status = error; None },
+                    };
+                }
+                if let Some(snapshot) = &state.evolution_snapshot {
+                    ui.small(format!("Evolution observer: {} lineages, {} parent links, max generation {}, fidelity {:.2}", snapshot.unique_lineages, snapshot.parent_lineages_present, snapshot.maximum_generation, snapshot.mean_copy_fidelity));
+                    ui.small(format!("Genome variance: {:?}", snapshot.genome_variance.map(|v| (v * 1000.0).round() / 1000.0)));
                 }
             });
             ui.collapsing("Recent interactions",|ui| {
@@ -629,16 +661,28 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
                     match state.simulation.recent_events(&state.device,&state.queue) {Ok(events)=>state.recent_events=events,Err(e)=>state.file_status=e};
                 }
                 for event in state.recent_events.iter().rev().take(40) {
-                    ui.small(format!("tick {}: {} {} -> {} ({:.2})",event.tick,event.actor,action_name(event.action),event.other,event.amount));
+                    ui.small(format!("tick {}: {} [{}] {} -> {} [{}] ({:.2})",event.tick,event.actor,event.actor_lineage,action_name(event.action),event.other,event.other_lineage,event.amount));
                 }
             });
             if !state.file_status.is_empty() {ui.small(&state.file_status);}
             ui.separator();
             ui.label("Primitive parameters");
+            ui.collapsing("Policy", |ui| {
+                ui.label(format!("Model: {}",state.simulation.settings.neural_model));
+                ui.text_edit_singleline(&mut state.neural_path);
+                if ui.button("Load neural forager").clicked() {
+                    state.file_status=match neural::NeuralWeights::load_json(std::path::Path::new(&state.neural_path)).and_then(|w|state.simulation.set_neural_weights(&state.queue,&w)) {
+                        Ok(())=>{state.simulation.settings.neural_policy=true;state.simulation.reset_neural_memory(&state.queue);state.neural_inspection=None;"Loaded GRU; private memories reset".into()},Err(e)=>e,
+                    };
+                }
+                if ui.button("Use evolved local controller").clicked(){state.simulation.settings.neural_policy=false;state.neural_inspection=None;}
+                ui.checkbox(&mut state.simulation.settings.neural_greedy,"Choose most probable neural action");
+                ui.small("Founders use the authored controller; births inherit and mutate eight controller traits. The GRU is an opt-in comparison.");
+            });
             ui.small(if state.simulation.settings.neural_policy {
-                "Policy: compact recurrent neural (opt-in)"
+                "Policy: learned GRU forager (8-tick decisions)"
             } else {
-                "Policy: authored local-rule baseline"
+                "Policy: evolved local-rule controller"
             });
             if ui
                 .add(
@@ -752,16 +796,13 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
             {
                 parameters_changed = true;
             }
-            ui.collapsing("Social and lifecycle controls", |ui| {
+            ui.collapsing("World affordances and lifecycle", |ui| {
                 ui.checkbox(&mut state.simulation.settings.evolving_landscape,"Evolving food landscape");
-                ui.add(egui::Slider::new(&mut state.simulation.settings.social_access,0.0..=1.0).text("value of social access"));
-                ui.add(egui::Slider::new(&mut state.simulation.settings.social_concern,0.0..=1.0).text("social concern"));
-                ui.add(egui::Slider::new(&mut state.simulation.settings.reciprocity,0.0..=1.0).text("expected future benefit"));
                 ui.add(egui::Slider::new(&mut state.simulation.settings.birth_cooldown,30..=1000).text("birth cooldown (ticks)"));
-                ui.checkbox(&mut state.simulation.settings.communication_enabled,"Local food information");
-                ui.checkbox(&mut state.simulation.settings.force_enabled,"Costly force");
+                ui.checkbox(&mut state.simulation.settings.communication_enabled,"Enable local signal affordance");
+                ui.checkbox(&mut state.simulation.settings.force_enabled,"Enable physical-force affordance");
             });
-            ui.label(format!("Gifts: {}  shared food: {:.2}  force: {}  force deaths: {}",state.social_stats[0],state.social_stats[2] as f32/1000.0,state.social_stats[1],state.social_stats[3]));
+            ui.label(format!("Transfers: {}  matter moved: {:.2}  force: {}  force deaths: {}",state.interaction_stats[0],state.interaction_stats[2] as f32/1000.0,state.interaction_stats[1],state.interaction_stats[3]));
             if state.living_agents==0 { ui.colored_label(egui::Color32::YELLOW,"Extinct. Resources continue recovering; Reset world explicitly reseeds."); }
             if state.living_agents==MAX_AGENTS { ui.label("Population is at the GPU capacity limit."); }
             ui.horizontal(|ui| {
@@ -784,9 +825,10 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
                 state.starvation_deaths = 0;
                 state.age_deaths = 0;
                 state.births = 0;
-                state.social_stats = [0; 4];
+                state.interaction_stats = [0; 4];
                 state.history.clear();
                 state.selected = None;
+                state.neural_inspection = None;
                 state.renderer.camera.selected_id = u32::MAX;
             }
             ui.separator();
@@ -824,7 +866,7 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
                 Lens::Age => ui.label("Particles: younger cyan → older magenta"),
                 Lens::Gradient => ui.label("Particles: local resource-gradient magnitude"),
                 Lens::CarriedFood => ui.label("Food reserves: empty red to stocked cyan; dropped food is blue"),
-                Lens::Action => ui.label("Wait gray / move blue / harvest green / eat yellow / give pink / force red / communicate cyan"),
+                Lens::Action => ui.label("Wait gray / move blue / collect green / ingest yellow / transfer pink / apply force red / emit cyan"),
                 Lens::Fertility => ui.label("Landscape potential: barren dark → fertile green/gold; weather changes actual growth"),
             };
             ui.separator();
@@ -844,6 +886,19 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
             if let Some(selected) = state.selected {
                 ui.separator();
                 ui.label(format!("Agent {}", selected.agent_id()));
+                if state.simulation.settings.neural_policy {
+                    if ui.button("Refresh neural decision").clicked() {
+                        match state.simulation.neural_inspect(&state.device,&state.queue,selected.agent_id() as usize) {
+                            Ok(trace)=>state.neural_inspection=Some((selected.agent_id(),trace)),Err(e)=>state.file_status=e,
+                        }
+                    }
+                    if let Some((id,trace))=state.neural_inspection.filter(|(id,st)|*id==selected.agent_id() && st.generation==selected.agent.generation) {
+                        ui.small(format!("Agent {id}: decision tick {}, generation {}",trace.tick,trace.generation));
+                        for (a,name) in neural::ACTION_NAMES.iter().enumerate(){ui.small(format!("{} {}: {:.1}%{}",if a==trace.choice as usize {">"}else{" "},name,trace.probabilities[a]*100.,if trace.mask[a]<0.5 {" (unavailable)"}else{""}));}
+                        ui.small(format!("Observed energy {:.1}, reserves {:.3}",trace.energy,trace.food));
+                        ui.small(format!("Food observations: {:?}",&trace.observation[2..11]));
+                    }
+                }
                 ui.label(format!(
                     "Age: {:.0} ticks    Energy: {:.2}",
                     selected.agent.age, selected.agent.energy
@@ -865,15 +920,19 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
                     selected.agent.goal[0], selected.agent.goal[1]
                 ));
                 ui.label(format!("Generation: {}  age limit: {:.0}  next birth eligible: {}",selected.agent.generation,selected.agent.max_age,selected.agent.next_birth));
+                ui.small(format!("Lineage {}  parent {}  born tick {}",selected.agent.lineage_id,selected.agent.parent_lineage,selected.agent.birth_tick));
+                ui.small(format!("Controller genome: {:?}", selected.agent.genome.map(|v| (v * 100.0).round() / 100.0)));
+                if state.simulation.settings.neural_policy {
+                    ui.small("Place records are private state; they are not objective scores.");
+                }
                 ui.collapsing("Remembered places", |ui| {
                     for place in selected.agent.places.iter().filter(|p|p.confidence>0.0) {
                         ui.label(format!("({:.0}, {:.0}) food {:.2}, observed tick {}, confidence {:.2}, source {}",place.position[0],place.position[1],place.food,place.observed,place.confidence,place.source_id));
                     }
                 });
-                ui.collapsing("Relationships", |ui| {
-                    for relation in selected.relations.iter().filter(|r|r.target_slot<MAX_AGENTS) {
-                        ui.label(format!("{}:{} familiar {:.2}, benefit {:.2}, harm {:.2}, guide {:.2}",relation.target_slot,relation.target_generation,relation.familiarity,relation.benefit,relation.harm,relation.navigation));
-                        ui.small(format!("Evidence: help {:.1}, harm {:.1}, navigation {:.1}; last seen {}",relation.benefit_evidence,relation.harm_evidence,relation.navigation_evidence,relation.last_seen_tick));
+                ui.collapsing("Nearby bodies (raw perception)", |ui| {
+                    for candidate in selected.social.candidates.iter().filter(|c| c.target_slot < MAX_AGENTS && c.target_generation != 0) {
+                        ui.label(format!("{}:{}  distance {:.1}  carried {:.2}  velocity {:.2},{:.2}", candidate.target_slot, candidate.target_generation, candidate.distance, candidate.food, candidate.velocity[0], candidate.velocity[1]));
                     }
                 });
                 if selected.agent.event_amount!=0.0 {
@@ -899,20 +958,16 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
                         selected.perception.competition_pressure
                     ));
                     ui.label(format!(
-                        "harm avoidance {:.3}, {:.3}; observed companion value {:.3}",
-                        selected.social.avoidance[0],
-                        selected.social.avoidance[1],
-                        selected.social.companion_value
+                        "raw nearby candidates: {}",
+                        selected.social.candidates.iter().filter(|c| c.target_slot < MAX_AGENTS && c.target_generation != 0).count()
                     ));
                     ui.label(format!(
-                        "known strength {:.3}  observed danger {:.3}  gradient {:.3}, {:.3}",
-                        selected.social.known_strength,
-                        selected.social.danger,
+                        "gradient {:.3}, {:.3}",
                         selected.perception.gradient[0], selected.perception.gradient[1]
                     ));
                 });
-                ui.collapsing("Candidate action scores", |ui| {
-                    for (name, score) in ["wait", "move", "harvest", "eat", "give", "force", "communicate"]
+                if !state.simulation.settings.neural_policy {ui.collapsing("Candidate action scores", |ui| {
+                    for (name, score) in ["wait", "move", "collect", "ingest", "transfer", "force", "emit"]
                         .into_iter()
                         .zip(selected.decision.scores)
                     {
@@ -920,10 +975,10 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
                     }
                     ui.label(format!(
                         "selected: {}",
-                        ["wait", "move", "harvest", "eat", "give", "force", "communicate"]
+                        ["wait", "move", "collect", "ingest", "transfer", "force", "emit"]
                             [selected.decision.selected_action.min(6) as usize]
                     ));
-                });
+                });}
             } else {
                 ui.label(
                     "Click an agent to inspect actual state, local perception, and action scores.",

@@ -1,5 +1,84 @@
 use super::*;
 
+#[test]
+fn gru_contract_memory_and_checkpoint() {
+    use crate::neural::{ACTIONS, HIDDEN, NeuralPolicy, NeuralState, NeuralWeights};
+    let (device, queue) = gpu();
+    let mut sim = Simulation::new(&device, &queue, 71);
+    let mut flat = NeuralWeights::baseline().flat();
+    for (i, w) in flat.iter_mut().enumerate() {
+        *w = ((i as f32 * 0.713).sin()) * 0.12;
+    }
+    let weights = NeuralWeights::from_flat(&flat).unwrap();
+    sim.set_neural_weights(&queue, &weights).unwrap();
+    sim.neural_world(
+        &queue, 4, 71, true, false, false, true, None, false, false, false,
+    )
+    .unwrap();
+    let mut expected = vec![NeuralPolicy::default(); 4];
+    for t in 0..3 {
+        sim.neural_frame(&device, &queue, 4).unwrap();
+        let traces = read::<NeuralState>(&device, &queue, &sim.neural_state_buffer, 4);
+        for (i, st) in traces.iter().enumerate() {
+            assert_eq!(st.tick, t * 8);
+            assert_eq!(st.generation, 1);
+            for h in 0..HIDDEN {
+                assert!((st.before[h] - expected[i].hidden[h]).abs() < 2e-5);
+            }
+            let logits = expected[i].step(&weights, st.observation);
+            for a in 0..ACTIONS {
+                assert!((logits[a] - st.logits[a]).abs() < 2e-5);
+                if st.mask[a] == 0. {
+                    assert_eq!(st.probabilities[a], 0.);
+                }
+            }
+            assert_eq!(st.mask[st.choice as usize], 1.);
+            assert!((st.probabilities.iter().sum::<f32>() - 1.).abs() < 1e-5);
+            for h in 0..HIDDEN {
+                assert!((st.after[h] - expected[i].hidden[h]).abs() < 2e-5);
+            }
+        }
+    }
+    let path = std::env::temp_dir().join(format!("gru-replay-{}.checkpoint", std::process::id()));
+    sim.save_checkpoint(&device, &queue, &path).unwrap();
+    let next = sim.neural_frame(&device, &queue, 4).unwrap();
+    sim.set_neural_weights(&queue, &NeuralWeights::baseline())
+        .unwrap();
+    sim.reset_neural_memory(&queue);
+    sim.load_checkpoint(&queue, &path).unwrap();
+    assert_eq!(
+        next,
+        sim.neural_frame(&device, &queue, 4).unwrap(),
+        "checkpoint includes model, RNG and private state"
+    );
+    // A dying body must clear working memory without losing its final decision trace.
+    let mut a = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 1)[0];
+    a.energy = 0.001;
+    a.food = 0.;
+    write_agents(&sim, &queue, &[a]);
+    sim.neural_frame(&device, &queue, 4).unwrap();
+    assert!(
+        sim.neural_inspect(&device, &queue, 0)
+            .unwrap()
+            .hidden
+            .iter()
+            .all(|h| *h == 0.)
+    );
+    // A reused identity starts immediately, then keeps its own eight-tick cadence.
+    step(&mut sim, &device, &queue, 3);
+    let born_at = sim.tick;
+    a.alive = 1;
+    a.energy = 60.;
+    a.generation += 1;
+    write_agents(&sim, &queue, &[a]);
+    sim.neural_frame(&device, &queue, 4).unwrap();
+    let st = sim.neural_inspect(&device, &queue, 0).unwrap();
+    assert_eq!(st.generation, 2);
+    assert_eq!(st.tick, born_at);
+    assert!(st.before.iter().all(|h| *h == 0.));
+    std::fs::remove_file(path).unwrap();
+}
+
 fn gpu() -> (wgpu::Device, wgpu::Queue) {
     pollster::block_on(async {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -137,7 +216,7 @@ fn migration_episode(
 }
 
 #[test]
-fn depleted_patch_migration_uses_reports_and_learned_guides() {
+fn raw_local_perception_does_not_create_a_shared_information_channel() {
     let (device, queue) = gpu();
     let mut report = Vec::new();
     for mode in [
@@ -253,48 +332,21 @@ fn depleted_patch_migration_uses_reports_and_learned_guides() {
             .filter(|a| a.alive != 0)
             .count();
         let row = serde_json::json!({"mode":mode,"first_arrivals":first,"first_contact_ticks":first_contact,"learned_navigation":guidance,
-            "second_arrivals":second,"second_contact_ticks":second_contact,"survivors":alive,"reports":sim.metrics(&device,&queue).unwrap().reports});
+            "second_arrivals":second,"second_contact_ticks":second_contact,"survivors":alive,"signals":sim.metrics(&device,&queue).unwrap().signals});
         eprintln!("Migration: {row}");
         report.push(row);
     }
-    std::fs::write(
-        "reports/social-migration.json",
-        serde_json::to_vec_pretty(&report).unwrap(),
-    )
-    .unwrap();
-    assert!(
-        report[0]["first_arrivals"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|v| v == true),
-        "reports should guide all three to food"
-    );
-    assert!(
+    // A local signal is not a structured map update and must not become a
+    // hidden population-level information channel.
+    assert_eq!(report[0]["signals"].as_u64().unwrap(), 0);
+    assert_eq!(
         report[0]["learned_navigation"]
             .as_array()
             .unwrap()
             .iter()
-            .all(|v| v.as_f64().unwrap() > 0.0),
-        "successful arrival should teach followers about the guide"
-    );
-    assert!(
-        report[0]["second_contact_ticks"].as_u64() > report[2]["second_contact_ticks"].as_u64(),
-        "remembered experience should preserve more contact"
-    );
-    assert!(
-        report[0]["second_arrivals"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|v| v == true)
-    );
-    assert!(
-        report[0]["survivors"].as_u64() > report[2]["survivors"].as_u64(),
-        "following a useful guide should materially improve survival in this scenario"
-    );
-    assert!(
-        report[0]["second_contact_ticks"].as_u64() > report[3]["second_contact_ticks"].as_u64()
+            .filter(|v| v.as_f64().unwrap() > 0.0)
+            .count(),
+        0
     );
 }
 
@@ -520,11 +572,6 @@ fn motion_diagnostic() {
             );
         }
     }
-    std::fs::write(
-        "reports/motion-diagnostic.json",
-        serde_json::to_vec_pretty(&rows).unwrap(),
-    )
-    .unwrap();
 }
 
 #[test]
@@ -628,7 +675,19 @@ fn physical_actions_and_births_conserve_reserves() {
     a.energy = 90.0;
     a.food = 4.0;
     a.age = 500.0;
+    a.genome = [0.4; crate::simulation::GENOME_SIZE];
     write_agents(&sim, &queue, &[a, AgentGpu::default()]);
+    let old_memory = crate::neural::NeuralState {
+        generation: 99,
+        valid: 1,
+        hidden: [0.75; crate::neural::HIDDEN],
+        ..Default::default()
+    };
+    queue.write_buffer(
+        &sim.neural_state_buffer,
+        std::mem::size_of_val(&old_memory) as u64,
+        bytemuck::bytes_of(&old_memory),
+    );
     queue.write_buffer(&sim.birth_parents, 0, bytemuck::bytes_of(&0u32));
     queue.write_buffer(&sim.free_indices, 0, bytemuck::bytes_of(&1u32));
     for buffer in [&sim.birth_prefix[1], &sim.free_prefix[1]] {
@@ -648,12 +707,25 @@ fn physical_actions_and_births_conserve_reserves() {
     );
     let pair = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[0], 2);
     assert_eq!(pair[1].alive, 1);
+    let child_memory = sim.neural_inspect(&device, &queue, 1).unwrap();
+    assert_eq!(child_memory.valid, 0);
+    assert!(child_memory.hidden.iter().all(|h| *h == 0.));
     assert_eq!(pair[0].food + pair[1].food, a.food);
     assert!(
         (pair[0].energy + pair[1].energy - (a.energy - sim.settings.reproduction_cost * 0.2)).abs()
             < 0.0001
     );
     assert_eq!(pair[0].next_birth, sim.settings.birth_cooldown);
+    assert_eq!(pair[1].parent_lineage, pair[0].lineage_id);
+    assert_ne!(pair[1].lineage_id, pair[0].lineage_id);
+    assert_eq!(pair[1].birth_parent_slot, 0);
+    assert!(
+        pair[1]
+            .genome
+            .iter()
+            .all(|gene| *gene >= -1.0 && *gene <= 1.0)
+    );
+    assert_ne!(pair[0].genome, pair[1].genome);
 }
 
 #[test]
@@ -694,6 +766,7 @@ fn famine_survivors_recover_and_fractional_growth_accumulates() {
     sim.settings.resource_regeneration = 0.0;
     sim.settings.maturity_age = 80.0;
     sim.settings.birth_cooldown = 80;
+    sim.settings.force_enabled = false;
     sim.reset(&queue);
     queue.write_buffer(
         &sim.resource_buffer,
@@ -914,7 +987,7 @@ fn a_trip_survives_small_preference_changes_and_an_eating_pause() {
 }
 
 #[test]
-fn surplus_can_produce_a_voluntary_gift() {
+fn surplus_can_produce_a_physical_transfer() {
     let (device, queue) = gpu();
     let mut sim = Simulation::new(&device, &queue, 43);
     sim.settings.population = 0;
@@ -953,7 +1026,7 @@ fn surplus_can_produce_a_voluntary_gift() {
     let result = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 2);
     assert_eq!(
         result[0].action, 4,
-        "the normal decision pipeline should choose the gift"
+        "the normal decision pipeline should choose the transfer"
     );
     assert!((result[0].food - 3.5).abs() < 0.001);
     assert!(result[1].food >= 0.5);
@@ -1017,13 +1090,13 @@ fn place_memory_guides_travel_and_urgent_eating_interrupts_it() {
 }
 
 #[test]
-fn completed_gifts_change_relationships_and_remote_people_are_not_tracked() {
+fn completed_transfers_conserve_matter_and_remote_people_are_not_tracked() {
     let (device, queue) = gpu();
     let mut sim = Simulation::new(&device, &queue, 19);
     sim.settings.population = 0;
-    sim.settings.social_access = 0.35;
-    sim.settings.social_concern = 0.25;
-    sim.settings.reciprocity = 0.5;
+    sim.settings.social_access = 0.0;
+    sim.settings.social_concern = 0.0;
+    sim.settings.reciprocity = 0.0;
     sim.reset(&queue);
     sim.update_params(&queue);
     let mut donor = AgentGpu {
@@ -1076,13 +1149,13 @@ fn completed_gifts_change_relationships_and_remote_people_are_not_tracked() {
         &sim.social_bind_groups[0],
         2,
     );
-    let relations = read::<SocialRelationGpu>(&device, &queue, &sim.social_memory_buffer, 16);
-    let learned = relations[8..]
-        .iter()
-        .find(|r| r.target_slot == 0 && r.target_generation == 1)
-        .unwrap();
-    assert!(learned.benefit > 0.0 && learned.benefit_evidence > 0.0);
-    // Force acts on supplies physically, with no automatic acquisition.
+    // The transfer is a physical consequence, not a reputation update.
+    assert!(
+        read::<SocialRelationGpu>(&device, &queue, &sim.social_memory_buffer, 16)
+            .iter()
+            .all(|r| r.target_slot >= MAX_AGENTS)
+    );
+    // Remote bodies do not enter the local candidate set.
     donor = after[0];
     donor.position = [1000.0, 1000.0];
     queue.write_buffer(&sim.agent_buffers[0], 0, bytemuck::bytes_of(&donor));
@@ -1102,14 +1175,14 @@ fn completed_gifts_change_relationships_and_remote_people_are_not_tracked() {
         "remote helpers must not influence movement"
     );
     assert!(
-        read::<SocialRelationGpu>(&device, &queue, &sim.social_memory_buffer, 16)[8..]
+        read::<SocialRelationGpu>(&device, &queue, &sim.social_memory_buffer, 16)
             .iter()
-            .any(|r| r.target_slot == 0 && r.benefit > 0.0)
+            .all(|r| r.target_slot >= MAX_AGENTS)
     );
 }
 
 #[test]
-fn reports_keep_provenance_and_force_spills_instead_of_creating_loot() {
+fn emitted_signal_is_local_and_does_not_create_a_shared_map() {
     let (device, queue) = gpu();
     let mut sim = Simulation::new(&device, &queue, 21);
     sim.settings.population = 0;
@@ -1117,7 +1190,7 @@ fn reports_keep_provenance_and_force_spills_instead_of_creating_loot() {
     sim.reset(&queue);
     sim.tick = 100;
     sim.update_params(&queue);
-    let mut a = AgentGpu {
+    let a = AgentGpu {
         position: [100.0, 100.0],
         energy: 80.0,
         alive: 1,
@@ -1127,26 +1200,16 @@ fn reports_keep_provenance_and_force_spills_instead_of_creating_loot() {
         rng: 1,
         ..Default::default()
     };
-    a.places[0] = PlaceGpu {
-        position: [200.0, 100.0],
-        food: 0.8,
-        observed: 20,
-        source_id: 0,
-        source_generation: 4,
-        confidence: 1.0,
-        ..Default::default()
-    };
-    let mut b = AgentGpu {
+    let b = AgentGpu {
         position: [103.0, 100.0],
         generation: 2,
         ..a
     };
-    b.places = [PlaceGpu::default(); 4];
     write_agents(&sim, &queue, &[a, b]);
     let d = DecisionGpu {
         selected_action: 6,
         target: 1,
-        amount: 0.0,
+        amount: 0.75,
         ..Default::default()
     };
     queue.write_buffer(
@@ -1169,10 +1232,7 @@ fn reports_keep_provenance_and_force_spills_instead_of_creating_loot() {
             2,
         );
     }
-    let pair = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[0], 2);
-    assert_eq!(pair[1].places[0].observed, 20);
-    assert_eq!(pair[1].places[0].source_id, 0);
-    assert!(pair[1].places[0].confidence < 1.0);
+    let before = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[0], 2);
     for pipeline in &sim.interaction_pipelines {
         dispatch(
             &device,
@@ -1182,16 +1242,37 @@ fn reports_keep_provenance_and_force_spills_instead_of_creating_loot() {
             2,
         );
     }
-    assert_eq!(
-        read::<AgentGpu>(&device, &queue, &sim.agent_buffers[0], 2)[1].places[0].confidence,
-        pair[1].places[0].confidence,
-        "duplicate reports cannot gain confidence"
-    );
-    // A high-energy attacker versus an exhausted holder makes success nearly certain.
-    a.food = 0.0;
-    a.energy = 100.0;
-    b.food = 2.0;
-    b.energy = 0.01;
+    let after = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[0], 2);
+    assert_eq!(after[1].event_actor, 0);
+    assert!((after[1].event_amount - 0.75).abs() < 0.001);
+    assert_eq!(after[1].places, before[1].places);
+}
+
+#[test]
+fn apply_force_spills_matter_without_direct_transfer() {
+    let (device, queue) = gpu();
+    let mut sim = Simulation::new(&device, &queue, 22);
+    sim.settings.population = 0;
+    sim.settings.force_enabled = true;
+    sim.reset(&queue);
+    let a = AgentGpu {
+        position: [100.0, 100.0],
+        energy: 100.0,
+        food: 0.0,
+        alive: 1,
+        generation: 1,
+        sensor_radius: 24.0,
+        ..Default::default()
+    };
+    let b = AgentGpu {
+        position: [102.0, 100.0],
+        energy: 0.01,
+        food: 2.0,
+        alive: 1,
+        generation: 1,
+        sensor_radius: 24.0,
+        ..Default::default()
+    };
     write_agents(&sim, &queue, &[a, b]);
     queue.write_buffer(
         &sim._decision_buffer,
@@ -1216,23 +1297,19 @@ fn reports_keep_provenance_and_force_spills_instead_of_creating_loot() {
     let ci = 25 * 512 + 25;
     let dropped =
         read::<u32>(&device, &queue, &sim.ground_buffer, (ci + 1) * 8)[ci * 8] as f32 / 1000.0;
-    assert_eq!(pair[0].food, 0.0, "force does not directly transfer loot");
+    assert_eq!(pair[0].food, 0.0);
     assert!((pair[0].food + pair[1].food + dropped - 2.0).abs() < 0.001);
     assert!(pair[1].event_amount < 0.0);
     assert!(pair[0].energy < 100.0);
 }
 
 #[test]
-fn witnessed_harm_can_trigger_intervention_and_contended_gifts_conserve_food() {
+fn generic_force_and_contended_transfers_conserve_matter() {
     let (device, queue) = gpu();
     let mut sim = Simulation::new(&device, &queue, 23);
     sim.settings.population = 0;
-    sim.settings.social_concern = 0.25;
-    sim.settings.reciprocity = 0.5;
     sim.settings.force_enabled = true;
     sim.reset(&queue);
-    sim.tick = 2;
-    sim.update_params(&queue);
     let a = AgentGpu {
         position: [100.0, 100.0],
         energy: 90.0,
@@ -1243,41 +1320,6 @@ fn witnessed_harm_can_trigger_intervention_and_contended_gifts_conserve_food() {
         sensor_radius: 24.0,
         ..Default::default()
     };
-    let victim = AgentGpu {
-        position: [102.0, 100.0],
-        event_actor: 2,
-        event_generation: 1,
-        event_tick: 1,
-        event_amount: -0.5,
-        ..a
-    };
-    let aggressor = AgentGpu {
-        position: [104.0, 100.0],
-        ..a
-    };
-    write_agents(&sim, &queue, &[a, victim, aggressor]);
-    queue.write_buffer(
-        &sim.social_memory_buffer,
-        0,
-        bytemuck::bytes_of(&SocialRelationGpu {
-            target_slot: 1,
-            target_generation: 1,
-            familiarity: 1.0,
-            benefit: 1.0,
-            benefit_evidence: 3.0,
-            ..Default::default()
-        }),
-    );
-    dispatch(
-        &device,
-        &queue,
-        &sim.social_pipeline,
-        &sim.social_bind_groups[0],
-        3,
-    );
-    let social = read::<SocialPerceptionGpu>(&device, &queue, &sim._social_perception_buffer, 1)[0];
-    assert_eq!(social.force_target, 2);
-    assert!(social.force_value > 0.0);
     // Two donors contend over the same recipient; accepted pairs may not overlap.
     let agents = [a, a, AgentGpu { food: 0.0, ..a }];
     write_agents(&sim, &queue, &agents);
@@ -1319,9 +1361,10 @@ fn witnessed_harm_can_trigger_intervention_and_contended_gifts_conserve_food() {
 
 #[test]
 fn gpu_pipeline_and_clock_validation() {
-    assert_eq!(std::mem::size_of::<AgentGpu>(), 256);
+    assert_eq!(std::mem::size_of::<crate::neural::NeuralState>(), 672);
+    assert_eq!(std::mem::size_of::<AgentGpu>(), 304);
     assert_eq!(std::mem::size_of::<SocialRelationGpu>(), 48);
-    assert_eq!(std::mem::size_of::<SocialPerceptionGpu>(), 64);
+    assert_eq!(std::mem::size_of::<SocialPerceptionGpu>(), 640);
     let (device, queue) = gpu();
     let mut sim = Simulation::new(&device, &queue, 9);
     // Validate render shaders/layouts as well as every compute pipeline, without a window.
@@ -1364,6 +1407,10 @@ fn gpu_pipeline_and_clock_validation() {
     assert_eq!(selected.agent.generation, single[0].generation);
     let metrics = sim.metrics(&device, &queue).unwrap();
     assert_eq!(metrics.living, 1);
+    let evolution = sim.evolution_snapshot(&device, &queue).unwrap();
+    assert_eq!(evolution.living, 1);
+    assert_eq!(evolution.unique_lineages, 1);
+    assert!(evolution.mean_copy_fidelity >= 0.0 && evolution.mean_copy_fidelity <= 1.0);
     let checkpoint = std::env::temp_dir().join(format!(
         "primitive-world-{}-test.checkpoint",
         std::process::id()
@@ -1379,56 +1426,7 @@ fn gpu_pipeline_and_clock_validation() {
             &read::<AgentGpu>(&device, &queue, &sim.agent_buffers[sim.current_buffer], 1)[0]
         )
     );
-    // Exercise the actual v5 migration, including old agent and relation strides.
-    let saved = std::fs::read(&checkpoint).unwrap();
-    let settings_len = u32::from_le_bytes(saved[20..24].try_into().unwrap()) as usize;
-    let mut settings: serde_json::Value =
-        serde_json::from_slice(&saved[24..24 + settings_len]).unwrap();
-    settings
-        .as_object_mut()
-        .unwrap()
-        .remove("evolving_landscape");
-    let json = serde_json::to_vec(&settings).unwrap();
-    let mut legacy = b"PRIMWORLD005".to_vec();
-    legacy.extend_from_slice(&saved[12..20]);
-    legacy.extend_from_slice(&(json.len() as u32).to_le_bytes());
-    legacy.extend_from_slice(&json);
-    let mut cursor = 24 + settings_len;
-    for index in 0..7 {
-        let len = u64::from_le_bytes(saved[cursor..cursor + 8].try_into().unwrap()) as usize;
-        cursor += 8;
-        let bytes = &saved[cursor..cursor + len];
-        cursor += len;
-        let mut old = Vec::new();
-        if index == 0 {
-            for a in bytes.chunks_exact(256) {
-                old.extend_from_slice(&a[..120]);
-                old.extend_from_slice(&a[128..]);
-            }
-        } else if index == 4 {
-            for r in bytes.chunks_exact(48) {
-                old.extend_from_slice(&r[..40]);
-            }
-            old[32..36].copy_from_slice(&0.6f32.to_le_bytes());
-        } else {
-            old.extend_from_slice(bytes);
-        }
-        legacy.extend_from_slice(&(old.len() as u64).to_le_bytes());
-        legacy.extend_from_slice(&old);
-    }
-    let legacy_path = checkpoint.with_extension("v5.checkpoint");
-    std::fs::write(&legacy_path, legacy).unwrap();
-    sim.load_checkpoint(&queue, &legacy_path).unwrap();
-    assert!(
-        !sim.settings.evolving_landscape,
-        "legacy saves retain their landscape mode"
-    );
-    let restored = read::<AgentGpu>(&device, &queue, &sim.agent_buffers[0], 1)[0];
-    assert_eq!(restored.position, single[0].position);
-    assert_eq!(restored.guide_position, restored.goal);
-    let relation = read::<SocialRelationGpu>(&device, &queue, &sim.social_memory_buffer, 1)[0];
-    assert_eq!(relation.navigation, 0.6);
-    assert_eq!(relation.last_report_tick, 0);
-    std::fs::remove_file(legacy_path).unwrap();
+    let header = std::fs::read(&checkpoint).unwrap();
+    assert_eq!(&header[..12], b"PRIMWORLD010");
     std::fs::remove_file(checkpoint).unwrap();
 }

@@ -1,9 +1,9 @@
-struct InteractionEvent { tick:u32, actor:u32, other:u32, action:u32, amount:f32, sequence:u32, position:vec2<f32>, };
+struct InteractionEvent { tick:u32, actor:u32, other:u32, action:u32, amount:f32, sequence:u32, actor_lineage:u32, other_lineage:u32, position:vec2<f32>, };
 @group(0) @binding(6) var<storage,read_write> events:array<InteractionEvent>;
 @group(0) @binding(7) var<storage,read_write> relations:array<Relation>;
 fn record(actor:u32,other:u32,action:u32,amount:f32,position:vec2<f32>) {
   let sequence=atomicAdd(&stats[8],1u);
-  events[sequence%65536u]=InteractionEvent(params.tick,actor,other,action,amount,sequence,position);
+  events[sequence%65536u]=InteractionEvent(params.tick,actor,other,action,amount,sequence,agents[actor].lineage_id,agents[other].lineage_id,position);
 }
 @group(0) @binding(5) var<storage, read_write> ground: array<Ground>;
 @group(0) @binding(0) var<storage, read_write> agents: array<Agent>;
@@ -42,34 +42,13 @@ fn resolve(@builtin(global_invocation_id) id: vec3<u32>) {
   let contact_radius=select(INTERACTION_RADIUS,min(a.sensor_radius,b.sensor_radius),d.selected_action==COMMUNICATE);
   if (distance>contact_radius) { return; }
   if (d.selected_action==COMMUNICATE) {
-    let report=a.places[min(u32(d.amount),3u)];
-    var replace=0u; var weakest=1000.0; var duplicate=false;
-    for (var k=0u;k<4u;k++) {
-      if (length(b.places[k].position-report.position)<4.0 && b.places[k].confidence>0.0) {
-        if (b.places[k].observed>=report.observed) { duplicate=true; }
-        replace=k; weakest=-1.0; break;
-      }
-      let quality=b.places[k].food*b.places[k].confidence*exp(-f32(params.tick-b.places[k].observed)/1800.0);
-      if (quality<weakest) { weakest=quality; replace=k; }
-    }
-    if (!duplicate && report.confidence>0.0) {
-      b.places[replace]=report; b.places[replace].confidence*=0.8;
-      record(i,j,COMMUNICATE,report.food,a.position); atomicAdd(&stats[9],1u);
-    }
-    var slot=0u; var weakest_relation=1000.0;
-    for (var k=0u;k<8u;k++) {
-      let r=relations[i*8u+k];
-      if (r.target_slot==j && r.target_generation==b.generation) { slot=k; break; }
-      let retention=r.familiarity+r.benefit+r.navigation+r.harm*2.0;
-      if (r.target_slot>=INVALID || retention<weakest_relation) { slot=k; weakest_relation=retention; }
-    }
-    var remembered=relations[i*8u+slot];
-    if (remembered.target_slot!=j || remembered.target_generation!=b.generation) {
-      remembered=Relation(j,b.generation,0.01,0.0,0.0,params.tick,0.0,0.0,0.0,0.0,0u,0u);
-    }
-    remembered.last_report_tick=max(1u,params.tick);
-    remembered.last_report_observed=report.observed;
-    relations[i*8u+slot]=remembered;
+    // EMIT is a local signal, not a structured food report. Its meaning is
+    // deliberately left to the receiver's inherited controller and memory.
+    let signal=clamp(d.amount,-1.0,1.0);
+    b.event_amount=signal;
+    b.event_actor=i; b.event_generation=a.generation; b.event_tick=params.tick;
+    record(i,j,EMIT,signal,a.position);
+    atomicAdd(&stats[9],1u);
     a.energy=max(0.0,a.energy-0.02); a.last_communication=params.tick;
     agents[i]=a; agents[j]=b; return;
   }

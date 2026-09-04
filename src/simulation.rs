@@ -1,8 +1,8 @@
 use std::sync::mpsc;
 
+use crate::neural::{NeuralState, NeuralWeights};
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
-use crate::neural::{NeuralWeights, HIDDEN as NEURAL_HIDDEN};
 
 pub const MAX_AGENTS: u32 = 100_000;
 pub const RESOURCE_GRID: u32 = 512;
@@ -12,9 +12,11 @@ pub const WORLD_SIZE: f32 = 2048.0;
 pub const RESOURCE_SCALE: f32 = 1000.0;
 pub const DEATH_STATS_COUNT: u32 = 12;
 pub const SOCIAL_SLOTS: u32 = 8;
+pub const GENOME_SIZE: usize = 8;
+pub const EVENT_RING_SIZE: u32 = 65_536;
 
 #[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
+#[derive(Clone, Copy, Pod, Zeroable, Debug, Default, PartialEq)]
 pub struct PlaceGpu {
     pub position: [f32; 2],
     pub food: f32,
@@ -56,6 +58,14 @@ pub struct AgentGpu {
     pub guide_result: f32,
     pub guide_position: [f32; 2],
     pub places: [PlaceGpu; 4],
+    /// Heritable controller traits. Zero is the authored ancestor; births
+    /// inherit these values with bounded mutation.
+    pub genome: [f32; GENOME_SIZE],
+    /// Observer-only ancestry. These identifiers never enter agent decisions.
+    pub lineage_id: u32,
+    pub parent_lineage: u32,
+    pub birth_tick: u32,
+    pub birth_parent_slot: u32,
 }
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
@@ -75,6 +85,26 @@ pub struct PerceptionGpu {
 }
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
+pub struct SocialCandidateGpu {
+    pub target_slot: u32,
+    pub target_generation: u32,
+    pub position: [f32; 2],
+    pub velocity: [f32; 2],
+    pub distance: f32,
+    pub food: f32,
+    pub familiarity: f32,
+    pub benefit: f32,
+    pub harm: f32,
+    pub navigation: f32,
+    pub event_actor: u32,
+    pub event_generation: u32,
+    pub event_tick: u32,
+    pub event_amount: f32,
+    pub last_report_tick: u32,
+    pub last_report_observed: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
 pub struct SocialPerceptionGpu {
     pub avoidance: [f32; 2],
     pub known_strength: f32,
@@ -89,6 +119,7 @@ pub struct SocialPerceptionGpu {
     pub companion_velocity: [f32; 2],
     pub companion_value: f32,
     pub report_value: f32,
+    pub candidates: [SocialCandidateGpu; 8],
 }
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
@@ -184,6 +215,12 @@ pub struct SimSettings {
     pub evolving_landscape: bool,
     #[serde(default)]
     pub neural_policy: bool,
+    #[serde(default)]
+    pub neural_greedy: bool,
+    #[serde(default)]
+    pub neural_flags: u32,
+    #[serde(default)]
+    pub neural_model: String,
 }
 
 impl Default for SimSettings {
@@ -209,6 +246,9 @@ impl Default for SimSettings {
             communication_enabled: true,
             evolving_landscape: true,
             neural_policy: false,
+            neural_greedy: false,
+            neural_flags: 0,
+            neural_model: "untrained-zero-policy".into(),
         }
     }
 }
@@ -414,12 +454,16 @@ impl Simulation {
         let neural_weights_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("shared recurrent neural policy weights"),
             contents: bytemuck::cast_slice(&neural_weights.flat()),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
         });
         let neural_state_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("private per-agent recurrent state"),
-            size: MAX_AGENTS as u64 * NEURAL_HIDDEN as u64 * 4,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+            size: MAX_AGENTS as u64 * std::mem::size_of::<NeuralState>() as u64,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
         let request_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -611,7 +655,14 @@ impl Simulation {
             "social perception shader",
             include_str!("../shaders/social_perceive.wgsl"),
         );
-        let decision_shader = shader("decision shader", include_str!("../shaders/decide.wgsl"));
+        let decision_shader = shader(
+            "decision shader",
+            &format!(
+                "{}\n{}",
+                include_str!("../shaders/neural.wgsl"),
+                include_str!("../shaders/decide.wgsl")
+            ),
+        );
         let consume_shader = shader(
             "resource consume shader",
             include_str!("../shaders/consume.wgsl"),
@@ -863,6 +914,8 @@ impl Simulation {
                 uniform_entry(4, wgpu::ShaderStages::COMPUTE),
                 storage_entry(5, wgpu::ShaderStages::COMPUTE, true),
                 storage_entry(6, wgpu::ShaderStages::COMPUTE, false),
+                storage_entry(7, wgpu::ShaderStages::COMPUTE, true),
+                storage_entry(8, wgpu::ShaderStages::COMPUTE, false),
             ],
         });
         let decision_pipeline = compute_pipeline(
@@ -883,6 +936,8 @@ impl Simulation {
                 &params_buffer,
                 &neural_weights_buffer,
                 &neural_state_buffer,
+                &resource_buffer,
+                &ground_buffer,
             ),
             make_decision_group(
                 device,
@@ -894,6 +949,8 @@ impl Simulation {
                 &params_buffer,
                 &neural_weights_buffer,
                 &neural_state_buffer,
+                &resource_buffer,
+                &ground_buffer,
             ),
         ];
 
@@ -1471,6 +1528,7 @@ impl Simulation {
                 uniform_entry(5, wgpu::ShaderStages::COMPUTE),
                 storage_entry(6, wgpu::ShaderStages::COMPUTE, false),
                 storage_entry(7, wgpu::ShaderStages::COMPUTE, false),
+                storage_entry(8, wgpu::ShaderStages::COMPUTE, false),
             ],
         });
         let birth_pipeline = compute_pipeline(
@@ -1492,6 +1550,7 @@ impl Simulation {
                 &params_buffer,
                 &death_stats_buffer,
                 &social_memory_buffer,
+                &neural_state_buffer,
             ),
             make_birth_group(
                 device,
@@ -1504,12 +1563,14 @@ impl Simulation {
                 &params_buffer,
                 &death_stats_buffer,
                 &social_memory_buffer,
+                &neural_state_buffer,
             ),
         ];
 
         let event_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("recent interaction events"),
-            size: 65536 * 32,
+            size: EVENT_RING_SIZE as u64
+                * std::mem::size_of::<observability::InteractionEvent>() as u64,
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_SRC
                 | wgpu::BufferUsages::COPY_DST,
@@ -1798,8 +1859,16 @@ impl Simulation {
         queue.write_buffer(&self.agent_buffers[0], 0, bytemuck::cast_slice(&agents));
         queue.write_buffer(&self.agent_buffers[1], 0, bytemuck::cast_slice(&agents));
         queue.write_buffer(&self.resource_buffer, 0, bytemuck::cast_slice(&resources));
-        queue.write_buffer(&self.event_buffer, 0, &vec![0; 65536 * 32]);
-        queue.write_buffer(&self.neural_state_buffer, 0, &vec![0u8; MAX_AGENTS as usize * NEURAL_HIDDEN * 4]);
+        queue.write_buffer(
+            &self.event_buffer,
+            0,
+            &vec![0; self.event_buffer.size() as usize],
+        );
+        queue.write_buffer(
+            &self.neural_state_buffer,
+            0,
+            &vec![0u8; MAX_AGENTS as usize * std::mem::size_of::<NeuralState>()],
+        );
         queue.write_buffer(
             &self.ground_buffer,
             0,
@@ -1836,12 +1905,28 @@ impl Simulation {
         queue.write_buffer(&self.params_buffer, 0, bytemuck::bytes_of(&params));
     }
 
-    pub fn set_neural_weights(&self, queue: &wgpu::Queue, weights: &NeuralWeights) -> Result<(), String> {
+    pub fn set_neural_weights(
+        &mut self,
+        queue: &wgpu::Queue,
+        weights: &NeuralWeights,
+    ) -> Result<(), String> {
         weights.validate()?;
-        queue.write_buffer(&self.neural_weights_buffer, 0, bytemuck::cast_slice(&weights.flat()));
+        queue.write_buffer(
+            &self.neural_weights_buffer,
+            0,
+            bytemuck::cast_slice(&weights.flat()),
+        );
+        self.settings.neural_model = weights.name.clone();
         Ok(())
     }
 
+    pub fn reset_neural_memory(&self, queue: &wgpu::Queue) {
+        queue.write_buffer(
+            &self.neural_state_buffer,
+            0,
+            &vec![0u8; self.neural_state_buffer.size() as usize],
+        );
+    }
 
     pub fn encode_ticks(
         &mut self,
@@ -2592,6 +2677,7 @@ fn make_birth_group(
     params: &wgpu::Buffer,
     stats: &wgpu::Buffer,
     social_memory: &wgpu::Buffer,
+    neural_state: &wgpu::Buffer,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("agent birth bind group"),
@@ -2628,6 +2714,10 @@ fn make_birth_group(
             wgpu::BindGroupEntry {
                 binding: 7,
                 resource: social_memory.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 8,
+                resource: neural_state.as_entire_binding(),
             },
         ],
     })
@@ -2686,6 +2776,8 @@ fn make_decision_group(
     params: &wgpu::Buffer,
     neural_weights: &wgpu::Buffer,
     neural_state: &wgpu::Buffer,
+    resources: &wgpu::Buffer,
+    ground: &wgpu::Buffer,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("decision bind group"),
@@ -2711,8 +2803,22 @@ fn make_decision_group(
                 binding: 4,
                 resource: params.as_entire_binding(),
             },
-            wgpu::BindGroupEntry { binding: 5, resource: neural_weights.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 6, resource: neural_state.as_entire_binding() },
+            wgpu::BindGroupEntry {
+                binding: 5,
+                resource: neural_weights.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 6,
+                resource: neural_state.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 7,
+                resource: resources.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 8,
+                resource: ground.as_entire_binding(),
+            },
         ],
     })
 }
@@ -2994,7 +3100,12 @@ fn params_for(tick: u32, settings: &SimSettings, seed: u32) -> SimParams {
             u32::from(settings.communication_enabled),
             u32::from(settings.evolving_landscape),
         ],
-        neural_config: [u32::from(settings.neural_policy), 0, 0, 0],
+        neural_config: [
+            u32::from(settings.neural_policy),
+            u32::from(settings.neural_greedy),
+            crate::neural::INTERVAL,
+            settings.neural_flags,
+        ],
     }
 }
 
@@ -3024,6 +3135,10 @@ fn build_agents(seed: u32, settings: &SimSettings) -> Vec<AgentGpu> {
                 event_actor: MAX_AGENTS,
                 guide_id: MAX_AGENTS,
                 max_age: 9000.0 + random01(&mut rng) * 2000.0,
+                // The founding population starts as the known viable authored
+                // controller. Variation begins at reproduction.
+                genome: [0.0; GENOME_SIZE],
+                lineage_id: if i < settings.population { i + 1 } else { 0 },
                 ..Default::default()
             }
         })
@@ -3203,3 +3318,6 @@ mod tests;
 
 #[path = "observability.rs"]
 pub mod observability;
+
+#[path = "neural_bridge.rs"]
+pub mod neural_bridge;

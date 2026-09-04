@@ -1,4 +1,7 @@
-use crate::{neural::NeuralWeights, simulation::{MAX_AGENTS, Simulation, WORLD_SIZE}};
+use crate::{
+    neural::NeuralWeights,
+    simulation::{MAX_AGENTS, Simulation, WORLD_SIZE},
+};
 
 pub fn run(args: &[String]) -> Result<(), String> {
     let value = |name: &str, default: u32| -> Result<u32, String> {
@@ -18,7 +21,6 @@ pub fn run(args: &[String]) -> Result<(), String> {
     }
     let seed = value("--seed", 1)?;
     let sample = value("--sample", 200)?.max(1);
-    let shuffle = value("--shuffle-at", u32::MAX)?;
     let famine = value("--famine-at", u32::MAX)?;
     let restore = value("--restore-at", u32::MAX)?;
     let output = args
@@ -27,7 +29,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
         .and_then(|i| args.get(i + 1))
         .map(String::as_str)
         .unwrap_or("headless-report.json");
-    let neural_export = args.iter().position(|a| a == "--neural-export").and_then(|i| args.get(i + 1));
+    let neural_export = args
+        .iter()
+        .position(|a| a == "--neural-export")
+        .and_then(|i| args.get(i + 1));
     if let Some(path) = neural_export.as_deref() {
         if !args.iter().any(|a| a == "--ticks") {
             NeuralWeights::baseline().save_json(std::path::Path::new(path))?;
@@ -51,6 +56,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
     ))
     .map_err(|e| e.to_string())?;
     let mut sim = Simulation::new(&device, &queue, seed);
+    if args.iter().any(|a| a == "--neural-bridge") {
+        return sim.neural_bridge(&device, &queue);
+    }
     sim.settings.population = population;
     if let Some(i) = args.iter().position(|a| a == "--regeneration") {
         let regeneration: f32 = args
@@ -63,10 +71,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
         sim.settings.resource_regeneration = regeneration;
     }
-    if args.iter().any(|a| a == "--no-social") {
-        sim.settings.social_access = 0.0;
-        sim.settings.social_concern = 0.0;
-        sim.settings.reciprocity = 0.0;
+    if args.iter().any(|a| a == "--no-signals") {
         sim.settings.communication_enabled = false;
     }
     if args.iter().any(|a| a == "--no-force") {
@@ -75,10 +80,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
     if args.iter().any(|a| a == "--static-landscape") {
         sim.settings.evolving_landscape = false;
     }
-    if args.iter().any(|a| a == "--neural") {
-        sim.settings.neural_policy = true;
-    }
-    if let Some(path) = args.iter().position(|a| a == "--neural-weights").and_then(|i| args.get(i + 1)) {
+    sim.settings.neural_greedy = args.iter().any(|a| a == "--neural-greedy");
+    let neural_path = match args.iter().position(|a| a == "--neural-weights") {
+        Some(i) => Some(
+            args.get(i + 1)
+                .ok_or("Missing --neural-weights path")?
+                .as_str(),
+        ),
+        None if args.iter().any(|a| a == "--neural") => Some("policies/forager-v3.json"),
+        None => None,
+    };
+    if let Some(path) = neural_path {
         let weights = NeuralWeights::load_json(std::path::Path::new(path))?;
         sim.set_neural_weights(&queue, &weights)?;
         sim.settings.neural_policy = true;
@@ -92,9 +104,6 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let mut history = vec![sim.metrics(&device, &queue)?];
     let start = std::time::Instant::now();
     while sim.tick < ticks {
-        if sim.tick == shuffle {
-            sim.shuffle_relationships(&device, &queue)?;
-        }
         if sim.tick == famine {
             sim.settings.resource_regeneration = 0.0;
             sim.apply_resource_shock(&device, &queue, [WORLD_SIZE / 2.0; 2], WORLD_SIZE, -1.0);
@@ -105,7 +114,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             // A global food refill would temporarily erase the spatial ecology.
         }
         let next_sample = (sim.tick / sample + 1).saturating_mul(sample);
-        let boundary = [ticks, next_sample, famine, restore, shuffle]
+        let boundary = [ticks, next_sample, famine, restore]
             .into_iter()
             .filter(|t| *t > sim.tick)
             .min()
@@ -115,10 +124,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
         sim.encode_ticks(&mut encoder, &device, &queue, count);
         queue.submit(Some(encoder.finish()));
         device.poll(wgpu::Maintain::Wait);
-        if sim.tick % sample == 0 || [ticks, famine, restore, shuffle].contains(&sim.tick) {
+        if sim.tick % sample == 0 || [ticks, famine, restore].contains(&sim.tick) {
             let metrics = sim.metrics(&device, &queue)?;
             eprintln!(
-                "tick {}: {} living, {} births, {} gifts, {} force",
+                "tick {}: {} living, {} births, {} transfers, {} force",
                 metrics.tick,
                 metrics.living,
                 metrics.events[3],
@@ -129,7 +138,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
     }
     let seconds = start.elapsed().as_secs_f64();
-    let report = serde_json::json!({"seed":seed,"initial_population":population,"ticks":ticks,"elapsed_seconds":seconds,"ticks_per_second":ticks as f64/seconds,"adapter":adapter_info.name,"backend":format!("{:?}",adapter_info.backend),"settings":initial_settings,"final_settings":sim.settings,"treatments":{"famine_at":(famine<ticks).then_some(famine),"restore_at":(restore<ticks).then_some(restore),"shuffle_at":(shuffle<ticks).then_some(shuffle)},"history":history});
+    let report = serde_json::json!({"seed":seed,"initial_population":population,"ticks":ticks,"elapsed_seconds":seconds,"ticks_per_second":ticks as f64/seconds,"adapter":adapter_info.name,"backend":format!("{:?}",adapter_info.backend),"settings":initial_settings,"final_settings":sim.settings,"treatments":{"famine_at":(famine<ticks).then_some(famine),"restore_at":(restore<ticks).then_some(restore)},"history":history});
     std::fs::write(
         output,
         serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
