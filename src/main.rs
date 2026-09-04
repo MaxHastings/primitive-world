@@ -1,4 +1,5 @@
 mod headless;
+mod neural;
 mod renderer;
 mod simulation;
 
@@ -190,7 +191,11 @@ impl AppState {
                 None
             };
 
-        let simulation = Simulation::new(&device, &queue, 1);
+        let mut simulation = Simulation::new(&device, &queue, 1);
+        if std::env::args().any(|arg| arg == "--neural") {
+            simulation.settings.neural_policy = true;
+            simulation.update_params(&queue);
+        }
         let renderer = Renderer::new(
             &device,
             config.format,
@@ -630,6 +635,11 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
             if !state.file_status.is_empty() {ui.small(&state.file_status);}
             ui.separator();
             ui.label("Primitive parameters");
+            ui.small(if state.simulation.settings.neural_policy {
+                "Policy: compact recurrent neural (opt-in)"
+            } else {
+                "Policy: authored local-rule baseline"
+            });
             if ui
                 .add(
                     egui::Slider::new(

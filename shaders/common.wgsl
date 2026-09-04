@@ -29,6 +29,14 @@ struct Decision {
 struct SimParams {
   world_size: f32, resource_grid_size: u32, agent_count: u32, tick: u32,
   time_and_costs: vec4<f32>, resource_and_noise: vec4<f32>, sensor_and_padding: vec4<f32>, social_weights: vec4<f32>, lifecycle: vec4<u32>,
+  neural_config: vec4<u32>,
+};
+const NEURAL_OBSERVATIONS: u32 = 12u;
+const NEURAL_HIDDEN: u32 = 16u;
+const NEURAL_ACTIONS: u32 = 7u;
+struct NeuralWeights {
+  input: array<f32, 192>, recurrent: array<f32, 256>, hidden_bias: array<f32, 16>,
+  output: array<f32, 112>, output_bias: array<f32, 7>,
 };
 const INVALID: u32 = 100000u;
 const FOOD_CAPACITY: f32 = 8.0;

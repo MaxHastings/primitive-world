@@ -3,6 +3,8 @@
 @group(0) @binding(2) var<storage, read> social: array<SocialPerception>;
 @group(0) @binding(3) var<storage, read_write> decisions: array<Decision>;
 @group(0) @binding(4) var<uniform> params: SimParams;
+@group(0) @binding(5) var<storage, read> neural_weights: NeuralWeights;
+@group(0) @binding(6) var<storage, read_write> neural_state: array<f32>;
 fn access_change(a: Agent, s: SocialPerception, destination: vec2<f32>) -> f32 {
   if (s.companion_value<=0.0) { return 0.0; }
   let future=s.companion_position+s.companion_velocity*8.0;
@@ -24,7 +26,10 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   var d: Decision;
   d.target_id=INVALID; d.goal=a.position;
   d.scores=array<f32,7>(0.02,-1000.0,-1000.0,-1000.0,-1000.0,-1000.0,-1000.0);
-  if (a.alive==0u) { decisions[i]=d; return; }
+  if (a.alive==0u) {
+    for (var h=0u; h<NEURAL_HIDDEN; h++) { neural_state[i*NEURAL_HIDDEN+h]=0.0; }
+    decisions[i]=d; return;
+  }
   let hunger=clamp(1.0-a.energy/100.0,0.0,1.0);
   let stock_need=clamp(1.0-a.food/FOOD_CAPACITY,0.0,1.0);
   let urgency=0.3+0.7*hunger;
@@ -90,6 +95,36 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   if (params.lifecycle.z!=0u && s.report_target<INVALID && a.energy>30.0 && params.tick>=a.last_communication+4u) {
     d.scores[COMMUNICATE]=s.report_value;
   }
+  var neural_selected=INVALID;
+  if (params.neural_config.x!=0u) {
+    var obs=array<f32,12>(
+      clamp(a.energy/100.0,0.0,1.0), clamp(a.food/FOOD_CAPACITY,0.0,1.0),
+      clamp(p.resource_here,0.0,1.0), clamp(p.resource_north,0.0,1.0), clamp(p.resource_east,0.0,1.0),
+      clamp(p.resource_south,0.0,1.0), clamp(p.resource_west,0.0,1.0), clamp(p.local_density,0.0,1.0),
+      clamp(p.projected_food,0.0,1.0), clamp(p.competition_pressure,0.0,1.0), clamp(s.known_strength,0.0,1.0), clamp(s.danger,0.0,1.0));
+    var old: array<f32,16>;
+    for (var h=0u; h<NEURAL_HIDDEN; h++) { old[h]=neural_state[i*NEURAL_HIDDEN+h]; }
+    for (var h=0u; h<NEURAL_HIDDEN; h++) {
+      var value=neural_weights.hidden_bias[h];
+      for (var j=0u; j<NEURAL_OBSERVATIONS; j++) { value += neural_weights.input[h*NEURAL_OBSERVATIONS+j]*obs[j]; }
+      for (var j=0u; j<NEURAL_HIDDEN; j++) { value += neural_weights.recurrent[h*NEURAL_HIDDEN+j]*old[j]; }
+      neural_state[i*NEURAL_HIDDEN+h]=tanh(value);
+    }
+    var logits: array<f32,7>;
+    for (var action=0u; action<NEURAL_ACTIONS; action++) {
+      var value=neural_weights.output_bias[action];
+      for (var h=0u; h<NEURAL_HIDDEN; h++) { value += neural_weights.output[action*NEURAL_HIDDEN+h]*neural_state[i*NEURAL_HIDDEN+h]; }
+      logits[action]=value;
+    }
+    var neural_best=-100000.0;
+    for (var action=0u; action<NEURAL_ACTIONS; action++) {
+      // Neural logits are a bounded preference adjustment. The authored score
+      // remains the baseline utility and still supplies all physical/social
+      // affordance masks; neutral weights therefore preserve baseline motion.
+      let combined=d.scores[action]+clamp(logits[action],-2.0,2.0);
+      if (d.scores[action]>-500.0 && combined>neural_best) { neural_best=combined; neural_selected=action; }
+    }
+  }
   var best=-10000.0;
   for (var k=0u; k<7u; k++) {
     // Small bounded tie-breaking noise; never turns an unavailable action into an available one.
@@ -97,6 +132,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (score>best) { best=score; d.selected_action=k; }
   }
   if (a.energy<20.0 && a.food>0.001) { d.selected_action=EAT; }
+  if (neural_selected<INVALID) { d.selected_action=neural_selected; }
   if (d.selected_action==GIVE) { d.target_id=s.give_target; d.amount=min(0.5,max(0.0,a.food-1.5)); }
   if (d.selected_action==FORCE) { d.target_id=s.force_target; d.amount=1.0; }
   if (d.selected_action==COMMUNICATE) { d.target_id=s.report_target; d.amount=f32(s.report_place); }

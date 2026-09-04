@@ -1,4 +1,4 @@
-use crate::simulation::{MAX_AGENTS, Simulation, WORLD_SIZE};
+use crate::{neural::NeuralWeights, simulation::{MAX_AGENTS, Simulation, WORLD_SIZE}};
 
 pub fn run(args: &[String]) -> Result<(), String> {
     let value = |name: &str, default: u32| -> Result<u32, String> {
@@ -27,6 +27,14 @@ pub fn run(args: &[String]) -> Result<(), String> {
         .and_then(|i| args.get(i + 1))
         .map(String::as_str)
         .unwrap_or("headless-report.json");
+    let neural_export = args.iter().position(|a| a == "--neural-export").and_then(|i| args.get(i + 1));
+    if let Some(path) = neural_export.as_deref() {
+        if !args.iter().any(|a| a == "--ticks") {
+            NeuralWeights::baseline().save_json(std::path::Path::new(path))?;
+            eprintln!("Saved baseline neural policy to {path}");
+            return Ok(());
+        }
+    }
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
     let adapter =
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
@@ -66,6 +74,18 @@ pub fn run(args: &[String]) -> Result<(), String> {
     }
     if args.iter().any(|a| a == "--static-landscape") {
         sim.settings.evolving_landscape = false;
+    }
+    if args.iter().any(|a| a == "--neural") {
+        sim.settings.neural_policy = true;
+    }
+    if let Some(path) = args.iter().position(|a| a == "--neural-weights").and_then(|i| args.get(i + 1)) {
+        let weights = NeuralWeights::load_json(std::path::Path::new(path))?;
+        sim.set_neural_weights(&queue, &weights)?;
+        sim.settings.neural_policy = true;
+    }
+    if let Some(path) = neural_export {
+        NeuralWeights::baseline().save_json(std::path::Path::new(path))?;
+        eprintln!("Saved baseline neural policy to {path}");
     }
     sim.reset(&queue);
     let initial_settings = sim.settings.clone();
