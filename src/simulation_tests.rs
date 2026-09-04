@@ -34,6 +34,17 @@ fn dead_slot_reuse_resets_experience_and_advances_incarnation() {
     near(s.metrics(&d, &q).unwrap().dropped_food as f32, 2.0);
 }
 #[test]
+fn fresh_world_defaults_match_low_cost_diagnostic() {
+    let settings = SimSettings::default();
+    assert_eq!(settings.metabolic_cost, 0.005);
+    assert_eq!(settings.movement_energy_cost, 0.002);
+    assert_eq!(settings.resource_regeneration, 0.01);
+    assert_eq!(settings.population, 1000);
+    assert!(settings.evolving_landscape);
+    settings.validate().unwrap();
+}
+
+#[test]
 fn prepared_default_is_the_declared_bank_not_a_silent_fallback() {
     let settings = SimSettings::default();
     let bank = crate::founders::bundled();
@@ -446,7 +457,11 @@ fn reproduction_is_requested_can_coexist_with_motion_and_conserves() {
     assert!(p.velocity[0] > 0.0);
     near(p.food + c.food, a.food);
     near(
-        p.energy + c.energy + 0.06 + p.velocity[0].abs() * 0.01 + 10.0,
+        p.energy
+            + c.energy
+            + s.settings.metabolic_cost
+            + p.velocity[0].abs() * s.settings.movement_energy_cost
+            + 10.0,
         90.0,
     );
     assert_eq!(s.metrics(&d, &q).unwrap().events[3], 1);
@@ -510,7 +525,10 @@ fn force_spills_instead_of_directly_stealing_and_costs_energy() {
     near(agents[0].food, a.food);
     near((m.carried_food + m.dropped_food) as f32, 4.0);
     assert_eq!(m.events[5], 1);
-    near((m.energy + m.force_energy_spent) as f32, 99.88);
+    near(
+        (m.energy + m.force_energy_spent) as f32,
+        100.0 - 2.0 * s.settings.metabolic_cost,
+    );
 }
 #[test]
 fn nonfinite_controller_output_is_contained() {
@@ -531,6 +549,9 @@ fn nonfinite_controller_output_is_contained() {
 fn batching_checkpoint_and_selection_preserve_state() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
+    // A compatible checkpoint retains historical costs, not new defaults.
+    s.settings.metabolic_cost = 0.06;
+    s.settings.movement_energy_cost = 0.01;
     let a = body([602.0, 902.0]);
     let g = fixed(0, [0.1, 0.2]);
     put(&s, &q, 0, a, &g);
@@ -549,7 +570,11 @@ fn batching_checkpoint_and_selection_preserve_state() {
     s.save_checkpoint(&d, &q, &path).unwrap();
     step(&mut s, &d, &q, 8);
     let expected = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
+    s.settings.metabolic_cost = SimSettings::default().metabolic_cost;
+    s.settings.movement_energy_cost = SimSettings::default().movement_energy_cost;
     s.load_checkpoint(&q, &path).unwrap();
+    assert_eq!(s.settings.metabolic_cost, 0.06);
+    assert_eq!(s.settings.movement_energy_cost, 0.01);
     step(&mut s, &d, &q, 8);
     let actual = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
     assert_eq!(bytemuck::bytes_of(&expected), bytemuck::bytes_of(&actual));

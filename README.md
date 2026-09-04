@@ -28,6 +28,19 @@ a 2048-unit square, eight directional food samples, four observed neighbors,
 and sixteen recurrent state values per body. These are finite modeling and
 engineering choices, not promises of intelligence or population equilibrium.
 
+Fresh-world costs are **0.005 energy/tick metabolism** and **0.002 energy per
+unit moved**, with regeneration unchanged at **0.010**. These match the low-cost
+200,000-tick, seed-1 diagnostic that ended with 16,289 living bodies. They are
+working defaults, not proven optimal values: that run frequently approached the
+16,384-body limit and did not establish learned migration or generalization.
+The released founder weights are unchanged; the 200k descendants are not bundled.
+
+For historical comparisons, the previous costs were **0.06 metabolism** and
+**0.01 movement**; set both sliders explicitly and reset the world. Compatible
+checkpoints restore their saved costs, not these new defaults. A running process
+or previously built executable also retains its old defaults; rebuild/relaunch
+for the new fresh-world settings. Reset uses the current slider settings.
+
 ## Controls
 
 - Space: pause/resume. UI: step and speed. Keys 1, 2, 4, 8, 6, M select speeds.

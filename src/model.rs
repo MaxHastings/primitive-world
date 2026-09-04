@@ -173,8 +173,8 @@ impl Default for SimSettings {
         Self {
             population: 1000,
             resource_regeneration: 0.01,
-            movement_energy_cost: 0.01,
-            metabolic_cost: 0.06,
+            movement_energy_cost: 0.002,
+            metabolic_cost: 0.005,
             consume_amount: 25.0,
             conversion_efficiency: 8.0,
             heterogeneity: 0.85,
