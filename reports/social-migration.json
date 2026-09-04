@@ -1,0 +1,86 @@
+[
+  {
+    "first_arrivals": [
+      true,
+      true,
+      true
+    ],
+    "first_contact_ticks": 346,
+    "learned_navigation": [
+      0.30000001192092896,
+      0.30000001192092896
+    ],
+    "mode": "full",
+    "reports": 5,
+    "second_arrivals": [
+      true,
+      true,
+      true
+    ],
+    "second_contact_ticks": 1200,
+    "survivors": 3
+  },
+  {
+    "first_arrivals": [
+      true,
+      false,
+      false
+    ],
+    "first_contact_ticks": 24,
+    "learned_navigation": [
+      0.0,
+      0.0
+    ],
+    "mode": "no_reports",
+    "reports": 0,
+    "second_arrivals": [
+      true,
+      false,
+      false
+    ],
+    "second_contact_ticks": 23,
+    "survivors": 1
+  },
+  {
+    "first_arrivals": [
+      true,
+      true,
+      true
+    ],
+    "first_contact_ticks": 346,
+    "learned_navigation": [
+      0.30000001192092896,
+      0.30000001192092896
+    ],
+    "mode": "forget_experience",
+    "reports": 5,
+    "second_arrivals": [
+      true,
+      false,
+      false
+    ],
+    "second_contact_ticks": 23,
+    "survivors": 1
+  },
+  {
+    "first_arrivals": [
+      true,
+      true,
+      true
+    ],
+    "first_contact_ticks": 346,
+    "learned_navigation": [
+      0.30000001192092896,
+      0.30000001192092896
+    ],
+    "mode": "no_companion_access",
+    "reports": 5,
+    "second_arrivals": [
+      true,
+      false,
+      false
+    ],
+    "second_contact_ticks": 23,
+    "survivors": 1
+  }
+]

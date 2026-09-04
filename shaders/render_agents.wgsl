@@ -1,11 +1,3 @@
-struct Agent {
-  position: vec2<f32>, velocity: vec2<f32>, energy: f32, age: f32, max_speed: f32, sensor_radius: f32,
-  exploration: f32, resource_attraction: f32, persistence: f32, risk: f32, rng: u32, alive: u32,
-};
-struct Perception {
-  resource_here: f32, resource_north: f32, resource_east: f32, resource_south: f32,
-  resource_west: f32, local_density: f32, padding: u32, gradient: vec2<f32>,
-};
 struct Camera {
   center: vec2<f32>, zoom: f32, aspect: f32, lens: u32, point_size: f32, selected_id: u32, padding: u32,
 };
@@ -42,8 +34,13 @@ fn vs(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: u32) -
   if (camera.lens == 4u) { color = heat(length(agent.velocity), vec3<f32>(0.15, 0.25, 0.85), vec3<f32>(0.95, 0.78, 0.16)); }
   if (camera.lens == 5u) { color = heat(fract(agent.age / 5000.0), vec3<f32>(0.15, 0.75, 0.95), vec3<f32>(0.94, 0.28, 0.72)); }
   if (camera.lens == 6u) { color = heat(length(p.gradient) * 2.5, vec3<f32>(0.18, 0.18, 0.85), vec3<f32>(1.0, 0.5, 0.08)); }
+  if (camera.lens == 7u) { color=heat(agent.food/8.0,vec3<f32>(0.7,0.15,0.1),vec3<f32>(0.2,0.95,0.9)); }
+  if (camera.lens == 8u) {
+    var colors=array<vec3<f32>,7>(vec3<f32>(0.5),vec3<f32>(0.3,0.65,1.0),vec3<f32>(0.2,0.9,0.3),vec3<f32>(1.0,0.75,0.1),vec3<f32>(0.95,0.4,0.9),vec3<f32>(1.0,0.12,0.1),vec3<f32>(0.4,1.0,1.0));
+    color=colors[min(agent.action,6u)];
+  }
   if (index == camera.selected_id) { color = vec3<f32>(1.0, 1.0, 1.0); }
-  let corners = array<vec2<f32>, 6>(
+  var corners = array<vec2<f32>, 6>(
     vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0),
     vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0));
   let pixel = camera.point_size * 2.0 * camera.zoom / 2048.0;

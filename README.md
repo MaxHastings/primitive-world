@@ -1,59 +1,56 @@
 # Primitive World
 
-Primitive World is a GPU-first artificial-world experiment. The v0 substrate contains only continuous 2D space, a locally varying regenerating resource field, finite-energy agents, local perception, movement, remaining, consumption, and consequences. It does not encode social institutions or interpret emergent patterns.
+A GPU simulation of local survival, reproduction, remembered places, giving, food reports, and costly force. The long-term direction is in [DESIGN_PLAN.md](DESIGN_PLAN.md). Social groups are an outcome to investigate, not a demonstrated claim.
 
 ## Run
 
-```text
+```powershell
 cargo run --release
 ```
 
-The default initial population is 50,000 agents, with a fixed GPU capacity of 100,000. Reproduction can fill the remaining slots. The simulation state is kept in GPU storage buffers; the CPU dispatches work and drives the window/UI. A debug build is useful for iteration, while `--release` is the intended performance run.
+Close an older running copy before rebuilding that executable on Windows. A fresh launch uses current defaults. Loading a checkpoint restores its saved settings, including regeneration.
 
-## Controls
+Defaults: 1,000 initial agents, regeneration 0.01, metabolic cost 0.06, movement cost 0.01, and 8 energy per food unit. A harvest collects up to 0.025 food; an eating action consumes up to 0.1. Carrying capacity is 8 food. These are experiment settings, not guarantees of stability at every slider combination.
 
-- Pause / Resume: `Space` or the UI button
-- Speed: `1`, `2`, `4`, `8`, `6` (16x), `M` (maximum), or UI buttons
-- One tick: UI `Step`
-- Pan: `WASD` or arrow keys
-- Zoom: mouse wheel
-- Reset camera: `Home`
-- Cycle raw visualization lens: `L`
-- Click in `select` mode to inspect the nearest agent
-- Select `+ resource`, `- resource`, or `kill agents`, then click the world to apply a local intervention
+Reproduction requires maturity, energy, at least 2 carried food, and an elapsed cooldown. At default cost, the parent spends 50 energy and transfers 1 food; the child receives 24 energy and that food. Survivors can repopulate after shortages. Complete extinction requires an explicit reset. The 100,000-agent capacity is a storage limit, not a population target.
 
-The inspector exposes only primitive state, local perception, candidate scores, and the selected action. Direction scores compare sampled resource changes against the resource underfoot, so a nearby local gradient can affect movement without giving agents a global target or path.
+## Controls and observation
 
-## GPU architecture
+- Pause: Space or the UI button. Step is available in the UI.
+- Speed: 1, 2, 4, 8, 6 (16x), M (maximum), or UI buttons.
+- Pan: WASD or arrow keys. Zoom: wheel. Reset camera: Home.
+- Cycle visualization: L. Food and action views help distinguish reserves from movement.
+- Select an agent to inspect its state, local observations, action scores, place memory, and eight directed relationships.
+- Choose a resource or kill intervention, then click the world to apply it.
+- Save/load checkpoints, export population history, and refresh recent interactions through the UI.
 
-Agent state is a tightly packed `AgentGpu` structure in two ping-pong storage buffers. Perception, decisions, and resource requests are separate data-oriented buffers. The resource field is a 512² fixed-point grid over a 2048-unit continuous world; this tile resolution keeps the first interactive experiment practical while preserving local spatial heterogeneity. A matching persistent fertility layer gives each cell ecological memory. Rain blooms and drought zones drift between seeded event centers, while harvesting slowly depletes soil and recovery restores it. The occupancy grid is 256². Each tick also builds a reusable GPU spatial index: occupancy counts are copied into an inclusive 16-pass binary prefix scan, per-cell atomic cursors are initialized from the resulting offsets, and living agent indices are scattered into contiguous cell ranges. For cell `c`, the list is `agent_indices[start..end]`, where `start` is zero for the first cell or `cell_offsets[c - 1]`, and `end` is `cell_offsets[c]`. Current behavior uses the occupancy counts for local crowd pressure; future exact-neighbor experiments can consume the index without changing the agent state contract.
+The dashboard reports food per living agent, the number carrying at least 1.5 food, and the number with energy below 20. Useful ties include learned food benefit and successful guidance. Nearby means within sensory range, not necessarily within exchange distance. Birth, death, gift, report, and force counters are cumulative; population history is needed to interpret recent changes.
 
-Each simulation tick is dispatched as:
+## Headless checks
 
-1. free-slot flagging, prefix scan, and compaction
-2. resource regeneration
-3. occupancy clear
-4. occupancy count
-5. spatial prefix scan
-6. spatial cursor initialization
-7. spatial agent scatter
-8. local perception
-9. primitive action scoring
-10. fixed-point atomic resource consumption
-11. ping-pong agent update and birth-candidate flagging
-12. birth-candidate prefix scan, compaction, and slot assignment
-13. GPU living-agent count
+```powershell
+cargo test -- --nocapture --test-threads=1
+cargo run --release -- --headless --ticks 16000 --seed 1 --regeneration 0.025 --sample 2000 --famine-at 6000 --restore-at 8000 --output reports/run.json
+```
 
-The resource consumer uses bounded atomic compare-and-exchange so competing agents cannot spend the same fixed-point resource units. Every living agent consumes from the resource cell under its current position, including while moving; movement still costs energy. Agents write only their own destination slot. Rendering reads the current GPU agent buffer and the render copy of the resource field directly; there is no full agent-array readback per frame.
+The output directory must exist. Headless mode runs GPU compute without opening a window. Reports include initial and final settings, intervention timing, reserve/energy summaries, harvest totals, relationships, and population history.
 
-The decision stage uses local occupancy as a crowd-pressure signal, giving risk-sensitive agents a stronger density penalty. Agents become eligible to reproduce after the maturity age when they have enough energy. A small deterministic per-agent chance gates each birth; the parent pays a reproduction cost, and the offspring inherits mutated movement, sensing, attraction, persistence, and risk traits. A GPU prefix-scan allocator pairs birth candidates with arbitrary dead slots, so births can grow the population until the fixed capacity is reached. Juveniles move more slowly and agents die from energy loss or at the maximum age.
+`--famine-at` removes vegetation and stops regeneration; carried and dropped food remain. `--restore-at` restores the configured regeneration rate, letting fertile regions grow food again; it does not refill the map. This is a severe controlled shock, separate from ordinary weather. `--no-social` disables concern, reciprocity, social steering, and reports; force remains enabled. `--no-force` disables force separately. `--static-landscape` freezes geography. `--shuffle-at` reassigns remembered identities among survivors as a disruptive comparison, not a matched local control.
 
-Selection is intentionally exceptional: a click runs a GPU nearest-agent reduction, resolves one record, and maps only that small record to the CPU for the inspector. Living-agent count is sampled through a 4-byte readback roughly every 30 rendered frames.
+## Model and limits
 
-## Reproducibility and limits
+The world is a bounded 2048-unit square with a 512-squared food/fertility grid and a 256-squared spatial index. Seeded geography creates large and small rich hubs joined by lower-yield forage bands, with irregular edges and some barren gaps. Rain, drought, soil depletion from harvesting, and fractional regeneration affect food within those regions. The variation slider controls variation within regions; changing the seed and resetting changes their placement. Agents have four place memories and eight generation-aware relationship entries. Actions are wait, move, harvest, eat, give, force, and communicate. Harvesting and eating are separate actions; agents do not automatically feed while walking.
 
-Initialization is deterministic for a seed, and each agent has an independent integer PRNG state. Runs should reproduce closely on the same backend/hardware configuration. Exact bit identity is not promised across GPU vendors/backends because floating-point execution and atomic ordering can differ.
+Each tick updates ecology and spatial indexing, perceptions and relationship evidence, decisions, collection, bodies and movement, disjoint pair interactions, death drops, and births. Atomic collection and disjoint interactions protect resource transfers from double spending. Birth allocation reuses dead slots with new generation identifiers. Offspring have the same behavioral weights and adult capabilities; there is currently no inherited policy evolution.
 
-The current instrumentation reports render FPS, simulation ticks per second, living agents, cumulative food units consumed, starvation deaths, age deaths, CPU submission time, and—when the adapter exposes timestamp queries—separate GPU simulation and world-render timings. On adapters without timestamp support, the UI explicitly reports that limitation instead of presenting CPU submission time as device execution time.
+Known helpers affect movement only while locally visible. Agents compare destinations partly by whether they preserve access to someone whose help or guidance has proved useful. There is no generic flocking force or assigned leader. Reports retain their observation time and source, and senders remember recent deliveries. Guidance earns credit on encountering usable food near the reported destination. Force spends energy and can displace a victim and spill food, which must be collected afterward. Learned benefit, harm, and information reliability remain separate records.
 
-The main v0 scaling risks are resource-grid work per tick, the fixed-cost spatial scan, contention in dense resource cells, point/quad overdraw, and intentional stalls when selecting or sampling the living count. These boundaries are isolated in `src/simulation.rs` and the WGSL pass files.
+Tests cover physical transfers, reproduction and famine recovery, action selection, a voluntarily selected gift, learned outcomes, local-only social perception, reports, force, contested gifts, checkpoint replay, and batched clocks. Validation has used NVIDIA Vulkan. Atomic ordering means population-scale runs can diverge even with the same seed; headless results are not cross-GPU determinism claims.
+
+Four compass samples bias food-directed travel toward horizontal and vertical paths. Clusters and trails alone do not demonstrate cooperation or social groups. See [calibration results](reports/CALIBRATION.md) for evidence and remaining gaps.
+
+The landscape now combines broad fertile regions with several scales of smooth value noise. Peaks drift, change size and richness, and sometimes fade as others emerge. Geography blends between seeded keyframes every 8,192 simulation ticks; faster weather and local harvesting act on top. Potential productivity is normalized between keyframes, while actual growth still depends on soil, weather, and unused capacity. The **Landscape fertility** lens shows geography independently of current food. **Evolving food landscape** can freeze it for comparison.
+
+Trips persist through small preference changes and eating/harvesting pauses. A controlled two-departure scenario tests whether reports and learned companion access affect arrival and survival; see [integration results](reports/INTEGRATION.md). This demonstrates a mechanism, not a guarantee of large herds in ordinary runs. The optional `cargo test motion_diagnostic -- --ignored --nocapture` records individual movement rather than inferring competence from population totals.
+
+Version-6 checkpoints save guidance attribution and delivery history. The loader accepts versions 3–5, initializing missing fields and leaving landscape evolution off for old saves. Reset for the current geography and defaults.

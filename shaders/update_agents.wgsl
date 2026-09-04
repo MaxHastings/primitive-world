@@ -1,17 +1,3 @@
-struct Agent {
-  position: vec2<f32>, velocity: vec2<f32>, energy: f32, age: f32, max_speed: f32, sensor_radius: f32,
-  exploration: f32, resource_attraction: f32, persistence: f32, risk: f32, rng: u32, alive: u32,
-};
-struct Perception {
-  resource_here: f32, resource_north: f32, resource_east: f32, resource_south: f32,
-  resource_west: f32, local_density: f32, padding: u32, gradient: vec2<f32>,
-};
-struct Decision { scores: array<f32, 5>, selected_action: u32, padding: vec2<u32>, };
-struct SimParams {
-  world_size: f32, resource_grid_size: u32, agent_count: u32, tick: u32,
-  time_and_costs: vec4<f32>, resource_and_noise: vec4<f32>, sensor_and_padding: vec4<f32>,
-};
-
 @group(0) @binding(0) var<storage, read> source_agents: array<Agent>;
 @group(0) @binding(1) var<storage, read> perceptions: array<Perception>;
 @group(0) @binding(2) var<storage, read> decisions: array<Decision>;
@@ -20,50 +6,79 @@ struct SimParams {
 @group(0) @binding(5) var<uniform> params: SimParams;
 @group(0) @binding(6) var<storage, read_write> birth_flags: array<u32>;
 @group(0) @binding(7) var<storage, read_write> stats: array<atomic<u32>>;
-
-const MAX_AGE: f32 = 10000.0;
-
-fn action_direction(action: u32) -> vec2<f32> {
-  if (action == 1u) { return vec2<f32>(0.0, -1.0); }
-  if (action == 2u) { return vec2<f32>(1.0, 0.0); }
-  if (action == 3u) { return vec2<f32>(0.0, 1.0); }
-  if (action == 4u) { return vec2<f32>(-1.0, 0.0); }
-  return vec2<f32>(0.0);
-}
-
-@compute @workgroup_size(64, 1, 1)
+@compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-  let index = id.x;
-  if (index >= 100000u) { return; }
-  let old = source_agents[index];
-  if (index >= params.agent_count) {
-    birth_flags[index] = 0u;
-    destination_agents[index] = Agent(old.position, old.velocity, 0.0, old.age, old.max_speed, old.sensor_radius, old.exploration, old.resource_attraction, old.persistence, old.risk, old.rng, 0u);
-    return;
+  let i=id.x;
+  if (i>=params.agent_count) { return; }
+  var a=source_agents[i];
+  birth_flags[i]=0u;
+  if (a.alive==0u) { destination_agents[i]=a; return; }
+  let d=decisions[i]; let p=perceptions[i];
+  var foods = array<f32,5>(p.resource_here,p.resource_north,p.resource_east,p.resource_south,p.resource_west);
+  var dirs = array<vec2<f32>,5>(vec2<f32>(0),vec2<f32>(0,-1),vec2<f32>(1,0),vec2<f32>(0,1),vec2<f32>(-1,0));
+  // Refresh observed places (including depleted ones); replace only weaker stale estimates.
+  for (var sample=0u; sample<5u; sample++) {
+    let position=clamp(a.position+dirs[sample]*a.sensor_radius,vec2<f32>(0.0),vec2<f32>(params.world_size));
+    var slot=0u; var weakest=1000.0; var matched=false;
+    for (var k=0u; k<4u; k++) {
+      if (length(a.places[k].position-position)<a.sensor_radius*0.4 && a.places[k].food>=0.0 && a.places[k].observed>0u) {
+        slot=k; matched=true; break;
+      }
+      let value=a.places[k].food*exp(-f32(params.tick-a.places[k].observed)/1800.0);
+      if (value<weakest) { weakest=value; slot=k; }
+    }
+    if (matched || foods[sample]>weakest+0.02) { a.places[slot]=Place(position,foods[sample],params.tick,i,a.generation,1.0,0u); }
   }
-  if (old.alive == 0u) { birth_flags[index] = 0u; destination_agents[index] = old; return; }
-  let decision = decisions[index];
-  let direction = action_direction(decision.selected_action);
-  var velocity = mix(old.velocity, direction, 0.24 + 0.52 * old.persistence);
-  if (length(velocity) > 0.001) { velocity = normalize(velocity); }
-  let juvenile_factor = 0.45 + 0.55 * clamp(old.age / max(params.sensor_and_padding.y, 1.0), 0.0, 1.0);
-  let displacement = velocity * old.max_speed * juvenile_factor * params.time_and_costs.x;
-  var position = old.position + displacement;
-  if (position.x < 0.0 || position.x > params.world_size) { velocity.x = -velocity.x; position.x = clamp(position.x, 0.0, params.world_size); }
-  if (position.y < 0.0 || position.y > params.world_size) { velocity.y = -velocity.y; position.y = clamp(position.y, 0.0, params.world_size); }
-  let movement_cost = length(displacement) * params.time_and_costs.z;
-  let energy = old.energy + f32(requests[index]) / 1000.0 * params.resource_and_noise.y - movement_cost - params.time_and_costs.w;
-  let age = old.age + params.time_and_costs.x;
-  let age_roll = (old.rng ^ u32(age) ^ params.tick) & 1023u;
-  let age_dead = age >= MAX_AGE && age_roll < 1u;
-  let alive = select(0u, 1u, energy > 0.0 && !age_dead);
-  if (alive == 0u) {
-    if (age_dead) { atomicAdd(&stats[2], 1u); }
-    else { atomicAdd(&stats[1], 1u); }
+  if (a.guide_result!=0.0) { a.guide_id=INVALID; }
+  a.guide_result=0.0;
+  if (a.guide_id<INVALID && params.tick>a.guide_started && length(a.position-a.guide_position)<a.sensor_radius) {
+    let useful=p.resource_here>=max(0.02,a.guide_expected*0.25);
+    // Encountering usable food verifies guidance. An empty point is a failure
+    // only on arrival, not while still approaching the reported patch.
+    if (useful || length(a.position-a.guide_position)<=2.0) { a.guide_result=select(-1.0,1.0,useful); }
   }
-  let birth_roll = (old.rng ^ u32(old.age) ^ params.tick) & 1023u;
-  let energy_surplus = max(0.0, energy - params.sensor_and_padding.z);
-  let birth_window = min(32u, 6u + u32(energy_surplus * 2.0));
-  birth_flags[index] = u32(alive != 0u && age >= params.sensor_and_padding.y && age < MAX_AGE && energy >= params.sensor_and_padding.z && birth_roll < birth_window);
-  destination_agents[index] = Agent(position, velocity, max(0.0, energy), age, old.max_speed, old.sensor_radius, old.exploration, old.resource_attraction, old.persistence, old.risk, old.rng * 1664525u + 1013904223u, alive);
+  a.food += f32(requests[i])/1000.0;
+  if (d.selected_action==EAT) {
+    let amount=min(min(a.food,0.1),max(0.0,100.0-a.energy)/max(params.resource_and_noise.y,0.001));
+    a.food-=amount; a.energy+=amount*params.resource_and_noise.y;
+    atomicAdd(&stats[0],u32(amount*1000.0));
+  }
+  a.velocity=vec2<f32>(0.0);
+  if (d.selected_action==MOVE) {
+    let juvenile=0.6+0.4*clamp(a.age/max(params.sensor_and_padding.y,1.0),0.0,1.0);
+    let delta=d.goal-a.position;
+    let distance=min(length(delta),a.max_speed*juvenile*params.time_and_costs.x);
+    a.velocity=unit_vector(delta)*distance;
+    if (length(a.goal-d.goal)>1.0 || params.tick>=a.commit_until) {
+      // Refining the route locally must not erase who supplied the destination.
+      if (a.guide_result==0.0 && length(d.goal-a.guide_position)>a.sensor_radius) { a.guide_id=INVALID; }
+      for (var k=0u; k<4u; k++) {
+        if (a.guide_id==INVALID && a.guide_result==0.0 && length(a.places[k].position-d.goal)<1.0 && a.places[k].source_id!=i && a.places[k].source_id<INVALID) {
+          a.guide_id=a.places[k].source_id; a.guide_generation=a.places[k].source_generation;
+          a.guide_expected=a.places[k].food; a.guide_started=params.tick;
+          a.guide_position=a.places[k].position;
+        }
+      }
+    }
+    a.position=clamp(a.position+a.velocity,vec2<f32>(0.0),vec2<f32>(params.world_size));
+    a.energy-=distance*params.time_and_costs.z;
+    if (length(a.goal-d.goal)>1.0 || params.tick>=a.commit_until) {
+      let travel_ticks=length(delta)/max(a.max_speed*juvenile*params.time_and_costs.x,0.1);
+      a.commit_until=params.tick+u32(clamp(ceil(travel_ticks*2.0),24.0,192.0));
+      a.goal_score=d.scores[MOVE];
+    }
+    a.goal=d.goal;
+  }
+  // Eating or gathering pauses a trip without replacing its destination.
+  a.action=d.selected_action; a.target_id=d.target_id;
+  a.sensor_radius=params.sensor_and_padding.x;
+  a.energy=max(0.0,a.energy-params.time_and_costs.w);
+  a.age+=params.time_and_costs.x;
+  a.rng=hash_u32(a.rng+params.tick+1u);
+  if (a.energy<=0.0 || a.age>=a.max_age) {
+    a.alive=0u;
+    if (a.age>=a.max_age) { atomicAdd(&stats[2],1u); } else { atomicAdd(&stats[1],1u); }
+  }
+  birth_flags[i]=u32(a.alive!=0u && a.age>=params.sensor_and_padding.y && params.tick>=a.next_birth && a.energy>=max(params.sensor_and_padding.z,params.sensor_and_padding.w+10.0) && a.food>=2.0 && (a.rng&1023u)<3u);
+  destination_agents[i]=a;
 }

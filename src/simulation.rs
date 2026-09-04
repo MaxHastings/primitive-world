@@ -9,8 +9,20 @@ pub const OCCUPANCY_GRID: u32 = 256;
 pub const SPATIAL_CELL_COUNT: u32 = OCCUPANCY_GRID * OCCUPANCY_GRID;
 pub const WORLD_SIZE: f32 = 2048.0;
 pub const RESOURCE_SCALE: f32 = 1000.0;
-pub const DEATH_STATS_COUNT: u32 = 4;
+pub const DEATH_STATS_COUNT: u32 = 12;
+pub const SOCIAL_SLOTS: u32 = 8;
 
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
+pub struct PlaceGpu {
+    pub position: [f32; 2],
+    pub food: f32,
+    pub observed: u32,
+    pub source_id: u32,
+    pub source_generation: u32,
+    pub confidence: f32,
+    pub _padding: u32,
+}
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
 pub struct AgentGpu {
@@ -20,14 +32,30 @@ pub struct AgentGpu {
     pub age: f32,
     pub max_speed: f32,
     pub sensor_radius: f32,
-    pub exploration: f32,
-    pub resource_attraction: f32,
-    pub persistence: f32,
-    pub risk: f32,
+    pub food: f32,
+    pub action: u32,
+    pub target: u32,
+    pub commit_until: u32,
+    pub goal: [f32; 2],
     pub rng: u32,
     pub alive: u32,
+    pub generation: u32,
+    pub event_actor: u32,
+    pub event_generation: u32,
+    pub event_tick: u32,
+    pub event_amount: f32,
+    pub goal_score: f32,
+    pub next_birth: u32,
+    pub max_age: f32,
+    pub last_communication: u32,
+    pub guide_id: u32,
+    pub guide_generation: u32,
+    pub guide_started: u32,
+    pub guide_expected: f32,
+    pub guide_result: f32,
+    pub guide_position: [f32; 2],
+    pub places: [PlaceGpu; 4],
 }
-
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
 pub struct PerceptionGpu {
@@ -37,18 +65,57 @@ pub struct PerceptionGpu {
     pub resource_south: f32,
     pub resource_west: f32,
     pub local_density: f32,
+    pub local_count: f32,
+    pub projected_food: f32,
+    pub competition_pressure: f32,
     pub _padding: u32,
     pub gradient: [f32; 2],
+    pub crowd: [f32; 4],
 }
-
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
+pub struct SocialPerceptionGpu {
+    pub avoidance: [f32; 2],
+    pub known_strength: f32,
+    pub danger: f32,
+    pub give_target: u32,
+    pub force_target: u32,
+    pub give_value: f32,
+    pub force_value: f32,
+    pub report_target: u32,
+    pub report_place: u32,
+    pub companion_position: [f32; 2],
+    pub companion_velocity: [f32; 2],
+    pub companion_value: f32,
+    pub report_value: f32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
+pub struct SocialRelationGpu {
+    pub target_slot: u32,
+    pub target_generation: u32,
+    pub familiarity: f32,
+    pub benefit: f32,
+    pub harm: f32,
+    pub last_seen_tick: u32,
+    pub benefit_evidence: f32,
+    pub harm_evidence: f32,
+    pub navigation: f32,
+    pub navigation_evidence: f32,
+    pub last_report_tick: u32,
+    pub last_report_observed: u32,
+}
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
 pub struct DecisionGpu {
-    pub scores: [f32; 5],
+    pub scores: [f32; 7],
     pub selected_action: u32,
-    pub _padding: [u32; 2],
+    pub target: u32,
+    pub _target_padding: u32,
+    pub goal: [f32; 2],
+    pub amount: f32,
+    pub _padding: u32,
 }
-
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 pub struct SimParams {
@@ -59,6 +126,8 @@ pub struct SimParams {
     pub time_and_costs: [f32; 4],
     pub resource_and_noise: [f32; 4],
     pub sensor_and_padding: [f32; 4],
+    pub social_weights: [f32; 4],
+    pub lifecycle: [u32; 4],
 }
 
 #[repr(C)]
@@ -83,11 +152,13 @@ pub struct SelectionOutput {
     pub agent: AgentGpu,
     pub perception: PerceptionGpu,
     pub decision: DecisionGpu,
+    pub social: SocialPerceptionGpu,
+    pub relations: [SocialRelationGpu; 8],
     pub selected: u32,
     pub _padding: [u32; 5],
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SimSettings {
     pub population: u32,
     pub resource_regeneration: f32,
@@ -101,38 +172,64 @@ pub struct SimSettings {
     pub reproduction_threshold: f32,
     pub reproduction_cost: f32,
     pub maturity_age: f32,
+    pub birth_cooldown: u32,
+    pub social_access: f32,
+    pub social_concern: f32,
+    pub reciprocity: f32,
+    pub force_enabled: bool,
+    pub communication_enabled: bool,
+    #[serde(default)]
+    pub evolving_landscape: bool,
 }
 
 impl Default for SimSettings {
     fn default() -> Self {
         Self {
             population: 1_000,
-            resource_regeneration: 0.10,
-            movement_energy_cost: 0.004,
-            metabolic_cost: 0.006,
+            resource_regeneration: 0.01,
+            movement_energy_cost: 0.01,
+            metabolic_cost: 0.06,
             consume_amount: 25.0,
-            conversion_efficiency: 0.82,
+            conversion_efficiency: 8.0,
             heterogeneity: 0.85,
-            exploration_noise: 0.55,
-            sensor_radius: 10.0,
-            reproduction_threshold: 40.0,
-            reproduction_cost: 12.0,
+            exploration_noise: 0.10,
+            sensor_radius: 24.0,
+            reproduction_threshold: 75.0,
+            reproduction_cost: 50.0,
             maturity_age: 400.0,
+            birth_cooldown: 240,
+            social_access: 0.35,
+            social_concern: 0.25,
+            reciprocity: 0.5,
+            force_enabled: true,
+            communication_enabled: true,
+            evolving_landscape: true,
         }
     }
 }
 
 pub struct Simulation {
     pub settings: SimSettings,
+    terrain_buffer: wgpu::Buffer,
+    terrain_epoch: u32,
+    summary_pipeline: wgpu::ComputePipeline,
+    summary_bind_groups: [wgpu::BindGroup; 2],
+    summary_buffer: wgpu::Buffer,
+    event_buffer: wgpu::Buffer,
     pub seed: u32,
     pub tick: u32,
     pub current_buffer: usize,
     pub agent_buffers: [wgpu::Buffer; 2],
     pub resource_buffer: wgpu::Buffer,
+    pub ground_buffer: wgpu::Buffer,
+    death_pipeline: wgpu::ComputePipeline,
+    death_bind_groups: [wgpu::BindGroup; 2],
     pub resource_display_buffer: wgpu::Buffer,
     #[allow(dead_code)]
     fertility_buffer: wgpu::Buffer,
     pub perception_buffer: wgpu::Buffer,
+    _social_perception_buffer: wgpu::Buffer,
+    social_memory_buffer: wgpu::Buffer,
     _decision_buffer: wgpu::Buffer,
     _request_buffer: wgpu::Buffer,
     #[allow(dead_code)]
@@ -160,6 +257,9 @@ pub struct Simulation {
     death_stats_buffer: wgpu::Buffer,
     death_stats_readback: wgpu::Buffer,
     pub params_buffer: wgpu::Buffer,
+    tick_params_buffer: wgpu::Buffer,
+    interaction_pipelines: [wgpu::ComputePipeline; 3],
+    interaction_bind_groups: [wgpu::BindGroup; 2],
     selection_params_buffer: wgpu::Buffer,
     selection_key_buffer: wgpu::Buffer,
     selection_output_buffer: wgpu::Buffer,
@@ -169,6 +269,7 @@ pub struct Simulation {
     clear_occupancy_pipeline: wgpu::ComputePipeline,
     count_occupancy_pipeline: wgpu::ComputePipeline,
     perception_pipeline: wgpu::ComputePipeline,
+    social_pipeline: wgpu::ComputePipeline,
     decision_pipeline: wgpu::ComputePipeline,
     consume_pipeline: wgpu::ComputePipeline,
     update_pipeline: wgpu::ComputePipeline,
@@ -190,6 +291,7 @@ pub struct Simulation {
     clear_occupancy_bind_group: wgpu::BindGroup,
     count_bind_groups: [wgpu::BindGroup; 2],
     perception_bind_groups: [wgpu::BindGroup; 2],
+    social_bind_groups: [wgpu::BindGroup; 2],
     decision_bind_groups: [wgpu::BindGroup; 2],
     consume_bind_groups: [wgpu::BindGroup; 2],
     update_bind_groups: [[wgpu::BindGroup; 2]; 2],
@@ -233,11 +335,24 @@ impl Simulation {
             }),
         ];
 
-        let resources = build_resources(seed, SimSettings::default().heterogeneity);
+        let habitat = build_habitat(seed);
+        let terrain_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("landscape keyframes"),
+            contents: bytemuck::cast_slice(&build_terrain_pair(seed, 0)),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+        let resources = build_resources(&habitat);
         let resource_bytes = bytemuck::cast_slice(&resources);
         let resource_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("resource field atomic units"),
             contents: resource_bytes,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+        });
+        let ground_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("ground food and resource accounting"),
+            contents: bytemuck::cast_slice(&build_ground(&habitat)),
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
@@ -248,25 +363,44 @@ impl Simulation {
                 contents: resource_bytes,
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             });
-        let fertility_data: Vec<f32> = resources
-            .iter()
-            .map(|value| *value as f32 / RESOURCE_SCALE)
-            .collect();
+        let fertility_data: Vec<f32> = habitat.iter().map(|value| 0.4 + value * 0.35).collect();
         let fertility_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("persistent soil fertility"),
             contents: bytemuck::cast_slice(&fertility_data),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
         });
         let perception_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("perception buffer"),
             size: (MAX_AGENTS as u64) * std::mem::size_of::<PerceptionGpu>() as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
+        });
+        let social_perception_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("social perception buffer"),
+            size: (MAX_AGENTS as u64) * std::mem::size_of::<SocialPerceptionGpu>() as u64,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let social_memory = build_social_memory();
+        let social_memory_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("bounded social memory"),
+            contents: bytemuck::cast_slice(&social_memory),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
         });
         let decision_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("decision buffer"),
             size: (MAX_AGENTS as u64) * std::mem::size_of::<DecisionGpu>() as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
         let request_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -393,6 +527,12 @@ impl Simulation {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let tick_params_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("per-tick parameter staging"),
+            size: 32 * std::mem::size_of::<SimParams>() as u64,
+            usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let selection_params_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("selection parameters"),
             size: std::mem::size_of::<SelectionParams>() as u64,
@@ -429,7 +569,7 @@ impl Simulation {
         let shader = |label: &str, source: &str| {
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some(label),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
+                source: wgpu::ShaderSource::Wgsl(shader_source(source).into()),
             })
         };
         let resource_update_shader = shader(
@@ -447,6 +587,10 @@ impl Simulation {
         let perception_shader = shader(
             "perception shader",
             include_str!("../shaders/perceive.wgsl"),
+        );
+        let social_shader = shader(
+            "social perception shader",
+            include_str!("../shaders/social_perceive.wgsl"),
         );
         let decision_shader = shader("decision shader", include_str!("../shaders/decide.wgsl"));
         let consume_shader = shader(
@@ -515,6 +659,8 @@ impl Simulation {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("resource update layout"),
                 entries: &[
+                    storage_entry(4, wgpu::ShaderStages::COMPUTE, true),
+                    storage_entry(3, wgpu::ShaderStages::COMPUTE, false),
                     storage_entry(0, wgpu::ShaderStages::COMPUTE, false),
                     uniform_entry(1, wgpu::ShaderStages::COMPUTE),
                     storage_entry(2, wgpu::ShaderStages::COMPUTE, false),
@@ -531,6 +677,14 @@ impl Simulation {
             label: Some("resource update bind group"),
             layout: &resource_update_layout,
             entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: terrain_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: ground_buffer.as_entire_binding(),
+                },
                 wgpu::BindGroupEntry {
                     binding: 0,
                     resource: resource_buffer.as_entire_binding(),
@@ -601,6 +755,7 @@ impl Simulation {
         let perception_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("perception layout"),
             entries: &[
+                storage_entry(5, wgpu::ShaderStages::COMPUTE, false),
                 storage_entry(0, wgpu::ShaderStages::COMPUTE, true),
                 storage_entry(1, wgpu::ShaderStages::COMPUTE, true),
                 storage_entry(2, wgpu::ShaderStages::COMPUTE, true),
@@ -624,6 +779,7 @@ impl Simulation {
                 &occupancy_buffer,
                 &perception_buffer,
                 &params_buffer,
+                &ground_buffer,
             ),
             make_perception_group(
                 device,
@@ -633,6 +789,48 @@ impl Simulation {
                 &occupancy_buffer,
                 &perception_buffer,
                 &params_buffer,
+                &ground_buffer,
+            ),
+        ];
+
+        let social_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("social perception layout"),
+            entries: &[
+                storage_entry(0, wgpu::ShaderStages::COMPUTE, true),
+                storage_entry(1, wgpu::ShaderStages::COMPUTE, true),
+                storage_entry(2, wgpu::ShaderStages::COMPUTE, true),
+                storage_entry(3, wgpu::ShaderStages::COMPUTE, false),
+                storage_entry(4, wgpu::ShaderStages::COMPUTE, false),
+                uniform_entry(5, wgpu::ShaderStages::COMPUTE),
+            ],
+        });
+        let social_pipeline = compute_pipeline(
+            device,
+            "observe nearby agents",
+            &social_layout,
+            &social_shader,
+            "main",
+        );
+        let social_bind_groups = [
+            make_social_group(
+                device,
+                &social_layout,
+                &agent_buffers[0],
+                &cell_offsets[0],
+                &agent_indices,
+                &social_memory_buffer,
+                &social_perception_buffer,
+                &params_buffer,
+            ),
+            make_social_group(
+                device,
+                &social_layout,
+                &agent_buffers[1],
+                &cell_offsets[0],
+                &agent_indices,
+                &social_memory_buffer,
+                &social_perception_buffer,
+                &params_buffer,
             ),
         ];
 
@@ -641,8 +839,9 @@ impl Simulation {
             entries: &[
                 storage_entry(0, wgpu::ShaderStages::COMPUTE, true),
                 storage_entry(1, wgpu::ShaderStages::COMPUTE, true),
-                storage_entry(2, wgpu::ShaderStages::COMPUTE, false),
-                uniform_entry(3, wgpu::ShaderStages::COMPUTE),
+                storage_entry(2, wgpu::ShaderStages::COMPUTE, true),
+                storage_entry(3, wgpu::ShaderStages::COMPUTE, false),
+                uniform_entry(4, wgpu::ShaderStages::COMPUTE),
             ],
         });
         let decision_pipeline = compute_pipeline(
@@ -658,6 +857,7 @@ impl Simulation {
                 &decision_layout,
                 &agent_buffers[0],
                 &perception_buffer,
+                &social_perception_buffer,
                 &decision_buffer,
                 &params_buffer,
             ),
@@ -666,6 +866,7 @@ impl Simulation {
                 &decision_layout,
                 &agent_buffers[1],
                 &perception_buffer,
+                &social_perception_buffer,
                 &decision_buffer,
                 &params_buffer,
             ),
@@ -674,6 +875,7 @@ impl Simulation {
         let consume_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("consume layout"),
             entries: &[
+                storage_entry(6, wgpu::ShaderStages::COMPUTE, false),
                 storage_entry(0, wgpu::ShaderStages::COMPUTE, true),
                 storage_entry(1, wgpu::ShaderStages::COMPUTE, true),
                 storage_entry(2, wgpu::ShaderStages::COMPUTE, false),
@@ -699,6 +901,7 @@ impl Simulation {
                 &request_buffer,
                 &params_buffer,
                 &death_stats_buffer,
+                &ground_buffer,
             ),
             make_consume_group(
                 device,
@@ -709,6 +912,7 @@ impl Simulation {
                 &request_buffer,
                 &params_buffer,
                 &death_stats_buffer,
+                &ground_buffer,
             ),
         ];
 
@@ -822,11 +1026,13 @@ impl Simulation {
         let resolve_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("selection resolve layout"),
             entries: &[
+                storage_entry(6, wgpu::ShaderStages::COMPUTE, true),
                 storage_entry(0, wgpu::ShaderStages::COMPUTE, true),
                 storage_entry(1, wgpu::ShaderStages::COMPUTE, true),
                 storage_entry(2, wgpu::ShaderStages::COMPUTE, true),
                 storage_entry(3, wgpu::ShaderStages::COMPUTE, true),
-                storage_entry(4, wgpu::ShaderStages::COMPUTE, false),
+                storage_entry(4, wgpu::ShaderStages::COMPUTE, true),
+                storage_entry(5, wgpu::ShaderStages::COMPUTE, false),
             ],
         });
         let selection_resolve_pipeline = compute_pipeline(
@@ -843,8 +1049,10 @@ impl Simulation {
                 &agent_buffers[0],
                 &perception_buffer,
                 &decision_buffer,
+                &social_perception_buffer,
                 &selection_key_buffer,
                 &selection_output_buffer,
+                &social_memory_buffer,
             ),
             make_resolve_group(
                 device,
@@ -852,8 +1060,10 @@ impl Simulation {
                 &agent_buffers[1],
                 &perception_buffer,
                 &decision_buffer,
+                &social_perception_buffer,
                 &selection_key_buffer,
                 &selection_output_buffer,
+                &social_memory_buffer,
             ),
         ];
 
@@ -863,6 +1073,7 @@ impl Simulation {
                 entries: &[
                     storage_entry(0, wgpu::ShaderStages::COMPUTE, false),
                     uniform_entry(1, wgpu::ShaderStages::COMPUTE),
+                    storage_entry(2, wgpu::ShaderStages::COMPUTE, false),
                 ],
             });
         let resource_intervention_pipeline = compute_pipeline(
@@ -884,6 +1095,10 @@ impl Simulation {
                     wgpu::BindGroupEntry {
                         binding: 1,
                         resource: intervention_params_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: ground_buffer.as_entire_binding(),
                     },
                 ],
             });
@@ -1230,6 +1445,7 @@ impl Simulation {
                 storage_entry(4, wgpu::ShaderStages::COMPUTE, true),
                 uniform_entry(5, wgpu::ShaderStages::COMPUTE),
                 storage_entry(6, wgpu::ShaderStages::COMPUTE, false),
+                storage_entry(7, wgpu::ShaderStages::COMPUTE, false),
             ],
         });
         let birth_pipeline = compute_pipeline(
@@ -1250,6 +1466,7 @@ impl Simulation {
                 &birth_prefix[1],
                 &params_buffer,
                 &death_stats_buffer,
+                &social_memory_buffer,
             ),
             make_birth_group(
                 device,
@@ -1261,9 +1478,182 @@ impl Simulation {
                 &birth_prefix[1],
                 &params_buffer,
                 &death_stats_buffer,
+                &social_memory_buffer,
             ),
         ];
 
+        let event_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("recent interaction events"),
+            size: 65536 * 32,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let interaction_shader = shader(
+            "pair interactions",
+            include_str!("../shaders/interactions.wgsl"),
+        );
+        let interaction_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("pair interaction layout"),
+                entries: &[
+                    storage_entry(7, wgpu::ShaderStages::COMPUTE, false),
+                    storage_entry(6, wgpu::ShaderStages::COMPUTE, false),
+                    storage_entry(5, wgpu::ShaderStages::COMPUTE, false),
+                    storage_entry(0, wgpu::ShaderStages::COMPUTE, false),
+                    storage_entry(1, wgpu::ShaderStages::COMPUTE, true),
+                    storage_entry(2, wgpu::ShaderStages::COMPUTE, false),
+                    uniform_entry(3, wgpu::ShaderStages::COMPUTE),
+                    storage_entry(4, wgpu::ShaderStages::COMPUTE, false),
+                ],
+            });
+        let claims = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("disjoint interaction claims"),
+            size: MAX_AGENTS as u64 * 4,
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+        let interaction_pipelines = ["clear", "propose", "resolve"].map(|entry| {
+            compute_pipeline(
+                device,
+                entry,
+                &interaction_layout,
+                &interaction_shader,
+                entry,
+            )
+        });
+        let interaction_bind_groups = [0, 1].map(|index| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("pair interactions"),
+                layout: &interaction_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 7,
+                        resource: social_memory_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: event_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: ground_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: agent_buffers[index].as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: decision_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: claims.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: params_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: death_stats_buffer.as_entire_binding(),
+                    },
+                ],
+            })
+        });
+        let death_shader = shader(
+            "release dead inventories",
+            include_str!("../shaders/release_food.wgsl"),
+        );
+        let death_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("release food layout"),
+            entries: &[
+                storage_entry(0, wgpu::ShaderStages::COMPUTE, false),
+                storage_entry(1, wgpu::ShaderStages::COMPUTE, false),
+            ],
+        });
+        let death_pipeline = compute_pipeline(
+            device,
+            "release carried food",
+            &death_layout,
+            &death_shader,
+            "main",
+        );
+        let death_bind_groups = [0, 1].map(|i| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("release carried food"),
+                layout: &death_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: agent_buffers[i].as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: ground_buffer.as_entire_binding(),
+                    },
+                ],
+            })
+        });
+        let summary_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("world summary chunks"),
+            size: 4096 * 64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let summary_shader = shader("world summary", include_str!("../shaders/summarize.wgsl"));
+        let summary_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("world summary layout"),
+            entries: &[
+                storage_entry(5, wgpu::ShaderStages::COMPUTE, true),
+                storage_entry(0, wgpu::ShaderStages::COMPUTE, true),
+                storage_entry(1, wgpu::ShaderStages::COMPUTE, true),
+                storage_entry(2, wgpu::ShaderStages::COMPUTE, true),
+                storage_entry(3, wgpu::ShaderStages::COMPUTE, false),
+                uniform_entry(4, wgpu::ShaderStages::COMPUTE),
+            ],
+        });
+        let summary_pipeline = compute_pipeline(
+            device,
+            "world summary",
+            &summary_layout,
+            &summary_shader,
+            "main",
+        );
+        let summary_bind_groups = [0, 1].map(|i| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("world summary"),
+                layout: &summary_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: social_memory_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: agent_buffers[i].as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: resource_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: ground_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: summary_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: params_buffer.as_entire_binding(),
+                    },
+                ],
+            })
+        });
         let params = params_for(0, &SimSettings::default(), seed);
         queue.write_buffer(&params_buffer, 0, bytemuck::bytes_of(&params));
         queue.write_buffer(
@@ -1273,15 +1663,26 @@ impl Simulation {
         );
 
         Self {
+            terrain_buffer,
+            terrain_epoch: 0,
             settings: SimSettings::default(),
             seed,
+            summary_pipeline,
+            summary_bind_groups,
+            summary_buffer,
+            event_buffer,
             tick: 0,
             current_buffer: 0,
             agent_buffers,
             resource_buffer,
+            ground_buffer,
+            death_pipeline,
+            death_bind_groups,
             resource_display_buffer,
             fertility_buffer,
             perception_buffer,
+            _social_perception_buffer: social_perception_buffer,
+            social_memory_buffer,
             _decision_buffer: decision_buffer,
             _request_buffer: request_buffer,
             birth_flags,
@@ -1299,6 +1700,9 @@ impl Simulation {
             death_stats_buffer,
             death_stats_readback,
             params_buffer,
+            tick_params_buffer,
+            interaction_pipelines,
+            interaction_bind_groups,
             selection_params_buffer,
             selection_key_buffer,
             selection_output_buffer,
@@ -1308,6 +1712,7 @@ impl Simulation {
             clear_occupancy_pipeline,
             count_occupancy_pipeline,
             perception_pipeline,
+            social_pipeline,
             decision_pipeline,
             consume_pipeline,
             update_pipeline,
@@ -1329,6 +1734,7 @@ impl Simulation {
             clear_occupancy_bind_group,
             count_bind_groups,
             perception_bind_groups,
+            social_bind_groups,
             decision_bind_groups,
             consume_bind_groups,
             update_bind_groups,
@@ -1353,15 +1759,31 @@ impl Simulation {
     }
 
     pub fn reset(&mut self, queue: &wgpu::Queue) {
+        queue.write_buffer(
+            &self.terrain_buffer,
+            0,
+            bytemuck::cast_slice(&build_terrain_pair(self.seed, 0)),
+        );
+        self.terrain_epoch = 0;
         let agents = build_agents(self.seed, &self.settings);
-        let resources = build_resources(self.seed, self.settings.heterogeneity);
+        let habitat = build_habitat(self.seed);
+        let resources = build_resources(&habitat);
         queue.write_buffer(&self.agent_buffers[0], 0, bytemuck::cast_slice(&agents));
         queue.write_buffer(&self.agent_buffers[1], 0, bytemuck::cast_slice(&agents));
         queue.write_buffer(&self.resource_buffer, 0, bytemuck::cast_slice(&resources));
-        let fertility_data: Vec<f32> = resources
-            .iter()
-            .map(|value| *value as f32 / RESOURCE_SCALE)
-            .collect();
+        queue.write_buffer(&self.event_buffer, 0, &vec![0; 65536 * 32]);
+        queue.write_buffer(
+            &self.ground_buffer,
+            0,
+            bytemuck::cast_slice(&build_ground(&habitat)),
+        );
+        let social_memory = build_social_memory();
+        queue.write_buffer(
+            &self.social_memory_buffer,
+            0,
+            bytemuck::cast_slice(&social_memory),
+        );
+        let fertility_data: Vec<f32> = habitat.iter().map(|value| 0.4 + value * 0.35).collect();
         queue.write_buffer(
             &self.fertility_buffer,
             0,
@@ -1389,16 +1811,41 @@ impl Simulation {
     pub fn encode_ticks(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
+        device: &wgpu::Device,
         queue: &wgpu::Queue,
         ticks: u32,
     ) {
         if ticks == 0 {
             return;
         }
-        // Queue writes are ordered before the eventual submission, so one params write is
-        // intentionally shared by this batch. Agent-local RNG state still changes every tick.
-        self.update_params(queue);
-        for _ in 0..ticks {
+        assert!(ticks <= 32, "submit at most 32 ticks per batch");
+        let tick_params: Vec<_> = (0..ticks)
+            .map(|offset| params_for(self.tick.wrapping_add(offset), &self.settings, self.seed))
+            .collect();
+        queue.write_buffer(
+            &self.tick_params_buffer,
+            0,
+            bytemuck::cast_slice(&tick_params),
+        );
+        for offset in 0..ticks {
+            let epoch = self.tick / 8192;
+            if self.settings.evolving_landscape && epoch != self.terrain_epoch {
+                let staging = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("next landscape keyframes"),
+                    contents: bytemuck::cast_slice(&build_terrain_pair(self.seed, epoch)),
+                    usage: wgpu::BufferUsages::COPY_SRC,
+                });
+                // Ordered copy handles a keyframe boundary inside a tick batch.
+                encoder.copy_buffer_to_buffer(&staging, 0, &self.terrain_buffer, 0, staging.size());
+                self.terrain_epoch = epoch;
+            }
+            encoder.copy_buffer_to_buffer(
+                &self.tick_params_buffer,
+                offset as u64 * std::mem::size_of::<SimParams>() as u64,
+                &self.params_buffer,
+                0,
+                std::mem::size_of::<SimParams>() as u64,
+            );
             let src = self.current_buffer;
             let dst = 1 - src;
             {
@@ -1525,6 +1972,15 @@ impl Simulation {
             }
             {
                 let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some("social perception and relationship update"),
+                    timestamp_writes: None,
+                });
+                pass.set_pipeline(&self.social_pipeline);
+                pass.set_bind_group(0, &self.social_bind_groups[src], &[]);
+                pass.dispatch_workgroups((MAX_AGENTS + 63) / 64, 1, 1);
+            }
+            {
+                let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some("primitive action scoring"),
                     timestamp_writes: None,
                 });
@@ -1549,6 +2005,24 @@ impl Simulation {
                 pass.set_pipeline(&self.update_pipeline);
                 pass.set_bind_group(0, &self.update_bind_groups[src][dst], &[]);
                 pass.dispatch_workgroups((MAX_AGENTS + 63) / 64, 1, 1);
+            }
+            for pipeline in &self.interaction_pipelines {
+                let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some("resolve disjoint local interactions"),
+                    timestamp_writes: None,
+                });
+                pass.set_pipeline(pipeline);
+                pass.set_bind_group(0, &self.interaction_bind_groups[dst], &[]);
+                pass.dispatch_workgroups((MAX_AGENTS + 63) / 64, 1, 1);
+            }
+            {
+                let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some("release inventories on death"),
+                    timestamp_writes: None,
+                });
+                pass.set_pipeline(&self.death_pipeline);
+                pass.set_bind_group(0, &self.death_bind_groups[dst], &[]);
+                pass.dispatch_workgroups(MAX_AGENTS.div_ceil(64), 1, 1);
             }
             {
                 let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -1648,7 +2122,7 @@ impl Simulation {
         receiver.recv().ok()?.ok()?;
         let mapped = slice.get_mapped_range();
         let values = bytemuck::cast_slice(&mapped);
-        let result = [values[0], values[1], values[2], values[3]];
+        let result: [u32; DEATH_STATS_COUNT as usize] = values.try_into().ok()?;
         drop(mapped);
         self.death_stats_readback.unmap();
         Some(result)
@@ -1788,7 +2262,7 @@ impl Simulation {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("agent intervention encoder"),
         });
-        for bind_group in &self.kill_agents_bind_groups {
+        for bind_group in [&self.kill_agents_bind_groups[self.current_buffer]] {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("kill agents in region"),
                 timestamp_writes: None,
@@ -1843,6 +2317,7 @@ fn compute_pipeline(
         bind_group_layouts: &[layout],
         push_constant_ranges: &[],
     });
+
     device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: Some(label),
         layout: Some(&pipeline_layout),
@@ -2081,6 +2556,7 @@ fn make_birth_group(
     birth_prefix: &wgpu::Buffer,
     params: &wgpu::Buffer,
     stats: &wgpu::Buffer,
+    social_memory: &wgpu::Buffer,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("agent birth bind group"),
@@ -2114,6 +2590,10 @@ fn make_birth_group(
                 binding: 6,
                 resource: stats.as_entire_binding(),
             },
+            wgpu::BindGroupEntry {
+                binding: 7,
+                resource: social_memory.as_entire_binding(),
+            },
         ],
     })
 }
@@ -2126,11 +2606,17 @@ fn make_perception_group(
     occupancy: &wgpu::Buffer,
     perception: &wgpu::Buffer,
     params: &wgpu::Buffer,
+
+    ground: &wgpu::Buffer,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("perception bind group"),
         layout,
         entries: &[
+            wgpu::BindGroupEntry {
+                binding: 5,
+                resource: ground.as_entire_binding(),
+            },
             wgpu::BindGroupEntry {
                 binding: 0,
                 resource: agents.as_entire_binding(),
@@ -2160,6 +2646,7 @@ fn make_decision_group(
     layout: &wgpu::BindGroupLayout,
     agents: &wgpu::Buffer,
     perception: &wgpu::Buffer,
+    social_perception: &wgpu::Buffer,
     decision: &wgpu::Buffer,
     params: &wgpu::Buffer,
 ) -> wgpu::BindGroup {
@@ -2177,10 +2664,56 @@ fn make_decision_group(
             },
             wgpu::BindGroupEntry {
                 binding: 2,
-                resource: decision.as_entire_binding(),
+                resource: social_perception.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: 3,
+                resource: decision.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: params.as_entire_binding(),
+            },
+        ],
+    })
+}
+
+fn make_social_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    agents: &wgpu::Buffer,
+    cell_offsets: &wgpu::Buffer,
+    agent_indices: &wgpu::Buffer,
+    social_memory: &wgpu::Buffer,
+    social_perception: &wgpu::Buffer,
+    params: &wgpu::Buffer,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("social perception bind group"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: agents.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: cell_offsets.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: agent_indices.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: social_memory.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: social_perception.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 5,
                 resource: params.as_entire_binding(),
             },
         ],
@@ -2196,11 +2729,17 @@ fn make_consume_group(
     requests: &wgpu::Buffer,
     params: &wgpu::Buffer,
     stats: &wgpu::Buffer,
+
+    ground: &wgpu::Buffer,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("consume bind group"),
         layout,
         entries: &[
+            wgpu::BindGroupEntry {
+                binding: 6,
+                resource: ground.as_entire_binding(),
+            },
             wgpu::BindGroupEntry {
                 binding: 0,
                 resource: agents.as_entire_binding(),
@@ -2314,13 +2853,20 @@ fn make_resolve_group(
     agents: &wgpu::Buffer,
     perceptions: &wgpu::Buffer,
     decisions: &wgpu::Buffer,
+    social: &wgpu::Buffer,
     key: &wgpu::Buffer,
     output: &wgpu::Buffer,
+
+    memory: &wgpu::Buffer,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("selection resolve bind group"),
         layout,
         entries: &[
+            wgpu::BindGroupEntry {
+                binding: 6,
+                resource: memory.as_entire_binding(),
+            },
             wgpu::BindGroupEntry {
                 binding: 0,
                 resource: agents.as_entire_binding(),
@@ -2335,10 +2881,14 @@ fn make_resolve_group(
             },
             wgpu::BindGroupEntry {
                 binding: 3,
-                resource: key.as_entire_binding(),
+                resource: social.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: 4,
+                resource: key.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 5,
                 resource: output.as_entire_binding(),
             },
         ],
@@ -2367,7 +2917,7 @@ fn make_intervention_group(
     })
 }
 
-fn params_for(tick: u32, settings: &SimSettings, _seed: u32) -> SimParams {
+fn params_for(tick: u32, settings: &SimSettings, seed: u32) -> SimParams {
     SimParams {
         world_size: WORLD_SIZE,
         resource_grid_size: RESOURCE_GRID,
@@ -2393,6 +2943,18 @@ fn params_for(tick: u32, settings: &SimSettings, _seed: u32) -> SimParams {
             settings.reproduction_threshold,
             settings.reproduction_cost,
         ],
+        social_weights: [
+            settings.social_access,
+            settings.social_concern,
+            settings.reciprocity,
+            u32::from(settings.force_enabled) as f32,
+        ],
+        lifecycle: [
+            seed,
+            settings.birth_cooldown,
+            u32::from(settings.communication_enabled),
+            u32::from(settings.evolving_landscape),
+        ],
     }
 }
 
@@ -2405,41 +2967,199 @@ fn build_agents(seed: u32, settings: &SimSettings) -> Vec<AgentGpu> {
             let direction = random01(&mut rng) * std::f32::consts::TAU;
             AgentGpu {
                 position: [x, y],
-                velocity: [direction.cos(), direction.sin()],
-                energy: 65.0 + random01(&mut rng) * 30.0,
+                velocity: [0.0; 2],
+                energy: 65.0,
                 age: random01(&mut rng) * 300.0,
-                max_speed: 0.8 + random01(&mut rng) * 1.0,
+                max_speed: 1.2,
                 sensor_radius: settings.sensor_radius,
-                exploration: 0.15 + random01(&mut rng) * 0.8,
-                resource_attraction: 0.6 + random01(&mut rng) * 1.1,
-                persistence: 0.1 + random01(&mut rng) * 0.8,
-                risk: random01(&mut rng),
-                rng: rng ^ i.wrapping_mul(0x9e37_79b9),
+                food: if i < settings.population { 2.0 } else { 0.0 },
+                goal: [
+                    (x + direction.cos() * 32.0).clamp(0.0, WORLD_SIZE),
+                    (y + direction.sin() * 32.0).clamp(0.0, WORLD_SIZE),
+                ],
+                rng: rng ^ i.wrapping_mul(0x9e3779b9),
                 alive: u32::from(i < settings.population),
+                generation: 1,
+                target: MAX_AGENTS,
+                event_actor: MAX_AGENTS,
+                guide_id: MAX_AGENTS,
+                max_age: 9000.0 + random01(&mut rng) * 2000.0,
+                ..Default::default()
             }
         })
         .collect()
 }
 
-fn build_resources(seed: u32, heterogeneity: f32) -> Vec<u32> {
+fn build_social_memory() -> Vec<SocialRelationGpu> {
+    vec![
+        SocialRelationGpu {
+            target_slot: MAX_AGENTS,
+            target_generation: 0,
+            familiarity: 0.0,
+            benefit: 0.0,
+            harm: 0.0,
+            last_seen_tick: 0,
+            benefit_evidence: 0.0,
+            harm_evidence: 0.0,
+            navigation: 0.0,
+            navigation_evidence: 0.0,
+            last_report_tick: 0,
+            last_report_observed: 0,
+        };
+        (MAX_AGENTS * SOCIAL_SLOTS) as usize
+    ]
+}
+
+fn build_habitat(seed: u32) -> Vec<f32> {
+    build_habitat_at(seed, 0)
+}
+
+fn build_terrain_pair(seed: u32, epoch: u32) -> Vec<[f32; 4]> {
+    let a = build_habitat_at(seed, epoch);
+    let b = build_habitat_at(seed, epoch.wrapping_add(1));
+    let ma = (a.iter().sum::<f32>() / a.len() as f32).max(0.001);
+    let mb = (b.iter().sum::<f32>() / b.len() as f32).max(0.001);
+    a.iter()
+        .zip(&b)
+        .map(|(a, b)| [*a, *b, *a / ma, *b / mb])
+        .collect()
+}
+
+fn build_habitat_at(seed: u32, epoch: u32) -> Vec<f32> {
     let mut rng = seed ^ 0xa341_316c;
-    let mut resources = vec![0u32; (RESOURCE_GRID * RESOURCE_GRID) as usize];
+    let mut patches: Vec<[f32; 7]> = Vec::new();
+    for i in 0..24 {
+        let mut center = [0.5; 2];
+        for _ in 0..64 {
+            center = [
+                0.06 + random01(&mut rng) * 0.88,
+                0.06 + random01(&mut rng) * 0.88,
+            ];
+            if patches
+                .iter()
+                .all(|p| (p[0] - center[0]).hypot(p[1] - center[1]) > 0.11)
+            {
+                break;
+            }
+        }
+        let radius = if i < 5 {
+            0.075 + random01(&mut rng) * 0.04
+        } else {
+            0.02 + random01(&mut rng) * 0.025
+        };
+        let angle = random01(&mut rng) * std::f32::consts::TAU;
+        patches.push([
+            center[0],
+            center[1],
+            radius,
+            0.65 + random01(&mut rng) * 0.7,
+            angle.cos(),
+            angle.sin(),
+            1.0,
+        ]);
+    }
+    for (i, p) in patches.iter_mut().enumerate() {
+        let mut renewal =
+            seed ^ (i as u32).wrapping_mul(7919) ^ (epoch / 3).wrapping_mul(0x9e3779b9);
+        if epoch >= 3 {
+            p[0] = 0.06 + random01(&mut renewal) * 0.88;
+            p[1] = 0.06 + random01(&mut renewal) * 0.88;
+        }
+        let phase = i as f32 * 2.39996 + epoch as f32 * 0.6;
+        p[0] = (p[0] + phase.sin() * 0.035).clamp(0.03, 0.97);
+        p[1] = (p[1] + (phase * 0.73).cos() * 0.035).clamp(0.03, 0.97);
+        p[2] *= 0.85 + 0.25 * (phase * 0.8).sin();
+        // Some regions lapse during a renewal cycle; interpolation fades them
+        // out while replacement locations grow, without instantaneous jumps.
+        p[6] = if random01(&mut renewal) < 0.16 {
+            0.0
+        } else {
+            0.75 + 0.25 * (phase * 0.9).cos()
+        };
+    }
+    let mut habitat = vec![0.0f32; (RESOURCE_GRID * RESOURCE_GRID) as usize];
     for y in 0..RESOURCE_GRID {
         for x in 0..RESOURCE_GRID {
-            let xf = x as f32 / RESOURCE_GRID as f32;
-            let yf = y as f32 / RESOURCE_GRID as f32;
-            let wave = 0.5 + 0.5 * ((xf * 13.0).sin() * (yf * 9.0).cos());
-            let basin = 0.5 + 0.5 * ((xf - 0.62).powi(2) + (yf - 0.31).powi(2)).cos();
-            let noise = random01(&mut rng);
-            let value = (0.12 + heterogeneity * (0.58 * wave + 0.27 * basin + 0.15 * noise))
-                .clamp(0.02, 1.0);
-            resources[(y * RESOURCE_GRID + x) as usize] = (value * RESOURCE_SCALE) as u32;
+            let xf = (x as f32 + 0.5) / RESOURCE_GRID as f32;
+            let yf = (y as f32 + 0.5) / RESOURCE_GRID as f32;
+            // Smooth domain warping and edge detail avoid perfect circles and pixel noise.
+            let wx = xf + (terrain_noise(xf * 7.0, yf * 7.0, seed) - 0.5) * 0.045;
+            let wy = yf + (terrain_noise(xf * 7.0, yf * 7.0, seed ^ 7919) - 0.5) * 0.045;
+            let edge = (terrain_noise(xf * 35.0, yf * 35.0, seed ^ 1237) - 0.5) * 0.3;
+            let mut value = 0.0f32;
+            for p in &patches {
+                let dx = wx - p[0];
+                let dy = wy - p[1];
+                let u = (dx * p[4] + dy * p[5]) / p[2];
+                let v = (-dx * p[5] + dy * p[4]) / (p[2] * p[3]);
+                let distance = u.hypot(v) + edge;
+                let t = ((1.2 - distance) / 1.2).clamp(0.0, 1.0);
+                let patch = t * t * (3.0 - 2.0 * t) * p[6];
+                value = value.max(patch);
+            }
+            let shift = epoch as f32 * 0.025;
+            let broad = terrain_noise(xf * 3.3 + shift, yf * 3.3 + shift, seed ^ 991) * 0.55
+                + terrain_noise(xf * 7.1 + shift, yf * 7.1, seed ^ 1777) * 0.30
+                + terrain_noise(xf * 15.3, yf * 15.3 + shift, seed ^ 3137) * 0.15;
+            // Keep a low-yield landscape between peaks. A hard threshold made
+            // the world read as isolated islands and forced every trip to be
+            // an all-or-nothing migration. The lower shoulder provides
+            // forage while the nonlinear upper shoulder preserves rich hubs.
+            let t = ((value * 0.8 + broad * 0.35 - 0.22) / 0.78).clamp(0.0, 1.0);
+            let shoulder = t * t * (3.0 - 2.0 * t);
+            habitat[(y * RESOURCE_GRID + x) as usize] = shoulder * 0.78 + t * 0.22;
         }
     }
-    resources
+    habitat
+}
+
+fn terrain_noise(x: f32, y: f32, seed: u32) -> f32 {
+    let ix = x.floor() as u32;
+    let iy = y.floor() as u32;
+    let sample = |dx: u32, dy: u32| {
+        let mut h = seed
+            ^ ix.wrapping_add(dx).wrapping_mul(0x9e3779b9)
+            ^ iy.wrapping_add(dy).wrapping_mul(0x85ebca6b);
+        h = (h ^ (h >> 16)).wrapping_mul(0x7feb352d);
+        h = (h ^ (h >> 15)).wrapping_mul(0x846ca68b);
+        (h ^ (h >> 16)) as f32 / u32::MAX as f32
+    };
+    let tx = x.fract();
+    let ty = y.fract();
+    let sx = tx * tx * (3.0 - 2.0 * tx);
+    let sy = ty * ty * (3.0 - 2.0 * ty);
+    let top = sample(0, 0) * (1.0 - sx) + sample(1, 0) * sx;
+    let bottom = sample(0, 1) * (1.0 - sx) + sample(1, 1) * sx;
+    top * (1.0 - sy) + bottom * sy
+}
+
+fn build_resources(habitat: &[f32]) -> Vec<u32> {
+    habitat
+        .iter()
+        .map(|h| (h * 0.55 * RESOURCE_SCALE) as u32)
+        .collect()
+}
+
+fn build_ground(habitat: &[f32]) -> Vec<[u32; 8]> {
+    let mean = (habitat.iter().sum::<f32>() / habitat.len() as f32).max(0.001);
+    habitat
+        .iter()
+        .map(|h| [0, 0, 0, 0, 0, 0, h.to_bits(), (h / mean).to_bits()])
+        .collect()
 }
 
 fn random01(state: &mut u32) -> f32 {
     *state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
     ((*state >> 8) as f32) / 16_777_215.0
 }
+
+pub fn shader_source(source: &str) -> String {
+    format!("{}\n{}", include_str!("../shaders/common.wgsl"), source)
+}
+
+#[cfg(test)]
+#[path = "simulation_tests.rs"]
+mod tests;
+
+#[path = "observability.rs"]
+pub mod observability;

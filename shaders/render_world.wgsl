@@ -1,3 +1,4 @@
+@group(1) @binding(3) var<storage, read> ground_words: array<vec4<u32>>;
 struct Camera {
   center: vec2<f32>,
   zoom: f32,
@@ -7,11 +8,6 @@ struct Camera {
   selected_id: u32,
   padding: u32,
 };
-struct SimParams {
-  world_size: f32, resource_grid_size: u32, agent_count: u32, tick: u32,
-  time_and_costs: vec4<f32>, resource_and_noise: vec4<f32>, sensor_and_padding: vec4<f32>,
-};
-
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(1) @binding(0) var<storage, read> resources: array<u32>;
 @group(1) @binding(1) var<uniform> params: SimParams;
@@ -28,7 +24,7 @@ struct VertexOutput {
 
 @vertex
 fn vs(@builtin(vertex_index) index: u32) -> VertexOutput {
-  let positions = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
+  var positions = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
   let p = positions[index];
   return VertexOutput(vec4<f32>(p, 0.0, 1.0), p);
 }
@@ -56,6 +52,14 @@ fn fs(input: VertexOutput) -> @location(0) vec4<f32> {
   }
   if (camera.lens == 2u) {
     tint = mix(vec3<f32>(0.01, 0.02, 0.10), vec3<f32>(0.92, 0.12, 0.04), smoothstep(0.0, 0.9, density));
+  }
+  let dropped = f32(ground_words[(cell.y*GRID+cell.x)*2u].x)/1000.0;
+  tint=mix(tint,vec3<f32>(0.25,0.55,0.8),clamp(dropped/2.0,0.0,0.8));
+  if (camera.lens==9u) {
+    let habitat=clamp(bitcast<f32>(ground_words[(cell.y*GRID+cell.x)*2u+1u].z),0.0,1.0);
+    let potential=sqrt(habitat);
+    tint=mix(vec3<f32>(0.004,0.008,0.016),vec3<f32>(0.10,0.32,0.17),smoothstep(0.0,0.6,potential));
+    tint=mix(tint,vec3<f32>(0.65,0.55,0.16),smoothstep(0.6,1.0,potential));
   }
   let vignette = 1.0 - 0.16 * length(input.ndc);
   return vec4<f32>(tint * vignette, 1.0);

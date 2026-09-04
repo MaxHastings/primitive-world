@@ -1,1 +1,4 @@
 /target/
+/world.checkpoint
+/history.json
+/headless-report.json

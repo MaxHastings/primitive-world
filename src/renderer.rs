@@ -23,6 +23,9 @@ pub enum Lens {
     Movement = 4,
     Age = 5,
     Gradient = 6,
+    CarriedFood = 7,
+    Action = 8,
+    Fertility = 9,
 }
 
 impl Lens {
@@ -35,6 +38,9 @@ impl Lens {
             Self::Movement => "Movement",
             Self::Age => "Age",
             Self::Gradient => "Local resource gradient",
+            Self::CarriedFood => "Carried food",
+            Self::Action => "Current action",
+            Self::Fertility => "Landscape fertility",
         }
     }
 
@@ -46,7 +52,10 @@ impl Lens {
             Self::Energy => Self::Movement,
             Self::Movement => Self::Age,
             Self::Age => Self::Gradient,
-            Self::Gradient => Self::Normal,
+            Self::Gradient => Self::CarriedFood,
+            Self::CarriedFood => Self::Action,
+            Self::Action => Self::Fertility,
+            Self::Fertility => Self::Normal,
         }
     }
 }
@@ -73,7 +82,7 @@ impl Renderer {
             center: [WORLD_SIZE * 0.5, WORLD_SIZE * 0.5],
             zoom: 1.0,
             aspect: width.max(1) as f32 / height.max(1) as f32,
-            lens: Lens::Normal as u32,
+            lens: Lens::Energy as u32,
             point_size: 2.0,
             selected_id: u32::MAX,
             _padding: 0,
@@ -111,6 +120,7 @@ impl Renderer {
         let world_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("world render layout"),
             entries: &[
+                storage_entry(3, wgpu::ShaderStages::FRAGMENT, true),
                 storage_entry(0, wgpu::ShaderStages::FRAGMENT, true),
                 uniform_entry(1, wgpu::ShaderStages::FRAGMENT),
                 storage_entry(2, wgpu::ShaderStages::FRAGMENT, true),
@@ -120,6 +130,10 @@ impl Renderer {
             label: Some("world render bind group"),
             layout: &world_layout,
             entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: simulation.ground_buffer.as_entire_binding(),
+                },
                 wgpu::BindGroupEntry {
                     binding: 0,
                     resource: simulation.resource_display_buffer.as_entire_binding(),
@@ -161,11 +175,17 @@ impl Renderer {
 
         let world_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("world render shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/render_world.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(
+                crate::simulation::shader_source(include_str!("../shaders/render_world.wgsl"))
+                    .into(),
+            ),
         });
         let agent_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("agent render shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/render_agents.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(
+                crate::simulation::shader_source(include_str!("../shaders/render_agents.wgsl"))
+                    .into(),
+            ),
         });
         let world_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
