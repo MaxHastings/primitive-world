@@ -12,7 +12,7 @@ Close an older running copy before rebuilding that executable on Windows. A fres
 
 Defaults: 1,000 initial agents, regeneration 0.01, metabolic cost 0.06, movement cost 0.01, and 8 energy per food unit. A harvest collects up to 0.025 food; an eating action consumes up to 0.1. Carrying capacity is 8 food. These are experiment settings, not guarantees of stability at every slider combination.
 
-Reproduction requires maturity, energy, at least 2 carried food, and an elapsed cooldown. At default cost, the parent spends 50 energy and transfers 1 food; the child receives 24 energy and that food. Survivors can repopulate after shortages. Complete extinction requires an explicit reset. The 100,000-agent capacity is a storage limit, not a population target.
+Reproduction requires maturity, energy, at least 2 carried food, and an elapsed cooldown. It is checked on a settled harvest/eat/wait tick rather than during movement, so arriving at a newly discovered patch does not create a synchronized birth pulse. At default cost, the parent spends 50 energy and transfers 1 food; the child receives 24 energy and that food. Survivors can repopulate after shortages. Complete extinction requires an explicit reset. The 100,000-agent capacity is a storage limit, not a population target.
 
 ## Controls and observation
 

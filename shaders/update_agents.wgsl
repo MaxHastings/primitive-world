@@ -79,6 +79,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     a.alive=0u;
     if (a.age>=a.max_age) { atomicAdd(&stats[2],1u); } else { atomicAdd(&stats[1],1u); }
   }
-  birth_flags[i]=u32(a.alive!=0u && a.age>=params.sensor_and_padding.y && params.tick>=a.next_birth && a.energy>=max(params.sensor_and_padding.z,params.sensor_and_padding.w+10.0) && a.food>=2.0 && (a.rng&1023u)<3u);
+  // Reproduction is a settled-surplus behavior. Prevent a moving agent from
+  // reproducing on the same tick it is paying travel costs or arriving at a
+  // newly found patch; this removes the depletion -> migration -> birth pulse.
+  birth_flags[i]=u32(a.alive!=0u && d.selected_action!=MOVE && a.age>=params.sensor_and_padding.y && params.tick>=a.next_birth && a.energy>=max(params.sensor_and_padding.z,params.sensor_and_padding.w+10.0) && a.food>=2.0 && (a.rng&1023u)<3u);
   destination_agents[i]=a;
 }
