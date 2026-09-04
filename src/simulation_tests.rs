@@ -1,5 +1,77 @@
 use super::*;
 
+/// Diagnostic of the released bank, not a required behavior for future models.
+/// Paired gradients cancel unconditional drift; only the food field changes.
+#[test]
+fn released_bank_sensor_frame_diagnostic() {
+    let (d, q) = gpu();
+    let s = scene(&d, &q);
+    let bank = crate::founders::bundled();
+    let mut summary = Vec::new();
+    for angle in [
+        0.0,
+        std::f32::consts::FRAC_PI_2,
+        std::f32::consts::PI,
+        -std::f32::consts::FRAC_PI_2,
+    ] {
+        for (slot, genome) in bank.genomes.iter().enumerate() {
+            let mut a = body([1026.0, 1026.0]);
+            a.energy = 50.0;
+            a.food = 1.0;
+            a.attention = angle;
+            a.lineage_id = slot as u32 + 1;
+            put(&s, &q, slot, a, genome.as_slice().try_into().unwrap());
+        }
+        let mut paired = Vec::new();
+        for sign in [1.0f32, -1.0] {
+            let resources: Vec<u32> = (0..512 * 512)
+                .map(|i| {
+                    let x = ((i % 512) as f32 + 0.5) * 4.0;
+                    ((0.4 + sign * (x - 1026.0) * 0.01).clamp(0.0, 1.0) * 1000.0).round() as u32
+                })
+                .collect();
+            q.write_buffer(&s.resource_buffer, 0, bytemuck::cast_slice(&resources));
+            let mut e = d.create_command_encoder(&Default::default());
+            s.dispatch(&mut e, "perceive", s.current_buffer, 2, 1);
+            s.dispatch(&mut e, "decide", s.current_buffer, 2, 1);
+            q.submit(Some(e.finish()));
+            let decisions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, bank.genomes.len());
+            assert!(decisions.iter().all(|v| v.invalid == 0));
+            // The sensory offsets really rotate; the cue is not a fixed slot.
+            let east_slot = [0usize, 1, 2, 3]
+                .into_iter()
+                .max_by(|&a, &b| {
+                    decisions[0].inputs[17 + 3 * a].total_cmp(&decisions[0].inputs[17 + 3 * b])
+                })
+                .unwrap();
+            assert!(decisions[0].inputs[17 + 3 * east_slot] > 0.16);
+            paired.push(decisions);
+        }
+        let deltas: Vec<[f32; 2]> = paired[0]
+            .iter()
+            .zip(&paired[1])
+            .map(|(east, west)| {
+                [
+                    (east.movement[0] - west.movement[0]) * 0.5,
+                    (east.movement[1] - west.movement[1]) * 0.5,
+                ]
+            })
+            .collect();
+        let mean = |axis: usize| deltas.iter().map(|v| v[axis]).sum::<f32>() / deltas.len() as f32;
+        let toward = deltas.iter().filter(|v| v[0] > 0.0).count();
+        println!(
+            "attention={angle:.6} paired_food_response=({:.6},{:.6}) toward_east={toward}/{}",
+            mean(0),
+            mean(1),
+            deltas.len()
+        );
+        summary.push((mean(0), toward));
+    }
+    // Reproduce the suspected failure in the frozen historical bank on GPU.
+    assert!(summary[0].0 > 0.02 && summary[0].1 == bank.genomes.len());
+    assert!(summary[2].0 < -0.02 && summary[2].1 == 0);
+}
+
 #[test]
 fn reproduction_rechecks_reserves_after_force() {
     let (d, q) = gpu();

@@ -1,4 +1,10 @@
-# Autonomous playable-world delivery
+# Autonomous artificial-life goal — unfinished
+
+The 0.2 release below completed a narrower delivery milestone, **not the user's
+goal**. Calling the broad goal complete was premature. The active acceptance
+contract is in `GOAL_CONTRACT.md`. No survival, migration or user-experience gate
+in that contract has yet been demonstrated. Passing integrity tests is not
+evidence that adaptation works.
 
 Goal: a usable, understandable artificial-life playground with a small coherent
 foundation, not scripted travel or unsupported intelligence claims.
@@ -22,7 +28,7 @@ The previous eight-run comparison was interrupted at user redirection during
 its first run; it is not evidence for or against preparation. Its files remain
 in the separate retention research worktree, marked interrupted.
 
-Delivery: calibration and all nine held-out comparisons completed. Gain4 is
+Earlier release milestone: calibration and all nine held-out comparisons completed. Gain4 is
 the working physical default with original costs. The prepared bank improved
 survival on one seed but failed the two-seed promotion gate; original released
 weights remain. Launcher/controls/observer and28 integrity tests are complete.
