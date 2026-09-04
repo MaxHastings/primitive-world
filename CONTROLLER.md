@@ -77,7 +77,7 @@ Observers can inspect the event type and participants separately.
 | Output | Resolution |
 | --- | --- |
 | 0–6 | Logits for none, collect, ingest, transfer, force, emit, reproduce |
-| 7–8 | tanh movement vector, length capped at one; physical body scales it |
+| 7–8 | tanh(gain * motor logits), vector length capped at one; physical body scales it |
 | 9 | tanh angular change, at most 0.25 radians/tick |
 | 10 | Sigmoid amount in [0,1], with pre-sigmoid clamp [-20,20] |
 | 11 | tanh signal payload in [-1,1] |
@@ -90,6 +90,10 @@ available action. Reproduction with inadequate reserves, transfer without a
 nearby receiver, or ingest with no inventory can simply accomplish nothing.
 
 Attention affects the next observation, not one already collected this tick.
+Motor response gain is a declared per-world actuator calibration (fresh default
+4, historical1), not an inherited gene, forced movement or new observation.
+The controller can still stop exactly or choose arbitrarily small movement.
+Maximum body speed and energy per actual distance do not change with the gain.
 The amount output controls collection rate, ingestion rate, transfer quantity,
 potential force spill, and offspring energy investment. It does not adjust
 force's fixed collision cost or displacement.

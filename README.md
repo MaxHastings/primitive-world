@@ -1,5 +1,8 @@
 # Primitive World
 
+**Playable build 0.2.0:** [quick play guide](PLAY_GUIDE.md) ·
+[calibration and held-out results](reports/PLAYABLE_RELEASE.md).
+
 One GPU artificial-life model: **recurrent-v1**, checkpoint **12**.
 Agents inherit neural weights, keep private recurrent state, and directly request
 movement, attention, interactions and reproduction. There is no destination
@@ -8,16 +11,22 @@ scorer, place-memory manager, automatic birth lottery or alternate controller.
 The clean cutover is implemented. The bundled bank contains actual descendants
 prepared on seeds 11 and 22. Held-out results and limitations are in
 [the validation record](reports/RECURRENT_VALIDATION.md).
+The newer prepared bank did not meet the separate promotion gate; it remains
+experimental rather than silently replacing these released weights.
 
 ## Run
 
 ```powershell
-cargo run --release
+.\Play.ps1
 ```
 
 Requires Rust and a GPU supported by wgpu. On Windows, close an older copy
 yourself before rebuilding its executable, or use a separate Cargo target
 directory. We do not automatically stop running applications.
+You can also double-click **Play.cmd**. The launcher builds into `target/play`,
+separate from older `target/release` builds, and then starts the game. It forwards
+CLI arguments, e.g. `.\Play.ps1 --seed 42`. Close a previous copy launched from
+`target/play` before rebuilding that same copy. No app is stopped automatically.
 
 The window and inspector identify recurrent-v1/checkpoint 12. An already-running
 old process will continue showing the old model until you launch the new build.
@@ -28,18 +37,20 @@ a 2048-unit square, eight directional food samples, four observed neighbors,
 and sixteen recurrent state values per body. These are finite modeling and
 engineering choices, not promises of intelligence or population equilibrium.
 
-Fresh-world costs are **0.005 energy/tick metabolism** and **0.002 energy per
-unit moved**, with regeneration unchanged at **0.010**. These match the low-cost
-200,000-tick, seed-1 diagnostic that ended with 16,289 living bodies. They are
-working defaults, not proven optimal values: that run frequently approached the
-16,384-body limit and did not establish learned migration or generalization.
-The released founder weights are unchanged; the 200k descendants are not bundled.
+Fresh worlds use **0.06 metabolism**, **0.01 movement cost**, regeneration
+**0.010**, and **motor response gain 4**. The lower-cost experiment (0.005/0.002)
+made survival possible but often reached the storage ceiling; it is no longer
+the default. Instead, continuous motor sensitivity is calibrated independently
+of energy costs. Zero intent still stops; maximum speed remains 1.2. This is an
+explicit physical parameter, not a migration rule or learned intelligence.
 
-For historical comparisons, the previous costs were **0.06 metabolism** and
-**0.01 movement**; set both sliders explicitly and reset the world. Compatible
-checkpoints restore their saved costs, not these new defaults. A running process
-or previously built executable also retains its old defaults; rebuild/relaunch
-for the new fresh-world settings. Reset uses the current slider settings.
+The original response is available with `--motor-gain 1`. Compatible old
+checkpoint-12 files without that setting retain gain1, and all checkpoints
+restore their own costs. New checkpoints contain the new setting and should
+be opened with this build, not an older executable. Running/previously built
+processes retain their old settings; rebuild/relaunch for fresh-world defaults.
+Reset uses current sliders and the loaded founder bank, not the world's current
+survivors. Export descendants explicitly if you want to reuse their weights.
 
 ## Controls
 
@@ -71,11 +82,21 @@ opening a window. No Python is needed for normal simulation.
   It cannot be combined with seed/founder/world-setting overrides.
 - `--no-force`, `--no-signals`: disable those physical capabilities.
 - `--static-landscape`: freeze geography, not weather.
+- `--metabolic-cost X`, `--movement-cost X`, `--motor-gain X`: explicit body
+  settings, also available as live controls. Cannot override saved checkpoints.
 - `--famine-at T --restore-at U`: remove vegetation and stop regeneration at
   absolute tick T; restore the configured growth rate at U. Carried/dropped food
   remain. Restoration is not a map refill.
 - `--save-checkpoint PATH`, `--export-founders PATH`: explicit artifacts.
   Export requires living descendants; export failure is recorded in the report.
+
+The inspector can export living descendants and load a compatible bank into a
+new world. Loading a bank resets personal experience; loading a checkpoint
+restores it. Exporting a bank neither validates it nor changes the default bank.
+
+Headless reports include sampled path distance versus endpoint displacement,
+matched only for agents alive at consecutive observations. This distinguishes
+some circling from net movement, but is not a route or intelligence score.
 
 `training/prepare.py` uses Python's standard library, registers a finite run
 budget before launching, and never selects weights from evaluation worlds:

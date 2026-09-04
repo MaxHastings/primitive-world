@@ -3,6 +3,7 @@ mod headless;
 mod model;
 mod renderer;
 mod simulation;
+mod travel_observer;
 
 use std::{
     sync::Arc,
@@ -54,6 +55,7 @@ struct AppState {
     interaction_stats: [u32; 4],
     history: std::collections::VecDeque<simulation::observability::WorldMetrics>,
     file_status: String,
+    founder_path: String,
     recent_events: Vec<simulation::observability::InteractionEvent>,
     evolution_snapshot: Option<simulation::observability::EvolutionSnapshot>,
     cursor_position: PhysicalPosition<f64>,
@@ -249,6 +251,7 @@ impl AppState {
             interaction_stats: [0; 4],
             history: Default::default(),
             file_status: String::new(),
+            founder_path: String::new(),
             recent_events: Vec::new(),
             evolution_snapshot: None,
             cursor_position: PhysicalPosition::new(0.0, 0.0),
@@ -335,8 +338,11 @@ impl AppState {
 
     fn update_title(&self) {
         self.window.set_title(&format!(
-            "Primitive World / recurrent-v1 / checkpoint 12 | {} / {} living | {:.1} FPS",
-            self.living_agents, MAX_AGENTS, self.render_fps
+            "Primitive World {} / recurrent-v1 / checkpoint 12 | {} / {} living | {:.1} FPS",
+            env!("CARGO_PKG_VERSION"),
+            self.living_agents,
+            MAX_AGENTS,
+            self.render_fps
         ));
     }
 
@@ -564,10 +570,22 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
     }
 }
 fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
-    ui.label("One inherited recurrent controller · checkpoint 12");
+    ui.label(format!(
+        "Build {} · recurrent-v1 · checkpoint 12",
+        env!("CARGO_PKG_VERSION")
+    ));
     ui.small(format!(
-        "Founders: {}",
+        "Loaded founder bank: {}",
         state.simulation.settings.founder_name
+    ));
+    ui.small("weights fixed during life; inherited at birth");
+    ui.small(format!(
+        "Current costs · metabolic {:.4} · movement {:.4}",
+        state.simulation.settings.metabolic_cost, state.simulation.settings.movement_energy_cost
+    ));
+    ui.small(format!(
+        "Motor response gain: {:.3}",
+        state.simulation.settings.motor_response_gain
     ));
     ui.horizontal(|ui| {
         if ui
@@ -601,6 +619,17 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
         "Deaths: {} starvation / {} age",
         state.starvation_deaths, state.age_deaths
     ));
+    let capacity_percent = 100.0 * state.living_agents as f32 / MAX_AGENTS as f32;
+    ui.small(format!(
+        "Slots: {} / {} ({capacity_percent:.1}%)",
+        state.living_agents, MAX_AGENTS
+    ));
+    if u64::from(state.living_agents) * 100 >= u64::from(MAX_AGENTS) * 95 {
+        ui.colored_label(
+            egui::Color32::YELLOW,
+            "Capacity warning: slots nearly full; births need free slots.",
+        );
+    }
     if let Some(m) = state.history.back() {
         ui.label(format!(
             "Food: {:.1} vegetation / {:.1} dropped / {:.1} carried",
@@ -687,6 +716,55 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
                 .unwrap_or_else(|e| e);
         }
     });
+    ui.collapsing("Founder banks", |ui| {
+        if ui.button("Export living descendants").clicked() {
+            let path = std::path::PathBuf::from(format!(
+                "reports/play-founders-{}-{}.json",
+                state.simulation.seed, state.simulation.tick
+            ));
+            state.file_status = std::fs::create_dir_all("reports")
+                .map_err(|e| e.to_string())
+                .and_then(|()| {
+                    state
+                        .simulation
+                        .export_founders(&state.device, &state.queue, &path)
+                })
+                .map(|()| {
+                    format!(
+                        "Exported {}; not automatically loaded or validated.",
+                        path.display()
+                    )
+                })
+                .unwrap_or_else(|e| format!("Founder export failed: {e}"));
+        }
+        ui.small("Export creates a new file; existing files are never overwritten.");
+        ui.label("Founder bank path");
+        ui.add(
+            egui::TextEdit::singleline(&mut state.founder_path)
+                .hint_text("Path to founder bank JSON")
+                .desired_width(f32::INFINITY),
+        );
+        ui.small("Loading starts a new world and clears experience and history.");
+        ui.small("Banks carry weights only; current physical settings stay in use.");
+        if ui.button("Load bank and new world").clicked() {
+            let path = state.founder_path.trim();
+            if path.is_empty() {
+                state.file_status = "Enter a founder bank path before loading.".into();
+            } else {
+                state.file_status = match state.simulation.load_founders(std::path::Path::new(path))
+                {
+                    Ok(()) => {
+                        *reset = true;
+                        format!(
+                            "Loaded {}; new world clears experience and history.",
+                            state.simulation.settings.founder_name
+                        )
+                    }
+                    Err(e) => format!("Founder load failed: {e}"),
+                };
+            }
+        }
+    });
     if let Some(x) = &state.evolution_snapshot {
         ui.small(format!(
             "Lineages {} · max ancestry {} · mean ancestry {:.2}",
@@ -744,6 +822,15 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
             )
             .text("Movement cost"),
         );
+        ui.add(
+            egui::Slider::new(
+                &mut state.simulation.settings.motor_response_gain,
+                0.1..=32.0,
+            )
+            .logarithmic(true)
+            .text("Motor response gain"),
+        );
+        ui.small("Zero movement intent remains zero; maximum speed is unchanged.");
         ui.checkbox(
             &mut state.simulation.settings.evolving_landscape,
             "Evolving geography",
@@ -756,7 +843,9 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
             &mut state.simulation.settings.communication_enabled,
             "Local signals available",
         );
-        if ui.button("Reset with current founder weights").clicked() {
+        ui.small("Reset uses the loaded founder bank shown above.");
+        ui.small("New world clears experience (recurrent state) and history.");
+        if ui.button("Reset / new world").clicked() {
             *reset = true;
         }
     });
@@ -874,7 +963,10 @@ impl ApplicationHandler for App {
             event_loop
                 .create_window(
                     WindowAttributes::default()
-                        .with_title("Primitive World — recurrent-v1 / checkpoint 12")
+                        .with_title(format!(
+                            "Primitive World {} — recurrent-v1 / checkpoint 12",
+                            env!("CARGO_PKG_VERSION")
+                        ))
                         .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 820.0)),
                 )
                 .expect("window creation failed"),
@@ -980,7 +1072,10 @@ fn main() {
         return;
     }
     if options.iter().any(|x| x == "--version") {
-        println!("Primitive World recurrent-v1 / checkpoint 12");
+        println!(
+            "Primitive World {} / recurrent-v1 / checkpoint 12",
+            env!("CARGO_PKG_VERSION")
+        );
         return;
     }
     if let Err(e) = headless::arguments(&options) {

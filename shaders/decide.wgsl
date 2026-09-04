@@ -34,7 +34,8 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  }
  var best=-3.4e38;
  for(var k=0u;k<7u;k++){d.scores[k]=out[k];if(out[k]>best){best=out[k];d.selected_action=k;}}
- let raw=vec2<f32>(tanh(out[7]),tanh(out[8]));d.movement=raw/max(1.0,length(raw));
+ // Continuous actuator calibration: no minimum motion or preferred heading.
+ let raw=vec2<f32>(tanh(out[7]*params.physical.z),tanh(out[8]*params.physical.z));d.movement=raw/max(1.0,length(raw));
  d.attention=tanh(out[9])*0.25;d.amount=1.0/(1.0+exp(-clamp(out[10],-20.0,20.0)));d.payload=tanh(out[11]);
  best=-3.4e38;
  for(var k=0u;k<4u;k++){if(p.bodies[k].slot<INVALID && out[12u+k]>best){best=out[12u+k];d.target_id=p.bodies[k].slot;d.target_generation=p.bodies[k].generation;}}

@@ -848,7 +848,7 @@ fn params_for(tick: u32, s: &SimSettings, seed: u32) -> SimParams {
         physical: [
             f32::from(s.force_enabled),
             f32::from(s.communication_enabled),
-            0.0,
+            s.motor_response_gain,
             0.0,
         ],
         lifecycle: [seed, s.birth_cooldown, 0, u32::from(s.evolving_landscape)],

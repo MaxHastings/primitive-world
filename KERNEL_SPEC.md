@@ -24,8 +24,9 @@ birth, action lottery, population floor, live reseeding or policy fallback.
 | Vegetation / spatial grids | 512² cells / 256² cells; food and neighbor-compute resolutions |
 | Body slots | 16,384; finite GPU storage budget, not a target population |
 | Energy / inventory capacity | 100 energy / 8 food; finite reserves |
-| Basal metabolism | 0.005 energy/tick; maintaining a living body costs energy |
-| Voluntary movement | Adult maximum 1.2 units/tick, 0.002 energy/actual unit; movement expenditure |
+| Basal metabolism | 0.06 energy/tick; maintaining a living body costs energy |
+| Voluntary movement | Adult maximum 1.2 units/tick, 0.01 energy/actual unit; movement expenditure |
+| Motor response | tanh(4 * motor logit), vector length capped at one; continuous actuator sensitivity, zero stays zero |
 | Development | Speed scales from 60% to 100% through maturity at age 400 |
 | Collection | Up to 0.025 food * amount per tick, subject to stock/capacity; finite throughput |
 | Ingestion | Up to 0.1 food * amount per tick, 8 energy/food, energy headroom bound |
@@ -39,10 +40,11 @@ birth, action lottery, population floor, live reseeding or policy fallback.
 These rates set timescales, not a guaranteed ecological equilibrium. Age,
 maturity, recovery and force costs remain modeling assumptions to question.
 They are not justified by wanting fewer fights or a prettier birth curve.
-The cost defaults match the low-cost 200k diagnostic, not an optimality claim.
-Historical defaults were 0.06 metabolism and 0.01 movement; regeneration remains
-0.010. Compatible saved worlds retain their own costs. No controller weights,
-movement rules, sensors or inheritance rules changed with this default update.
+The low-cost diagnostic (0.005/0.002) is retained as experimental history, not
+the default: it often hit storage capacity. Original costs are restored and
+motor sensitivity is calibrated separately, not as a minimum speed or food
+gradient. Old checkpoint12 settings missing the gain field use historical gain1;
+new worlds use gain4. Compatible saves retain their own physical settings.
 Numerical settings are validated; safety bounds include regeneration 0..1,
 costs 0..100, conversion 0.000001..1000, sensory range 4..48, maturity 0..11000
 and recovery up to 1,000,000 ticks. Extreme legal settings need not sustain life.

@@ -72,6 +72,19 @@ pub fn read_buffer(
 }
 
 impl Simulation {
+    /// Read the current body buffer without changing simulation state.
+    pub fn agent_snapshot(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<Vec<AgentGpu>, String> {
+        let bytes = read_buffer(device, queue, &self.agent_buffers[self.current_buffer])?;
+        Ok(bytes
+            .chunks_exact(std::mem::size_of::<AgentGpu>())
+            .map(bytemuck::pod_read_unaligned::<AgentGpu>)
+            .collect())
+    }
+
     pub fn evolution_snapshot(
         &self,
         device: &wgpu::Device,

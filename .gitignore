@@ -16,3 +16,4 @@
 /reports/**/*.checkpoint
 /reports/**/*.json
 /reports/**/*.log
+/reports/**/*.exe

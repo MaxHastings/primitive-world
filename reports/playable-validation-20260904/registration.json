@@ -1,0 +1,53 @@
+{
+  "plan_sha256": "92e100fb90fa6e0ebdfcaf3c1d5e150d5e226e240a8e4a66b51d99efb1cd95c7",
+  "executable_sha256": "23c1ea74a0788a425772b3b3a4321d9c9177fdb4aef57efd56370a1b82032d0c",
+  "bank_hashes": {
+    "historical": "b99a0682a3f9bfc4593446a3d297ad3bbc879060e1cb52c8d41d8b864e3edd0a",
+    "calibrated": "b99a0682a3f9bfc4593446a3d297ad3bbc879060e1cb52c8d41d8b864e3edd0a",
+    "prepared": "d819db02684d15fd0818b85f70423142eca14d12d5b9b5d6006ea6af06bda189"
+  },
+  "selected_gain": 4,
+  "order": [
+    [
+      808,
+      "historical"
+    ],
+    [
+      808,
+      "calibrated"
+    ],
+    [
+      808,
+      "prepared"
+    ],
+    [
+      909,
+      "prepared"
+    ],
+    [
+      909,
+      "calibrated"
+    ],
+    [
+      909,
+      "historical"
+    ],
+    [
+      1001,
+      "calibrated"
+    ],
+    [
+      1001,
+      "prepared"
+    ],
+    [
+      1001,
+      "historical"
+    ]
+  ],
+  "max_runs": 9,
+  "max_ticks": 1800000,
+  "ticks": 200000,
+  "sample": 1024,
+  "promotion": "At least two extra surviving seeds, no capped survival-time regression, no invalids; else retain released bank."
+}

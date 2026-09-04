@@ -34,14 +34,86 @@ fn dead_slot_reuse_resets_experience_and_advances_incarnation() {
     near(s.metrics(&d, &q).unwrap().dropped_food as f32, 2.0);
 }
 #[test]
-fn fresh_world_defaults_match_low_cost_diagnostic() {
+fn fresh_world_defaults_keep_original_energy_costs() {
     let settings = SimSettings::default();
-    assert_eq!(settings.metabolic_cost, 0.005);
-    assert_eq!(settings.movement_energy_cost, 0.002);
+    assert_eq!(settings.metabolic_cost, 0.06);
+    assert_eq!(settings.movement_energy_cost, 0.01);
+    assert_eq!(settings.motor_response_gain, 4.0);
     assert_eq!(settings.resource_regeneration, 0.01);
     assert_eq!(settings.population, 1000);
     assert!(settings.evolving_landscape);
     settings.validate().unwrap();
+}
+
+#[test]
+fn legacy_settings_keep_historical_motor_response_and_reject_bad_gains() {
+    let mut value = serde_json::to_value(SimSettings::default()).unwrap();
+    value.as_object_mut().unwrap().remove("motor_response_gain");
+    let settings: SimSettings = serde_json::from_value(value).unwrap();
+    assert_eq!(settings.motor_response_gain, 1.0);
+    for gain in [0.0, -1.0, 33.0, f32::NAN, f32::INFINITY] {
+        let settings = SimSettings {
+            motor_response_gain: gain,
+            ..settings.clone()
+        };
+        assert!(settings.validate().is_err());
+    }
+}
+
+#[test]
+fn motor_response_is_continuous_optional_reversible_and_bounded() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings.motor_response_gain = 8.0;
+    for effort in [0.0f32, 0.01, -0.01, 4.0] {
+        let mut g = fixed(0, [0.0; 2]);
+        g[1296 + 7 * 17 + 16] = effort;
+        put(&s, &q, 0, body([602.0, 902.0]), &g);
+        step(&mut s, &d, &q, 1);
+        let a = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
+        near(a.velocity[0], (effort * 8.0).tanh() * 1.2);
+        near(a.velocity[1], 0.0);
+        assert!(a.velocity[0].abs() <= 1.2001);
+        near(a.spent, 0.06 + a.velocity[0].abs() * 0.01);
+    }
+}
+
+#[test]
+fn physical_cli_overrides_validate_and_cannot_override_checkpoints() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let args: Vec<String> = [
+        "world",
+        "--motor-gain",
+        "8",
+        "--metabolic-cost",
+        "0.05",
+        "--movement-cost",
+        "0.02",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+    crate::headless::configure(&mut s, &args).unwrap();
+    assert_eq!(s.settings.motor_response_gain, 8.0);
+    assert_eq!(s.settings.metabolic_cost, 0.05);
+    assert_eq!(s.settings.movement_energy_cost, 0.02);
+    for flag in ["--motor-gain", "--metabolic-cost", "--movement-cost"] {
+        let args: Vec<String> = ["world", "--checkpoint", "unused.checkpoint", flag, "1"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        assert!(
+            crate::headless::configure(&mut s, &args)
+                .unwrap_err()
+                .contains("Checkpoint restores settings")
+        );
+    }
+    let args: Vec<String> = ["world", "--motor-gain", "0"]
+        .into_iter()
+        .map(String::from)
+        .collect();
+    assert!(crate::headless::configure(&mut s, &args).is_err());
 }
 
 #[test]
@@ -570,11 +642,14 @@ fn batching_checkpoint_and_selection_preserve_state() {
     s.save_checkpoint(&d, &q, &path).unwrap();
     step(&mut s, &d, &q, 8);
     let expected = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
-    s.settings.metabolic_cost = SimSettings::default().metabolic_cost;
-    s.settings.movement_energy_cost = SimSettings::default().movement_energy_cost;
+    s.settings.metabolic_cost = 0.005;
+    s.settings.movement_energy_cost = 0.002;
+    let saved_motor_gain = s.settings.motor_response_gain;
+    s.settings.motor_response_gain = 16.0;
     s.load_checkpoint(&q, &path).unwrap();
     assert_eq!(s.settings.metabolic_cost, 0.06);
     assert_eq!(s.settings.movement_energy_cost, 0.01);
+    assert_eq!(s.settings.motor_response_gain, saved_motor_gain);
     step(&mut s, &d, &q, 8);
     let actual = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
     assert_eq!(bytemuck::bytes_of(&expected), bytemuck::bytes_of(&actual));

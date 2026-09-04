@@ -155,6 +155,10 @@ pub struct SimSettings {
     pub resource_regeneration: f32,
     pub movement_energy_cost: f32,
     pub metabolic_cost: f32,
+    /// Actuator sensitivity, not minimum effort or maximum body speed.
+    /// Older checkpoint-12 worlds retain the historical response of one.
+    #[serde(default = "legacy_motor_response_gain")]
+    pub motor_response_gain: f32,
     pub consume_amount: f32,
     pub conversion_efficiency: f32,
     pub heterogeneity: f32,
@@ -173,8 +177,9 @@ impl Default for SimSettings {
         Self {
             population: 1000,
             resource_regeneration: 0.01,
-            movement_energy_cost: 0.002,
-            metabolic_cost: 0.005,
+            movement_energy_cost: 0.01,
+            metabolic_cost: 0.06,
+            motor_response_gain: 4.0,
             consume_amount: 25.0,
             conversion_efficiency: 8.0,
             heterogeneity: 0.85,
@@ -198,6 +203,7 @@ impl SimSettings {
                 self.resource_regeneration,
                 self.movement_energy_cost,
                 self.metabolic_cost,
+                self.motor_response_gain,
                 self.consume_amount,
                 self.conversion_efficiency,
                 self.heterogeneity,
@@ -216,6 +222,7 @@ impl SimSettings {
             || self.resource_regeneration > 1.0
             || self.movement_energy_cost > 100.0
             || self.metabolic_cost > 100.0
+            || !(0.1..=32.0).contains(&self.motor_response_gain)
             || self.conversion_efficiency < 0.000001
             || self.conversion_efficiency > 1000.0
             || self.heterogeneity > 1.0
@@ -226,6 +233,10 @@ impl SimSettings {
         crate::founders::validate_genomes(&self.founder_genomes)
     }
 }
+fn legacy_motor_response_gain() -> f32 {
+    1.0
+}
+
 /// Declared mutable starting dispositions, NOT a runtime policy fallback.
 pub fn bootstrap_genome() -> [f32; GENOME_SIZE] {
     let mut g = [0.0; GENOME_SIZE];
