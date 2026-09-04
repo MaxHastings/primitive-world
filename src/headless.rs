@@ -56,6 +56,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
     ))
     .map_err(|e| e.to_string())?;
     let mut sim = Simulation::new(&device, &queue, seed);
+    if args.iter().any(|a| a == "--travel-diagnostic") {
+        return sim.travel_diagnostic(&device, &queue, args);
+    }
     if args.iter().any(|a| a == "--neural-bridge") {
         return sim.neural_bridge(&device, &queue);
     }

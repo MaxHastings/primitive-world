@@ -511,7 +511,9 @@ impl Simulation {
         let request_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("resource request buffer"),
             size: (MAX_AGENTS as u64) * std::mem::size_of::<u32>() as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
         let birth_flags = device.create_buffer(&wgpu::BufferDescriptor {
@@ -3378,3 +3380,5 @@ pub mod observability;
 
 #[path = "neural_bridge.rs"]
 pub mod neural_bridge;
+#[path = "travel_diagnostic.rs"]
+pub mod travel_diagnostic;

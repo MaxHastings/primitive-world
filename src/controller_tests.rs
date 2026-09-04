@@ -89,6 +89,38 @@ fn signed_controller_weights_can_choose_or_reject_force_and_read_events() {
 }
 
 #[test]
+fn travel_diagnostic_uses_real_harvesting_and_never_overwrites_reports() {
+    let (device, queue) = gpu();
+    let mut sim = Simulation::new(&device, &queue, 96);
+    let path = std::env::temp_dir().join(format!("travel-contract-{}.json", std::process::id()));
+    let args = vec![
+        "--ticks".into(),
+        "32".into(),
+        "--output".into(),
+        path.to_string_lossy().into_owned(),
+    ];
+    sim.travel_diagnostic(&device, &queue, &args).unwrap();
+    let report: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(report["elapsed_ticks"], 32);
+    assert!(report["outcome"]["food_collected"].as_f64().unwrap() > 0.0);
+    assert!(
+        report["outcome"]["energy_accounting_residual"]
+            .as_f64()
+            .unwrap()
+            .abs()
+            < 0.02
+    );
+    assert_eq!(report["outcome"]["inter_patch_transitions"], 0);
+    assert!(sim.travel_diagnostic(&device, &queue, &args).is_err());
+    assert_eq!(sim.tick, 32, "refusing overwrite must not reset a world");
+    let cell = 225 * 512 + 150;
+    let ground = read::<u32>(&device, &queue, &sim.ground_buffer, (cell + 1) * 8);
+    assert_eq!(f32::from_bits(ground[cell * 8 + 6]), 1.0);
+    assert_eq!(f32::from_bits(ground[cell * 8 + 7]), 1.0);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn remembered_coordinates_do_not_drift_and_candidate_checkpoint_replays() {
     let (device, queue) = gpu();
     let mut sim = Simulation::new(&device, &queue, 92);
