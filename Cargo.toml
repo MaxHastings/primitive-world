@@ -1,7 +1,10 @@
 [package]
 name = "primitive_world"
-version = "0.2.0"
+version = "0.4.0"
 edition = "2024"
+rust-version = "1.93"
+description = "A local GPU artificial-life sandbox with evolving recurrent agents"
+repository = "https://github.com/MaxHastings/primitive-world"
 publish = false
 
 [dependencies]

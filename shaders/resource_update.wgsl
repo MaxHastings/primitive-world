@@ -38,7 +38,14 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     ground[index].habitat=mix(terrain[index].x,terrain[index].y,blend);
     ground[index].productivity=mix(terrain[index].z,terrain[index].w,blend);
   }
-  let position = vec2<f32>(f32(id.x), f32(id.y));
+  // Evaluate weather in canonical coordinates so the entire environmental
+  // history rotates, not just the initial food picture. Brains keep world axes.
+  var canonical = id.xy;
+  for (var turn=0u; turn<params.lifecycle.z; turn++) {
+    canonical=vec2<u32>(canonical.y, GRID-1u-canonical.x);
+  }
+  let position = vec2<f32>(canonical);
+  let canonical_index = canonical.y * GRID + canonical.x;
 
   let event_id = params.tick / EVENT_LENGTH;
   let event_phase = f32(params.tick % EVENT_LENGTH) / f32(EVENT_LENGTH);
@@ -49,7 +56,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   let rain = rain_active * patch_strength(position, rain_center, 70.0);
   let drought = drought_active * patch_strength(position, drought_center, 105.0);
 
-  let spatial_wave = 0.5 + 0.5 * sin(f32(id.x) * 0.037) * cos(f32(id.y) * 0.029);
+  let spatial_wave = 0.5 + 0.5 * sin(position.x * 0.037) * cos(position.y * 0.029);
   // Regional seasons span the full cycle instead of putting nearly every
   // source into abundance and scarcity at the same time.
   let season = 0.65 + 0.35 * sin(f32(params.tick) * 0.0011 + spatial_wave * 6.2831853);
@@ -71,7 +78,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     1.0,
   );
   let heterogeneity = clamp(params.resource_and_noise.z, 0.0, 1.0);
-  let jitter = unit(index ^ event_id);
+  let jitter = unit(canonical_index ^ event_id);
   let spatial_signal = mix(0.5, 0.55 * spatial_wave + 0.45 * jitter, heterogeneity);
   // Persistent geography separates fertile patches from barren travel space.
   // Productivity is normalized at world creation to concentrate growth, rather

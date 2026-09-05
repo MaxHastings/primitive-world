@@ -1,5 +1,5 @@
 # Build without opening a window, then play when you run this script.
-# Example: .\Play.ps1 --seed 42 --motor-gain 1.0 --metabolic-cost 0.005
+# Example: .\Play.ps1 --random-founders --seed 42 --watch-loop runs/my-run --view-speed 16x
 # All arguments go to the game, including --headless when desired.
 # The separate target directory leaves target/debug and target/release alone.
 $ErrorActionPreference = 'Stop'

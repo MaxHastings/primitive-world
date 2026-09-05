@@ -11,7 +11,7 @@ pub struct CameraUniform {
     pub lens: u32,
     pub point_size: f32,
     pub selected_id: u32,
-    pub _padding: u32,
+    pub selected_generation: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -22,7 +22,7 @@ pub enum Lens {
     Energy = 3,
     Movement = 4,
     Age = 5,
-    Attention = 6,
+    Digestion = 6,
     CarriedFood = 7,
     Action = 8,
     Fertility = 9,
@@ -37,7 +37,7 @@ impl Lens {
             Self::Energy => "Energy",
             Self::Movement => "Movement",
             Self::Age => "Age",
-            Self::Attention => "Sensor orientation",
+            Self::Digestion => "Digestion",
             Self::CarriedFood => "Carried food",
             Self::Action => "Current action",
             Self::Fertility => "Landscape fertility",
@@ -51,8 +51,8 @@ impl Lens {
             Self::AgentDensity => Self::Energy,
             Self::Energy => Self::Movement,
             Self::Movement => Self::Age,
-            Self::Age => Self::Attention,
-            Self::Attention => Self::CarriedFood,
+            Self::Age => Self::Digestion,
+            Self::Digestion => Self::CarriedFood,
             Self::CarriedFood => Self::Action,
             Self::Action => Self::Fertility,
             Self::Fertility => Self::Normal,
@@ -85,7 +85,7 @@ impl Renderer {
             lens: Lens::Energy as u32,
             point_size: 2.0,
             selected_id: u32::MAX,
-            _padding: 0,
+            selected_generation: 0,
         };
         let camera_buffer = wgpu::util::DeviceExt::create_buffer_init(
             device,

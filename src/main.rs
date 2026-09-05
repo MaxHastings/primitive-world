@@ -1,10 +1,16 @@
+mod environment;
+mod family_observer;
 mod founders;
 mod headless;
+mod inspection;
 mod journey_observer;
 mod model;
+mod play_files;
 mod renderer;
 mod simulation;
+mod survivor_observer;
 mod travel_observer;
+mod visible_trial;
 
 use std::{
     sync::Arc,
@@ -57,10 +63,11 @@ struct AppState {
     history: std::collections::VecDeque<simulation::observability::WorldMetrics>,
     file_status: String,
     founder_path: String,
+    checkpoint_path: String,
     recent_events: Vec<simulation::observability::InteractionEvent>,
     evolution_snapshot: Option<simulation::observability::EvolutionSnapshot>,
     cursor_position: PhysicalPosition<f64>,
-    selected: Option<SelectionOutput>,
+    inspection: inspection::Inspection,
     seed_input: u32,
     shock_mode: ShockMode,
     shock_radius: f32,
@@ -68,6 +75,9 @@ struct AppState {
     gpu_sim_ms: Option<f32>,
     gpu_render_ms: Option<f32>,
     gpu_timing: Option<GpuTiming>,
+    visible_trial: Option<visible_trial::VisibleTrial>,
+    last_autosave: Instant,
+    autosaved_state: Option<(u32, u32)>,
 }
 
 struct GpuTiming {
@@ -205,6 +215,25 @@ impl AppState {
                 .load_checkpoint(&queue, std::path::Path::new(&args[i + 1]))
                 .expect("Invalid checkpoint");
         }
+        let visible_trial = args.iter().position(|a| a == "--watch-loop").map(|i| {
+            visible_trial::VisibleTrial::new_loop(
+                std::path::Path::new(&args[i + 1]),
+                &simulation,
+                &device,
+                &queue,
+            )
+            .expect("Could not initialize native survivor loop")
+        });
+        let speed_index = args
+            .iter()
+            .position(|a| a == "--view-speed")
+            .map(|i| {
+                ["1x", "2x", "4x", "8x", "16x", "MAX"]
+                    .iter()
+                    .position(|s| *s == args[i + 1])
+                    .expect("validated speed")
+            })
+            .unwrap_or(0);
         let renderer = Renderer::new(
             &device,
             config.format,
@@ -238,7 +267,7 @@ impl AppState {
             egui_renderer,
             paused: false,
             step_requested: false,
-            speed_index: 0,
+            speed_index,
             fps_timer: Instant::now(),
             frame_count: 0,
             render_fps: 0.0,
@@ -253,10 +282,11 @@ impl AppState {
             history: Default::default(),
             file_status: String::new(),
             founder_path: String::new(),
+            checkpoint_path: "world.checkpoint".into(),
             recent_events: Vec::new(),
             evolution_snapshot: None,
             cursor_position: PhysicalPosition::new(0.0, 0.0),
-            selected: None,
+            inspection: inspection::Inspection::default(),
             seed_input: initial_seed,
             shock_mode: ShockMode::Select,
             shock_radius: 45.0,
@@ -264,6 +294,9 @@ impl AppState {
             gpu_sim_ms: None,
             gpu_render_ms: None,
             gpu_timing,
+            visible_trial,
+            last_autosave: Instant::now(),
+            autosaved_state: None,
         }
     }
 
@@ -291,17 +324,14 @@ impl AppState {
         let world = self.screen_to_world(self.cursor_position);
         match self.shock_mode {
             ShockMode::Select => {
-                self.selected = self.simulation.select_agent(
+                let selected = self.simulation.select_agent(
                     &self.device,
                     &self.queue,
                     world,
                     14.0 / self.renderer.camera.zoom,
                 );
-                self.renderer.camera.selected_id = self
-                    .selected
-                    .as_ref()
-                    .map(|selected| selected.agent_id())
-                    .unwrap_or(u32::MAX);
+                self.inspection.select(selected, self.simulation.tick);
+                self.update_selection_highlight();
             }
             ShockMode::AddResource => self.simulation.apply_resource_shock(
                 &self.device,
@@ -339,21 +369,59 @@ impl AppState {
 
     fn update_title(&self) {
         self.window.set_title(&format!(
-            "Primitive World {} / recurrent-v1 / checkpoint 12 | {} / {} living | {:.1} FPS",
+            "Primitive World {} / primitive-v3 / checkpoint 15 | {} / {} living | {:.1} FPS | World {} | {}{}",
             env!("CARGO_PKG_VERSION"),
             self.living_agents,
             MAX_AGENTS,
-            self.render_fps
+            self.render_fps,
+            self.visible_trial.as_ref().map_or(1, |trial| trial.world_number),
+            ["1x", "2x", "4x", "8x", "16x", "MAX"][self.speed_index],
+            if self.paused { " | PAUSED" } else { "" }
         ));
+    }
+
+    fn save_new_checkpoint(&mut self) -> Result<String, String> {
+        let path = play_files::new_checkpoint_path(self.simulation.seed, self.simulation.tick)?;
+        std::fs::create_dir_all(path.parent().expect("checkpoint folder"))
+            .map_err(|e| e.to_string())?;
+        self.simulation
+            .save_checkpoint(&self.device, &self.queue, &path)?;
+        self.checkpoint_path = path.to_string_lossy().into_owned();
+        Ok(format!("Saved {}", self.checkpoint_path))
+    }
+
+    fn update_selection_highlight(&mut self) {
+        (
+            self.renderer.camera.selected_id,
+            self.renderer.camera.selected_generation,
+        ) = self.inspection.highlight();
+    }
+
+    fn refresh_inspection(&mut self) {
+        if self.inspection.following
+            && let Some(previous) = self.inspection.snapshot
+        {
+            let result =
+                self.simulation
+                    .refresh_selected_agent(&self.device, &self.queue, &previous);
+            self.inspection.refresh(result, self.simulation.tick);
+        }
+        self.update_selection_highlight();
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let now = Instant::now();
         let output = self.surface.get_current_texture()?;
+        // Read the last completed simulation batch before building this frame's UI.
+        // The label states its tick; the world advances by this frame's batch next.
+        self.refresh_inspection();
         let raw_input = self.egui_state.take_egui_input(&self.window);
         let context = self.egui_context.clone();
         let full_output = context.run(raw_input, |ctx| draw_ui(ctx, self));
-        let ticks = self.tick_count_for_frame();
+        let mut ticks = self.tick_count_for_frame();
+        if self.visible_trial.is_some() {
+            ticks = ticks.min(128 - self.simulation.tick % 128);
+        }
         let submit_start = Instant::now();
         let mut encoder = self
             .device
@@ -443,10 +511,13 @@ impl AppState {
             self.egui_renderer.free_texture(texture_id);
         }
         let sample_alive = ticks > 0 && self.frame_count.is_multiple_of(30);
+        let watch_alive = ticks > 0 && self.visible_trial.is_some();
         let sample_gpu =
             self.gpu_timing.is_some() && ticks > 0 && self.frame_count.is_multiple_of(30);
-        if sample_alive {
+        if sample_alive || watch_alive {
             self.simulation.copy_alive_count(&mut encoder);
+        }
+        if sample_alive {
             self.simulation.copy_death_stats(&mut encoder);
         }
         if let Some(timing) = &self.gpu_timing {
@@ -502,6 +573,57 @@ impl AppState {
             self.gpu_sim_ms = Some(sim_ms);
             self.gpu_render_ms = Some(render_ms);
         }
+        if watch_alive {
+            let result = (|| -> Result<(), String> {
+                let count = self
+                    .simulation
+                    .read_alive_count(&self.device)
+                    .ok_or("Could not verify living population; visible loop paused")?;
+                self.living_agents = count;
+                let trial = self.visible_trial.as_mut().expect("visible trial");
+                if count == 0 {
+                    if trial.is_loop() {
+                        trial.advance(&mut self.simulation, &self.device, &self.queue)?;
+                        self.clear_world_observers();
+                    } else {
+                        trial.finish(&self.simulation, &self.device, &self.queue, false)?;
+                    }
+                } else if self.simulation.tick.is_multiple_of(128) {
+                    trial.observe(&self.simulation, &self.device, &self.queue)?;
+                }
+                Ok(())
+            })();
+            if let Err(error) = result {
+                self.paused = true;
+                self.file_status = format!("Visible loop stopped safely: {error}");
+                eprintln!("{}", self.file_status);
+            }
+        }
+        if let Some(trial) = &self.visible_trial
+            && trial.is_loop()
+            && (self.autosaved_state.is_none()
+                || self.last_autosave.elapsed() >= Duration::from_secs(300))
+        {
+            let current = (self.simulation.seed, self.simulation.tick);
+            if self.autosaved_state != Some(current) {
+                match trial.autosave(&self.simulation, &self.device, &self.queue) {
+                    Ok(path) => {
+                        self.checkpoint_path = path.to_string_lossy().into_owned();
+                        self.file_status = format!("Autosaved {}", self.checkpoint_path);
+                        self.autosaved_state = Some(current);
+                    }
+                    Err(error) => {
+                        self.paused = true;
+                        // Avoid retrying a failed disk write on every frame.
+                        self.autosaved_state = Some(current);
+                        self.file_status =
+                            format!("Autosave failed; paused to protect progress: {error}");
+                        eprintln!("{}", self.file_status);
+                    }
+                }
+            }
+            self.last_autosave = Instant::now();
+        }
         self.frame_count += 1;
         self.ticks_window_accumulated = self.ticks_window_accumulated.saturating_add(ticks);
         if now.duration_since(self.fps_timer) >= Duration::from_secs(1) {
@@ -514,6 +636,23 @@ impl AppState {
             self.update_title();
         }
         Ok(())
+    }
+
+    fn clear_world_observers(&mut self) {
+        // World-local identities and counters expire, presentation/session state does not.
+        self.inspection = inspection::Inspection::default();
+        self.history.clear();
+        self.recent_events.clear();
+        self.evolution_snapshot = None;
+        self.renderer.camera.selected_id = u32::MAX;
+        self.renderer.camera.selected_generation = 0;
+        self.seed_input = self.simulation.seed;
+        self.living_agents = self.simulation.settings.population;
+        self.births = 0;
+        self.starvation_deaths = 0;
+        self.age_deaths = 0;
+        self.food_eaten = 0;
+        self.interaction_stats = [0; 4];
     }
 }
 
@@ -535,7 +674,7 @@ impl Lens {
             3 => Self::Energy,
             4 => Self::Movement,
             5 => Self::Age,
-            6 => Self::Attention,
+            6 => Self::Digestion,
             7 => Self::CarriedFood,
             8 => Self::Action,
             9 => Self::Fertility,
@@ -549,7 +688,7 @@ fn action_name(action: u32) -> &'static str {
 }
 fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
     let mut reset = false;
-    egui::Window::new("Primitive World — recurrent-v1")
+    egui::Window::new("Primitive World — primitive-v3")
         .default_pos([16.0, 16.0])
         .default_width(430.0)
         .vscroll(true)
@@ -557,7 +696,7 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
     if reset {
         state.simulation.seed = state.seed_input;
         state.simulation.reset(&state.queue);
-        state.selected = None;
+        state.inspection = inspection::Inspection::default();
         state.history.clear();
         state.recent_events.clear();
         state.evolution_snapshot = None;
@@ -571,8 +710,31 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
     }
 }
 fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
+    if let Some(trial) = &state.visible_trial {
+        ui.strong("SURVIVOR LOOP — extinction only, no tick limit");
+        ui.small(
+            trial
+                .directory
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy(),
+        );
+        if trial.is_loop() {
+            ui.small("Extinction starts the next world HERE. Speed/camera retained. Close to save and STOP.");
+            ui.small("Full crash-recovery checkpoint at startup and every 5 minutes. A save may briefly stall rendering.");
+        } else {
+            ui.small(
+                "Extinction saves genes and opens the next world. Close window to save and STOP.",
+            );
+        }
+        ui.small("Reset/loading another world is disabled during this run; pause and physical controls remain available.");
+    }
+    ui.small(format!(
+        "Environment orientation: {}°",
+        state.simulation.settings.environment_rotation * 90
+    ));
     ui.label(format!(
-        "Build {} · recurrent-v1 · checkpoint 12",
+        "Build {} · primitive-v3 · checkpoint 15",
         env!("CARGO_PKG_VERSION")
     ));
     ui.small(format!(
@@ -644,7 +806,6 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
             for (name, count) in [
                 "Immature attempts",
                 "Insufficient energy",
-                "Insufficient inventory",
                 "Recovery active",
                 "Requested",
                 "Eligible before interactions",
@@ -657,25 +818,26 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
             }
         });
     }
+    ui.label("Checkpoint path to load:");
+    ui.text_edit_singleline(&mut state.checkpoint_path);
+    ui.small("Save creates a new file in reports/checkpoints and fills this path. Existing saves are kept.");
     ui.horizontal(|ui| {
-        if ui.button("Save checkpoint").clicked() {
-            state.file_status = state
-                .simulation
-                .save_checkpoint(
-                    &state.device,
-                    &state.queue,
-                    std::path::Path::new("recurrent-world.checkpoint"),
-                )
-                .map(|_| "Saved recurrent-world.checkpoint".into())
-                .unwrap_or_else(|e| e);
+        if ui.button("Save new checkpoint").clicked() {
+            state.file_status = state.save_new_checkpoint().unwrap_or_else(|e| e);
         }
-        if ui.button("Load checkpoint").clicked() {
+        if ui
+            .add_enabled(
+                state.visible_trial.is_none(),
+                egui::Button::new("Load checkpoint"),
+            )
+            .clicked()
+        {
             state.file_status = match state.simulation.load_checkpoint(
                 &state.queue,
-                std::path::Path::new("recurrent-world.checkpoint"),
+                std::path::Path::new(state.checkpoint_path.trim()),
             ) {
                 Ok(()) => {
-                    state.selected = None;
+                    state.inspection = inspection::Inspection::default();
                     state.renderer.camera.selected_id = u32::MAX;
                     state.history.clear();
                     state.recent_events.clear();
@@ -711,9 +873,9 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
             state.file_status = serde_json::to_vec_pretty(&state.history)
                 .map_err(|e| e.to_string())
                 .and_then(|b| {
-                    std::fs::write("recurrent-history.json", b).map_err(|e| e.to_string())
+                    play_files::export_history(state.simulation.seed, state.simulation.tick, &b)
                 })
-                .map(|_| "Exported recurrent-history.json".into())
+                .map(|path| format!("Exported {} (latest 400 samples)", path.display()))
                 .unwrap_or_else(|e| e);
         }
     });
@@ -747,7 +909,13 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
         );
         ui.small("Loading starts a new world and clears experience and history.");
         ui.small("Banks carry weights only; current physical settings stay in use.");
-        if ui.button("Load bank and new world").clicked() {
+        if ui
+            .add_enabled(
+                state.visible_trial.is_none(),
+                egui::Button::new("Load bank and new world"),
+            )
+            .clicked()
+        {
             let path = state.founder_path.trim();
             if path.is_empty() {
                 state.file_status = "Enter a founder bank path before loading.".into();
@@ -846,7 +1014,13 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
         );
         ui.small("Reset uses the loaded founder bank shown above.");
         ui.small("New world clears experience (recurrent state) and history.");
-        if ui.button("Reset / new world").clicked() {
+        if ui
+            .add_enabled(
+                state.visible_trial.is_none(),
+                egui::Button::new("Reset / new world"),
+            )
+            .clicked()
+        {
             *reset = true;
         }
     });
@@ -890,8 +1064,15 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
             ));
         }
     });
-    if let Some(s) = state.selected {
+    if let Some(s) = state.inspection.snapshot {
         ui.separator();
+        ui.small(format!(
+            "Inspector snapshot: tick {} (before this frame's steps)",
+            state.inspection.tick
+        ));
+        if !state.inspection.notice.is_empty() {
+            ui.label(&state.inspection.notice);
+        }
         ui.label(format!(
             "Agent {} · incarnation {} · ancestry {}",
             s.agent_id(),
@@ -903,53 +1084,69 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
             s.agent.energy, s.agent.food, s.agent.age
         ));
         ui.label(format!(
-            "Position {:.1}, {:.1} · attention {:.2}",
-            s.agent.position[0], s.agent.position[1], s.agent.attention
+            "Position {:.1}, {:.1} · fixed compass sensors",
+            s.agent.position[0], s.agent.position[1]
         ));
-        ui.label(format!(
-            "Body action: {} · movement {:.2}, {:.2}",
-            action_name(s.agent.action),
-            s.decision.movement[0],
-            s.decision.movement[1]
-        ));
-        ui.small(format!(
-            "Requested amount {:.3} · signal {:.3} · target {}:{}",
-            s.decision.amount, s.decision.payload, s.decision.target, s.decision.target_generation
-        ));
-        ui.collapsing("Actual feedback",|ui|{ui.label(format!("Collected {:.3} · ingested {:.3} · spent {:.3} · received {:.3} · displacement {:?}",s.agent.collected,s.agent.ingested,s.agent.spent,s.agent.received,s.agent.moved));});
-        ui.collapsing("Local food samples", |ui| {
-            ui.label(format!("Underfoot {:.3}", s.perception.resource_here));
-            for p in s.perception.samples {
-                ui.small(format!(
-                    "Offset {:.2}, {:.2}: food {:.3}",
-                    p.offset[0], p.offset[1], p.food
-                ));
-            }
-        });
-        ui.collapsing("Observed bodies", |ui| {
-            for b in s.perception.bodies.iter().filter(|b| b.slot < MAX_AGENTS) {
-                ui.small(format!(
-                    "{}:{} offset {:?} · food {:.3} · event {:.3}",
-                    b.slot, b.generation, b.offset, b.food, b.event
-                ));
-            }
-        });
-        ui.collapsing("Action logits (not rewards)", |ui| {
-            for (name, v) in model::ACTION_NAMES.iter().zip(s.decision.scores) {
-                ui.label(format!("{name}: {v:.3}"));
-            }
-        });
-        ui.collapsing("Internal recurrent state", |ui| {
-            for (i, v) in s.agent.hidden.iter().enumerate() {
-                ui.small(format!("{i}: {v:.4}"));
-            }
-            ui.small("Numeric state has no assigned semantic labels.");
-        });
-        ui.collapsing("Raw controller input vector", |ui| {
-            for (i, v) in s.decision.inputs.iter().enumerate() {
-                ui.small(format!("{i}: {v:.4}"));
-            }
-        });
+        ui.collapsing("Actual feedback (last body update)",|ui|{ui.label(format!("Collected {:.3} · ingested {:.3} · spent {:.3} · received {:.3} · displacement {:?}",s.agent.collected,s.agent.ingested,s.agent.spent,s.agent.received,s.agent.moved));});
+        if state.inspection.has_decision_trace() {
+            ui.small(
+                "Inputs were sensed before the last step's movement; body feedback is after it.",
+            );
+            ui.label(format!(
+                "Last body action: {} · requested movement {:.2}, {:.2}",
+                action_name(s.agent.action),
+                s.decision.movement[0],
+                s.decision.movement[1]
+            ));
+            ui.small(format!(
+                "Requested amount {:.3} · signal {:.3} · target {}:{}",
+                s.decision.amount,
+                s.decision.payload,
+                s.decision.target,
+                s.decision.target_generation
+            ));
+            ui.small(format!(
+                "Requested contact displacement: {:?} × 3 units",
+                s.decision.force
+            ));
+            ui.collapsing("Local food samples", |ui| {
+                ui.label(format!("Underfoot {:.3}", s.perception.resource_here));
+                for p in s.perception.samples {
+                    ui.small(format!(
+                        "Offset {:.2}, {:.2}: food {:.3}",
+                        p.offset[0], p.offset[1], p.food
+                    ));
+                }
+            });
+            ui.collapsing("Observed bodies", |ui| {
+                for b in s.perception.bodies.iter().filter(|b| b.slot < MAX_AGENTS) {
+                    ui.small(format!(
+                        "{}:{} offset {:?} · food {:.3} · emitted signal {:.3}",
+                        b.slot, b.generation, b.offset, b.food, b.signal
+                    ));
+                }
+            });
+            ui.collapsing("Action logits (not rewards)", |ui| {
+                for (name, v) in model::ACTION_NAMES.iter().zip(s.decision.scores) {
+                    ui.label(format!("{name}: {v:.3}"));
+                }
+            });
+            ui.collapsing("Internal recurrent state", |ui| {
+                for (i, v) in s.agent.hidden.iter().enumerate() {
+                    ui.small(format!("{i}: {v:.4}"));
+                }
+                ui.small("Numeric state has no assigned semantic labels.");
+            });
+            ui.collapsing("Raw controller input vector", |ui| {
+                for (i, v) in s.decision.inputs.iter().enumerate() {
+                    ui.small(format!("{i}: {v:.4}"));
+                }
+            });
+        } else if s.agent.alive == 0 {
+            ui.small("Terminal body data only: decision/perception buffers may have been cleared after death.");
+        } else {
+            ui.small("No controller decision yet for this body; first update pending.");
+        }
     }
     if !state.file_status.is_empty() {
         ui.small(&state.file_status);
@@ -965,7 +1162,7 @@ impl ApplicationHandler for App {
                 .create_window(
                     WindowAttributes::default()
                         .with_title(format!(
-                            "Primitive World {} — recurrent-v1 / checkpoint 12",
+                            "Primitive World {} — primitive-v3 / checkpoint 15",
                             env!("CARGO_PKG_VERSION")
                         ))
                         .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 820.0)),
@@ -988,7 +1185,17 @@ impl ApplicationHandler for App {
         };
         let egui_response = state.egui_state.on_window_event(&state.window, &event);
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                if let Some(trial) = &mut state.visible_trial
+                    && let Err(error) =
+                        trial.finish(&state.simulation, &state.device, &state.queue, true)
+                {
+                    eprintln!(
+                        "Could not finish visible-world save: {error}. Existing artifacts retained."
+                    );
+                }
+                event_loop.exit();
+            }
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
             WindowEvent::ScaleFactorChanged { .. } => {
                 let size = state.window.inner_size();
@@ -1047,7 +1254,15 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::RedrawRequested => match state.render() {
-                Ok(()) => {}
+                Ok(()) => {
+                    if state
+                        .visible_trial
+                        .as_ref()
+                        .is_some_and(|trial| trial.finished && !trial.is_loop())
+                    {
+                        event_loop.exit();
+                    }
+                }
                 Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                     state.resize(state.config.width, state.config.height)
                 }
@@ -1074,7 +1289,7 @@ fn main() {
     }
     if options.iter().any(|x| x == "--version") {
         println!(
-            "Primitive World {} / recurrent-v1 / checkpoint 12",
+            "Primitive World {} / primitive-v3 / checkpoint 15",
             env!("CARGO_PKG_VERSION")
         );
         return;

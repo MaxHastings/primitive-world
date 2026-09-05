@@ -1,0 +1,2 @@
+# Only audit_checkpoint_communication.py needs NumPy. Other tools use stdlib.
+numpy>=1.26,<3

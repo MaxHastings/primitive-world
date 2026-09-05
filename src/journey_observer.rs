@@ -18,7 +18,6 @@ pub struct Point {
     pub max_speed: f32,
     pub velocity: [f32; 2],
     pub distance_travelled: f32,
-    pub attention: f32,
     pub action: u32,
     pub lifetime_births: u32,
 }
@@ -146,7 +145,6 @@ fn point(tick: u32, a: &AgentGpu, resources: &[u32]) -> Point {
         max_speed: a.max_speed,
         velocity: a.velocity,
         distance_travelled: a.distance_travelled,
-        attention: a.attention,
         action: a.action,
         lifetime_births: a.lifetime_births,
     }
@@ -267,7 +265,6 @@ impl JourneyObserver {
                     &a.max_age,
                     &a.max_speed,
                     &a.distance_travelled,
-                    &a.attention,
                 ])
                 .all(|v| v.is_finite())
                 || a.collected < 0.0
@@ -420,7 +417,6 @@ impl JourneyObserver {
                             &a.max_age,
                             &a.max_speed,
                             &a.distance_travelled,
-                            &a.attention,
                             &a.collected,
                             &a.ingested,
                         ])

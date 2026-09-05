@@ -23,7 +23,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         totals.values[11]+=u32(a.food>=1.5);
         totals.values[12]+=u32(a.energy<20.0);
         totals.values[13]+=u32(length(a.velocity)>0.001);
-        totals.values[15]+=u32(a.action==INGEST);
+        totals.values[15]+=u32(a.ingested>0.0);
         totals.values[1]+=u32(a.age<params.sensor_and_padding.y);
         totals.values[2]+=u32(round(a.food*1000.0));
         totals.values[3]+=u32(round(a.energy*1000.0));

@@ -129,6 +129,7 @@ pub struct Simulation {
     pub occupancy_buffer: wgpu::Buffer,
     pub params_buffer: wgpu::Buffer,
     pub alive_count_buffer: wgpu::Buffer,
+    pub family_observer: Option<crate::family_observer::FamilyObserver>,
     decision_buffer: wgpu::Buffer,
     fertility_buffer: wgpu::Buffer,
     terrain_buffer: wgpu::Buffer,
@@ -150,7 +151,7 @@ impl Simulation {
         let agent_size = MAX_AGENTS as u64 * std::mem::size_of::<AgentGpu>() as u64;
         assert!(
             agent_size <= device.limits().max_storage_buffer_binding_size as u64,
-            "GPU storage limit below recurrent-v1 body budget"
+            "GPU storage limit below primitive-v3 body budget"
         );
         let genome_buffer = buffer(
             device,
@@ -520,6 +521,7 @@ impl Simulation {
             occupancy_buffer,
             params_buffer,
             alive_count_buffer,
+            family_observer: None,
             decision_buffer,
             fertility_buffer,
             terrain_buffer,
@@ -540,6 +542,7 @@ impl Simulation {
         sim
     }
     pub fn reset(&mut self, queue: &wgpu::Queue) {
+        self.family_observer = None;
         self.settings.validate().expect("valid reset settings");
         queue.write_buffer(
             &self.genome_buffer,
@@ -550,25 +553,41 @@ impl Simulation {
         for b in &self.agent_buffers {
             queue.write_buffer(b, 0, bytemuck::cast_slice(&data));
         }
-        let habitat = build_habitat(self.seed);
-        let food = build_resources(&habitat);
+        let habitat = build_habitat(self.seed, self.settings.habitat_contrast);
+        let food = crate::environment::rotate_grid(
+            build_resources(&habitat),
+            RESOURCE_GRID as usize,
+            self.settings.environment_rotation,
+        );
         for b in [&self.resource_buffer, &self.resource_display_buffer] {
             queue.write_buffer(b, 0, bytemuck::cast_slice(&food));
         }
         queue.write_buffer(
             &self.ground_buffer,
             0,
-            bytemuck::cast_slice(&build_ground(&habitat)),
+            bytemuck::cast_slice(&crate::environment::rotate_grid(
+                build_ground(&habitat),
+                RESOURCE_GRID as usize,
+                self.settings.environment_rotation,
+            )),
         );
         queue.write_buffer(
             &self.fertility_buffer,
             0,
-            bytemuck::cast_slice(&habitat.iter().map(|h| 0.4 + h * 0.35).collect::<Vec<_>>()),
+            bytemuck::cast_slice(&crate::environment::rotate_grid(
+                habitat.iter().map(|h| 0.4 + h * 0.35).collect::<Vec<_>>(),
+                RESOURCE_GRID as usize,
+                self.settings.environment_rotation,
+            )),
         );
         queue.write_buffer(
             &self.terrain_buffer,
             0,
-            bytemuck::cast_slice(&build_terrain_pair(self.seed, 0)),
+            bytemuck::cast_slice(&crate::environment::rotate_grid(
+                build_terrain_pair(self.seed, 0, self.settings.habitat_contrast),
+                RESOURCE_GRID as usize,
+                self.settings.environment_rotation,
+            )),
         );
         for b in [
             &self.event_buffer,
@@ -614,7 +633,11 @@ impl Simulation {
             if self.terrain_epoch != epoch && self.settings.evolving_landscape {
                 let staging = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("terrain update"),
-                    contents: bytemuck::cast_slice(&build_terrain_pair(self.seed, epoch)),
+                    contents: bytemuck::cast_slice(&crate::environment::rotate_grid(
+                        build_terrain_pair(self.seed, epoch, self.settings.habitat_contrast),
+                        RESOURCE_GRID as usize,
+                        self.settings.environment_rotation,
+                    )),
                     usage: wgpu::BufferUsages::COPY_SRC,
                 });
                 e.copy_buffer_to_buffer(&staging, 0, &self.terrain_buffer, 0, staging.size());
@@ -659,6 +682,9 @@ impl Simulation {
             self.dispatch(e, "birth_compact", 0, groups, 1);
             self.dispatch(e, "birth", d, groups, 1);
             self.dispatch(e, "release", d, groups, 1);
+            if let Some(observer) = &self.family_observer {
+                observer.encode(e, d);
+            }
             self.current_buffer = d;
             self.tick += 1;
         }
@@ -711,6 +737,38 @@ impl Simulation {
         let result: SelectionOutput = bytemuck::pod_read_unaligned(&bytes);
         (result.selected != 0).then_some(result)
     }
+    /// Read the same body by slot AND incarnation, not the nearest new neighbor.
+    /// Only observer buffers are written; all simulation buffers remain read-only.
+    pub fn refresh_selected_agent(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        previous: &SelectionOutput,
+    ) -> Result<Option<SelectionOutput>, String> {
+        if previous.selected == 0 || previous.selected > MAX_AGENTS {
+            return Ok(None);
+        }
+        let slot = previous.selected - 1;
+        queue.write_buffer(&self.selection_key_buffer, 0, bytemuck::bytes_of(&slot));
+        let mut encoder = device.create_command_encoder(&Default::default());
+        encoder.clear_buffer(&self.selection_output_buffer, 0, None);
+        self.dispatch(
+            &mut encoder,
+            "selected",
+            self.current_buffer,
+            MAX_AGENTS.div_ceil(64),
+            1,
+        );
+        queue.submit(Some(encoder.finish()));
+        let bytes = observability::read_buffer(device, queue, &self.selection_output_buffer)?;
+        let current: SelectionOutput = bytemuck::pod_read_unaligned(&bytes);
+        Ok((current.selected == previous.selected
+            && current.agent.generation == previous.agent.generation
+            && current.agent.lineage_id == previous.agent.lineage_id
+            && current.agent.birth_tick == previous.agent.birth_tick)
+            .then_some(current))
+    }
+
     pub fn apply_resource_shock(
         &self,
         device: &wgpu::Device,
@@ -851,17 +909,26 @@ fn params_for(tick: u32, s: &SimSettings, seed: u32) -> SimParams {
             s.motor_response_gain,
             0.0,
         ],
-        lifecycle: [seed, s.birth_cooldown, 0, u32::from(s.evolving_landscape)],
+        lifecycle: [
+            seed,
+            s.birth_cooldown,
+            s.environment_rotation,
+            u32::from(s.evolving_landscape),
+        ],
     }
 }
 fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
     let mut rng = seed.max(1);
     (0..MAX_AGENTS)
         .map(|i| AgentGpu {
-            position: [
-                random01(&mut rng) * WORLD_SIZE,
-                random01(&mut rng) * WORLD_SIZE,
-            ],
+            position: crate::environment::rotate_point(
+                [
+                    random01(&mut rng) * WORLD_SIZE,
+                    random01(&mut rng) * WORLD_SIZE,
+                ],
+                WORLD_SIZE,
+                s.environment_rotation,
+            ),
             energy: 65.0,
             food: if i < s.population { 2.0 } else { 0.0 },
             age: random01(&mut rng) * 300.0,
@@ -871,36 +938,37 @@ fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
             rng: rng ^ i,
             alive: u32::from(i < s.population),
             generation: 1,
-            event_actor: MAX_AGENTS,
             target: MAX_AGENTS,
             lineage_id: i + 1,
+            founder_family: if s.founder_genomes.is_empty() {
+                i
+            } else {
+                i % s.founder_genomes.len() as u32
+            },
             ..Default::default()
         })
         .collect()
 }
 fn build_genomes(seed: u32, s: &SimSettings) -> Vec<f32> {
     let mut genes = vec![0.0; MAX_AGENTS as usize * GENOME_SIZE];
-    let initial = bootstrap_genome();
     let mut rng = seed ^ 0x184a2321;
     for i in 0..s.population as usize {
         let row = &mut genes[i * GENOME_SIZE..(i + 1) * GENOME_SIZE];
         if s.founder_genomes.is_empty() {
-            for (g, v) in row.iter_mut().zip(initial) {
-                *g = v + (random01(&mut rng) - 0.5) * 0.02;
-            }
+            row.copy_from_slice(&random_genome(&mut rng));
         } else {
             row.copy_from_slice(&s.founder_genomes[i % s.founder_genomes.len()]);
         }
     }
     genes
 }
-fn build_habitat(seed: u32) -> Vec<f32> {
-    build_habitat_at(seed, 0)
+fn build_habitat(seed: u32, contrast: f32) -> Vec<f32> {
+    build_habitat_at(seed, 0, contrast)
 }
 
-fn build_terrain_pair(seed: u32, epoch: u32) -> Vec<[f32; 4]> {
-    let a = build_habitat_at(seed, epoch);
-    let b = build_habitat_at(seed, epoch.wrapping_add(1));
+fn build_terrain_pair(seed: u32, epoch: u32, contrast: f32) -> Vec<[f32; 4]> {
+    let a = build_habitat_at(seed, epoch, contrast);
+    let b = build_habitat_at(seed, epoch.wrapping_add(1), contrast);
     let ma = (a.iter().sum::<f32>() / a.len() as f32).max(0.001);
     let mb = (b.iter().sum::<f32>() / b.len() as f32).max(0.001);
     a.iter()
@@ -909,7 +977,7 @@ fn build_terrain_pair(seed: u32, epoch: u32) -> Vec<[f32; 4]> {
         .collect()
 }
 
-fn build_habitat_at(seed: u32, epoch: u32) -> Vec<f32> {
+fn build_habitat_at(seed: u32, epoch: u32, contrast: f32) -> Vec<f32> {
     let mut rng = seed ^ 0xa341_316c;
     let mut patches: Vec<[f32; 7]> = Vec::new();
     for i in 0..24 {
@@ -994,6 +1062,11 @@ fn build_habitat_at(seed: u32, epoch: u32) -> Vec<f32> {
             habitat[(y * RESOURCE_GRID + x) as usize] = shoulder * 0.78 + t * 0.22;
         }
     }
+    // Contrast changes food distribution, not its mean or the body's costs.
+    let mean = habitat.iter().sum::<f32>() / habitat.len() as f32;
+    for value in &mut habitat {
+        *value = mean + contrast * (*value - mean);
+    }
     habitat
 }
 
@@ -1038,7 +1111,17 @@ fn random01(state: &mut u32) -> f32 {
 }
 
 pub fn shader_source(source: &str) -> String {
-    format!("{}\n{}", include_str!("../shaders/common.wgsl"), source)
+    format!(
+        "const INPUT_COUNT:u32={}u; const HIDDEN_COUNT:u32={}u; const OUTPUT_COUNT:u32={}u; const GENOME_SIZE:u32={}u; const RECURRENT_ROW:u32={}u; const OUTPUT_BASE:u32={}u;\n{}\n{}",
+        INPUTS,
+        HIDDEN,
+        OUTPUTS,
+        GENOME_SIZE,
+        RECURRENT_ROW,
+        OUTPUT_BASE,
+        include_str!("../shaders/common.wgsl"),
+        source
+    )
 }
 
 #[path = "observability.rs"]
