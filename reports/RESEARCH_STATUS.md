@@ -58,7 +58,18 @@ episodes are tested on separate development environments without returning test
 descendants to training. The body/executable/baseline remain fixed. A failed
 training population is recorded, not secretly restored from an older bank.
 
-This paragraph records the experiment's registration, not a claim it has
-completed or improved behavior. Final fresh eight-seed validation has not begun.
+Completed development checkpoint results now show survival1/3 at budget0,
+1/3 after4 preparation worlds, and2/3 after8. Complete sampled journeys total
+0,3,10 respectively. This is preliminary development evidence, not final
+validation or proof of a repeatable/generalizable gain. Reports are recorded on
+the research branch in `reports/CUMULATIVE_BUDGET4.md` and `CUMULATIVE_BUDGET8.md`.
+All16 training worlds have since completed (1,048,576 preparation ticks); the
+budget16 comparisons and end-of-campaign baseline repeats are still in progress.
+Do not equate a newer exported bank with a better tested bank.
+
+An [independent foundation review](INDEPENDENT_FOUNDATION_REVIEW.md) recommends
+finishing this experiment before another architecture change, fixing stale
+inspection/persistence usability, and closing relocation-evidence gaps.
+Final fresh eight-seed validation has not begun.
 No amount of parameter drift, elapsed effort or one successful seed can replace
 the broad survival, migration, integrity and user-acceptance requirements.

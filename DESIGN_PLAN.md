@@ -1,6 +1,8 @@
 # Primitive World: clean cutover plan
 
-Status: **implemented and validated**, 2026-09-04. The delivered model is
+Status: **historical cutover implemented; broad adaptation goal NOT achieved**.
+The September 4, 2026 validation below covered only its original bounded tests,
+not the current [completion contract](GOAL_CONTRACT.md). The delivered model is
 recurrent-v1 / checkpoint 12, with one bundled descendant bank prepared on
 seeds 11 and 22. All three held-out worlds reproduced across generations.
 See reports/RECURRENT_VALIDATION.md for the bounded evidence and limitations.
