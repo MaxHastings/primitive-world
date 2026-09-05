@@ -9,7 +9,8 @@ passing wiring/physics tests are not proof of evolved adaptation or user fun.
 The v1 audits reproduced a mismatch between rotating food sensors and the
 authored compass-following prior, and a hungry empty-inventory eating choice.
 Observed unsuccessful crossings often went straight but slowly, with limited
-reserves. See DEPARTURE_ATTRITION.md and SENSOR_FRAME_ABLATION.md. These findings
+reserves. See [the departure audit](DEPARTURE_ATTRITION.md) and
+[the sensor-frame audit](FOUNDATION_FRAME_AUDIT.md). These findings
 do not establish that more memory or a scripted migration policy is necessary.
 
 An isolated alternative body/controller lives on branch `codex/physiology-v2`,
