@@ -17,8 +17,8 @@ pub struct FounderBank {
 impl FounderBank {
     pub fn validate(&self) -> Result<(), String> {
         let compatible_model = self.model == crate::model::MODEL_ID;
-        if self.version != 5 || !compatible_model || self.genomes.is_empty() {
-            return Err("Expected a nonempty Primitive World founder bank in format 5".into());
+        if self.version != 6 || !compatible_model || self.genomes.is_empty() {
+            return Err("Expected a nonempty Primitive World founder bank in format 6".into());
         }
         validate_genomes(&self.genomes)
     }
@@ -34,7 +34,7 @@ pub fn bundled() -> &'static FounderBank {
             .map(|_| crate::model::random_genome(&mut rng).to_vec())
             .collect();
         FounderBank {
-            version: 5,
+            version: 6,
             model: crate::model::MODEL_ID.into(),
             name: "primitive-world-random-256".into(),
             source_seed: 0,
@@ -95,7 +95,7 @@ impl Simulation {
             x ^ (x >> 16)
         });
         let bank = FounderBank {
-            version: 5,
+            version: 6,
             model: crate::model::MODEL_ID.into(),
             name: format!(
                 "primitive-world-descendants-seed{}-tick{}",
@@ -126,7 +126,7 @@ mod tests {
 
     fn bank(model: &str) -> FounderBank {
         serde_json::from_value(serde_json::json!({
-            "version": 5, "model": model, "name": "test-pool",
+            "version": 6, "model": model, "name": "test-pool",
             "source_seed": 42, "source_tick": 128,
             "genomes": [vec![0.125; GENOME_SIZE]]
         }))
@@ -147,11 +147,12 @@ mod tests {
     fn bank_validation_rejects_unknown_models_formats_and_invalid_genomes() {
         assert!(bank("unrelated-model").validate().is_err());
         assert!(bank("primitive-v3").validate().is_err());
+        assert!(bank("primitive-v4").validate().is_err());
         assert!(bank("primitive-world").validate().is_err());
         let mut bank = bank(crate::model::MODEL_ID);
         bank.version = 0;
         assert!(bank.validate().is_err());
-        bank.version = 5;
+        bank.version = 6;
         bank.genomes[0].pop();
         assert!(bank.validate().is_err());
         bank.genomes = vec![vec![5.0; GENOME_SIZE]];

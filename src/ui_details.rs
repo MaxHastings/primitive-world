@@ -51,20 +51,39 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
                 s.decision.mutation_probability * 100.0,
                 s.decision.mutation_magnitude
             ));
-            ui.collapsing("Local food samples", |ui| {
+            ui.collapsing("Surrounding sensory field", |ui| {
                 ui.label(format!("Underfoot {:.3}", s.perception.resource_here));
-                for p in s.perception.samples {
+                ui.small("Mean food per grid cell; body counts include every in-range neighbor.");
+                for (i, p) in s.perception.regions.iter().enumerate() {
                     ui.small(format!(
-                        "Offset {:.2}, {:.2}: food {:.3}",
-                        p.offset[0], p.offset[1], p.food
+                        "{} {}: food {:.3} · bodies {:.0}",
+                        if i < 8 { "Near" } else { "Far" },
+                        model::SECTOR_NAMES[i % 8],
+                        p.food,
+                        p.bodies
                     ));
                 }
             });
             ui.collapsing("Observed bodies", |ui| {
-                for b in s.perception.bodies.iter().filter(|b| b.slot < MAX_AGENTS) {
+                ui.small("Nearest in each sector; identifiers below are inspector-only.");
+                for (i, b) in s
+                    .perception
+                    .bodies
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, b)| b.slot < MAX_AGENTS)
+                {
                     ui.small(format!(
-                        "{}:{} offset {:?} · food {:.3} · emitted signal {:.3}",
-                        b.slot, b.generation, b.offset, b.food, b.signal
+                        "{} · {}:{} offset {:?} · {}",
+                        model::SECTOR_NAMES[i],
+                        b.slot,
+                        b.generation,
+                        b.offset,
+                        if b.signal_present != 0.0 {
+                            format!("signal {:.3}", b.signal)
+                        } else {
+                            "silent".into()
+                        }
                     ));
                 }
             });
@@ -75,9 +94,15 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
             });
             ui.collapsing("Internal recurrent state", |ui| {
                 for (i, v) in s.agent.hidden.iter().enumerate() {
-                    ui.small(format!("{i}: {v:.4}"));
+                    ui.small(format!(
+                        "{i}: {v:.4} · update {:.3}",
+                        s.decision.update_gates[i]
+                    ));
                 }
                 ui.small("Numeric state has no assigned semantic labels.");
+                ui.small(
+                    "Update 0 retains the previous value; 1 replaces it with the proposed value.",
+                );
             });
             ui.collapsing("Raw controller input vector", |ui| {
                 for (i, v) in s.decision.inputs.iter().enumerate() {

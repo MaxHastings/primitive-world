@@ -1,6 +1,6 @@
 //! primitive-world: fixed-frame sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
-pub const MODEL_ID: &str = "primitive-v4";
+pub const MODEL_ID: &str = "primitive-v5";
 pub const MAX_AGENTS: u32 = 16_384;
 pub const RESOURCE_GRID: u32 = 512;
 pub const OCCUPANCY_GRID: u32 = 256;
@@ -8,11 +8,19 @@ pub const SPATIAL_CELL_COUNT: u32 = OCCUPANCY_GRID * OCCUPANCY_GRID;
 pub const WORLD_SIZE: f32 = 2048.0;
 pub const DEATH_STATS_COUNT: u32 = 32;
 pub const EVENT_RING_SIZE: u32 = 65_536;
-pub const INPUTS: usize = 76;
+pub const SECTORS: usize = 8;
+pub const SECTOR_NAMES: [&str; SECTORS] = ["E", "SE", "S", "SW", "W", "NW", "N", "NE"];
+pub const REGIONS: usize = SECTORS * 2;
+pub const NEIGHBOR_BASE: usize = 52;
+pub const NEIGHBOR_INPUTS: usize = 7;
+pub const INPUTS: usize = NEIGHBOR_BASE + SECTORS * NEIGHBOR_INPUTS;
 pub const HIDDEN: usize = 16;
-pub const OUTPUTS: usize = 18;
+pub const OUTPUTS: usize = 22;
+pub const FORCE_OUTPUT: usize = 18;
+pub const MUTATION_OUTPUT: usize = 20;
 pub const RECURRENT_ROW: usize = INPUTS + HIDDEN + 1;
-pub const OUTPUT_BASE: usize = HIDDEN * RECURRENT_ROW;
+pub const GATE_BASE: usize = HIDDEN * RECURRENT_ROW;
+pub const OUTPUT_BASE: usize = GATE_BASE + HIDDEN * (HIDDEN + 1);
 pub const GENOME_SIZE: usize = OUTPUT_BASE + OUTPUTS * (HIDDEN + 1);
 pub const ACTION_NAMES: [&str; 6] = ["none", "collect", "transfer", "force", "emit", "reproduce"];
 #[repr(C)]
@@ -63,17 +71,16 @@ impl Default for AgentGpu {
 }
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
-pub struct SampleGpu {
-    pub offset: [f32; 2],
+pub struct RegionGpu {
     pub food: f32,
-    pub padding: f32,
+    pub bodies: f32,
 }
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
 pub struct BodyGpu {
     pub offset: [f32; 2],
     pub velocity: [f32; 2],
-    pub food: f32,
+    pub signal_present: f32,
     pub signal: f32,
     pub slot: u32,
     pub generation: u32,
@@ -82,10 +89,10 @@ pub struct BodyGpu {
 #[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
 pub struct PerceptionGpu {
     pub resource_here: f32,
-    pub local_count: f32,
+    pub nearby_count: f32,
     pub padding: [f32; 2],
-    pub samples: [SampleGpu; 8],
-    pub bodies: [BodyGpu; 4],
+    pub regions: [RegionGpu; REGIONS],
+    pub bodies: [BodyGpu; SECTORS],
 }
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
@@ -104,6 +111,7 @@ pub struct DecisionGpu {
     pub mutation_probability: f32,
     pub mutation_magnitude: f32,
     pub hidden: [f32; HIDDEN],
+    pub update_gates: [f32; HIDDEN],
     pub inputs: [f32; INPUTS],
 }
 impl Default for DecisionGpu {
@@ -251,12 +259,14 @@ pub fn random_genome(rng: &mut u32) -> [f32; GENOME_SIZE] {
     for (i, value) in g.iter_mut().enumerate() {
         *rng = rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
         let noise = ((*rng >> 8) as f32 / 16_777_215.0) * 2.0 - 1.0;
-        let scale = if i < OUTPUT_BASE {
+        let scale = if i < GATE_BASE {
             if i % RECURRENT_ROW < INPUTS {
                 0.25
             } else {
                 0.35
             }
+        } else if i < OUTPUT_BASE {
+            0.35
         } else {
             0.5
         };

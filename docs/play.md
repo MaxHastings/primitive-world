@@ -97,8 +97,8 @@ The automatic evolution loop separately samples late survivors, including founde
 It contains the latest 400 metric samples, not the entire run. Old exports are not
 overwritten. Use headless sampling for a complete bounded diagnostic history.
 
-Checkpoints use format 16; founder banks use format 5. Primitive-v4 intentionally
-rejects V3 saves and banks because its expanded brain has a different genome
+Checkpoints use format 17; founder banks use format 6. Primitive-v5 intentionally
+rejects V4 and earlier saves and banks because its sensory and memory rewrite has a different genome
 layout. Unsupported formats are
 rejected without modifying the file. See [release status](release.md).
 

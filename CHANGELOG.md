@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0
+
+- Primitive-v5 replaces eight isolated food probes with eight compass sectors and
+  near/far regional food means and body counts. Food uses every in-range grid-cell center.
+- The nearest individual per sector is observable and targetable; all in-range
+  bodies contribute to crowding. No tick-dependent sampling or visible neighbor inventory.
+- Sixteen evolved update gates allow exact retention, replacement, or blending
+  of private memory, with no assigned semantics or mandatory forgetting.
+- The inspector exposes the sensory regions, sector targets, signal presence,
+  and memory update gates. Controllers have 108 inputs, 22 outputs, and 2,646 weights.
+- Checkpoints advance to format 17 and founder banks to format 6. V4 and earlier
+  files are rejected without conversion; start a fresh evolutionary experiment.
+- Survival, reproduction, mutation controls, and rolling survivor selection are unchanged.
+
 ## 0.5.0
 
 - Primitive-v4 adds brain-controlled offspring mutation probability and magnitude.

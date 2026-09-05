@@ -109,7 +109,7 @@ pub fn observe(
     crate::founders::validate_genomes(&genomes)?;
     *latest = Some(SurvivorSample {
         bank: FounderBank {
-            version: 5,
+            version: 6,
             model: crate::model::MODEL_ID.into(),
             name: format!("survivors-seed{}-tick{}", sim.seed, sim.tick),
             source_seed: sim.seed,

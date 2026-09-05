@@ -59,8 +59,10 @@ the information lens. See the [play guide](docs/play.md) for saving and resuming
 
 ## What evolves?
 
-Each agent has **1,794 inherited weights**, **16 private recurrent state values**,
-local senses, six discrete action choices, and independent continuous movement.
+Each agent has **2,646 inherited weights**, **16 private gated memory values**,
+a coarse surrounding sensory field, six discrete action choices, and independent
+continuous movement. Eight compass sectors cover near/far food and body counts;
+the nearest body per sector can be observed and targeted without exposing its inventory.
 Weights stay fixed during life; the parent brain chooses offspring mutation
 probability and magnitude. Memory state changes during life and resets at birth.
 Survival and reproduction determine

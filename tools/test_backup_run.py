@@ -14,11 +14,17 @@ from run_io import save_state, exclusive_run
 
 def checkpoint_bytes():
     settings = b"{}"
-    return (b"PRIMWORLD016" + struct.pack("<III", 42, 128, len(settings))
+    return (b"PRIMWORLD017" + struct.pack("<III", 42, 128, len(settings))
             + settings + b"".join(struct.pack("<Q", 4) + b"data" for _ in range(9)))
 
 
 class BackupTests(unittest.TestCase):
+    def test_backup_can_preserve_previous_model_without_reinterpreting_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "v4.checkpoint"
+            path.write_bytes(b"PRIMWORLD016" + checkpoint_bytes()[12:])
+            self.assertIn("Schema16", backup_run.checkpoint_header(path)["validation"])
+
     def test_header_accepts_complete_layout_and_rejects_truncation(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "test.checkpoint"

@@ -118,7 +118,7 @@ fn replicate(
     }
     Ok((
         crate::founders::FounderBank {
-            version: 5,
+            version: 6,
             model: crate::model::MODEL_ID.into(),
             name: format!(
                 "native-survivors-seed{}-tick{}",
@@ -419,7 +419,7 @@ mod tests {
         let genome = vec![0.0; crate::model::GENOME_SIZE];
         SurvivorSample {
             bank: crate::founders::FounderBank {
-                version: 5,
+                version: 6,
                 model: crate::model::MODEL_ID.into(),
                 name: "fixture".into(),
                 source_seed: 1,

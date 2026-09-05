@@ -16,13 +16,13 @@ struct Agent {
  hidden:array<f32,HIDDEN_COUNT>,
  mutation_probability:f32,mutation_magnitude:f32,
 };
-struct Sample {offset:vec2<f32>,food:f32,padding:f32,};
-struct Body {offset:vec2<f32>,velocity:vec2<f32>,food:f32,signal:f32,slot:u32,generation:u32,};
-struct Perception {resource_here:f32,local_count:f32,padding:vec2<f32>,samples:array<Sample,8>,bodies:array<Body,4>,};
+struct Region {food:f32,bodies:f32,};
+struct Body {offset:vec2<f32>,velocity:vec2<f32>,signal_present:f32,signal:f32,slot:u32,generation:u32,};
+struct Perception {resource_here:f32,nearby_count:f32,padding:vec2<f32>,regions:array<Region,16>,bodies:array<Body,8>,};
 struct Decision {
  scores:array<f32,6>,selected_action:u32,score_padding:u32,movement:vec2<f32>,amount:f32,
  payload:f32,target_id:u32,target_generation:u32,invalid:u32,body_padding:u32,
- force:vec2<f32>,mutation_probability:f32,mutation_magnitude:f32,hidden:array<f32,HIDDEN_COUNT>,inputs:array<f32,INPUT_COUNT>,
+ force:vec2<f32>,mutation_probability:f32,mutation_magnitude:f32,hidden:array<f32,HIDDEN_COUNT>,update_gates:array<f32,HIDDEN_COUNT>,inputs:array<f32,INPUT_COUNT>,
 };
 struct SimParams {
  world_size:f32,resource_grid_size:u32,agent_count:u32,tick:u32,
@@ -35,3 +35,10 @@ fn hash_u32(input:u32)->u32{var v=input;v=(v^61u)^(v>>16u);v=v+(v<<3u);v=v^(v>>4
 fn random01(seed:u32)->f32{return f32(hash_u32(seed)&65535u)/65535.0;}
 fn ground_index(position:vec2<f32>)->u32{let c=vec2<u32>(clamp(position/4.0,vec2<f32>(0),vec2<f32>(511)));return c.y*512u+c.x;}
 fn finite(v:f32)->bool{return v==v && abs(v)<=3.4e38;}
+// Clockwise compass octants: E, SE, S, SW, W, NW, N, NE.
+// Half-open angular boundaries; coincident bodies use E deterministically.
+fn sensory_sector(v:vec2<f32>)->u32 {
+ if(all(v==vec2<f32>(0))){return 0u;}
+ let angle=atan2(v.y,v.x)+6.283185307+0.392699082;
+ return u32(floor(angle/0.785398163))%8u;
+}

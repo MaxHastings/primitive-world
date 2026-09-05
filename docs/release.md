@@ -5,15 +5,23 @@ and general adaptation are unverified capabilities.
 
 ## Build and data formats
 
-- Application version: 0.5.0.
-- Model identifier in reports and exported banks: `primitive-v4`.
-- Checkpoint format: 16.
-- Founder-bank format: 5.
+- Application version: 0.6.0.
+- Model identifier in reports and exported banks: `primitive-v5`.
+- Checkpoint format: 17.
+- Founder-bank format: 6.
+- GPU genome storage: about 166 MiB in one storage binding, plus world/render buffers.
 
 Data-format numbers identify storage contracts, independently of the application
-version. V4's expanded brain changes the genome and storage layouts, so V3
+version. V5's sensory field, sector targets, and gated memory change the genome
+and storage layouts, so V4 and earlier
 checkpoints and founder banks are intentionally rejected. Unsupported formats or
 models fail validation.
+
+Start a fresh experiment for V5. Old experiment files remain untouched and can
+be used with their matching older executable; there is no genome conversion.
+Food integration and exact nearest-sector selection cost more than sparse probes.
+Dense coincident populations have quadratic neighbor-scan work; performance
+measurements must state population and spatial arrangement.
 
 ## Before publishing a GitHub release
 

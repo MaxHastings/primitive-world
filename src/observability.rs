@@ -238,7 +238,7 @@ impl Simulation {
                     path.display()
                 )
             })?;
-        file.write_all(b"PRIMWORLD016").map_err(|e| e.to_string())?;
+        file.write_all(b"PRIMWORLD017").map_err(|e| e.to_string())?;
         for n in [self.seed, self.tick, settings.len() as u32] {
             file.write_all(&n.to_le_bytes())
                 .map_err(|e| e.to_string())?;
@@ -277,8 +277,8 @@ impl Simulation {
     ) -> Result<(), String> {
         let mut magic = [0; 12];
         file.read_exact(&mut magic).map_err(|e| e.to_string())?;
-        if &magic != b"PRIMWORLD016" {
-            return Err("Unsupported checkpoint: expected format 16".into());
+        if &magic != b"PRIMWORLD017" {
+            return Err("Unsupported checkpoint: expected format 17".into());
         }
         let mut fields = [0; 12];
         file.read_exact(&mut fields).map_err(|e| e.to_string())?;
@@ -395,12 +395,12 @@ impl Simulation {
             .map(bytemuck::pod_read_unaligned::<PerceptionGpu>)
         {
             if !p.resource_here.is_finite()
-                || !p.local_count.is_finite()
-                || p.samples
-                    .iter()
-                    .any(|s| !s.food.is_finite() || s.offset.iter().any(|v| !v.is_finite()))
+                || !p.nearby_count.is_finite()
+                || p.regions.iter().any(|s| {
+                    !s.food.is_finite() || !s.bodies.is_finite() || s.food < 0.0 || s.bodies < 0.0
+                })
                 || p.bodies.iter().any(|b| {
-                    !b.food.is_finite()
+                    !matches!(b.signal_present, 0.0 | 1.0)
                         || !b.signal.is_finite()
                         || b.offset.iter().chain(&b.velocity).any(|v| !v.is_finite())
                         || b.slot > MAX_AGENTS
@@ -418,6 +418,9 @@ impl Simulation {
                 || d.target > MAX_AGENTS
                 || !(0.0..=1.0).contains(&d.mutation_probability)
                 || !(0.0..=8.0).contains(&d.mutation_magnitude)
+                || d.update_gates
+                    .iter()
+                    .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
                 || [d.amount, d.payload]
                     .iter()
                     .chain(&d.movement)

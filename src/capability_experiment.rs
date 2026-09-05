@@ -26,11 +26,13 @@ fn install(sim: &mut Simulation, device: &wgpu::Device, condition: Condition) {
     let source = include_str!("../shaders/decide.wgsl").to_owned();
     let source = match condition {
         Condition::Evolved | Condition::Random => source,
-        Condition::NoMemory => replace_contract(source, "*a.hidden[k]", "*0.0"),
+        Condition::NoMemory => {
+            replace_contract(source, "previous[h]=a.hidden[h];", "previous[h]=0.0;")
+        }
         Condition::NoSignals => replace_contract(
             source,
             " for(var k=0u;k<INPUT_COUNT;k++){if(!finite(x[k]))",
-            " for(var n=0u;n<4u;n++){x[49u+n*8u]=0.0;x[51u+n*8u]=0.0;}\n for(var k=0u;k<INPUT_COUNT;k++){if(!finite(x[k]))",
+            " for(var n=0u;n<8u;n++){x[56u+n*7u]=0.0;x[58u+n*7u]=0.0;}\n for(var k=0u;k<INPUT_COUNT;k++){if(!finite(x[k]))",
         ),
         Condition::Simple => replace_contract(
             source,
@@ -108,8 +110,9 @@ fn diagnostic_signal_mask_matches_absent_signal_and_retains_other_senses() {
     let a = body([602.0, 902.0]);
     let mut neighbor = body([604.0, 902.0]);
     let mut genes = fixed(1, [0.0; 2]);
-    genes[49] = 1.0;
-    genes[51] = 1.0;
+    genes[NEIGHBOR_BASE + 4] = 1.0;
+    genes[NEIGHBOR_BASE + 6] = 1.0;
+    genes[GATE_BASE + HIDDEN] = 1.0;
     genes[OUTPUT_BASE + 6 * 17] = 1.0;
     put(&sim, &q, 0, a, &genes);
     put(&sim, &q, 1, neighbor, &genes);
@@ -127,6 +130,7 @@ fn diagnostic_signal_mask_matches_absent_signal_and_retains_other_senses() {
     let absent = decide(&sim, &d, &q);
     neighbor.signal_tick = 1;
     perception.bodies[0].signal = 0.7;
+    perception.bodies[0].signal_present = 1.0;
     put(&sim, &q, 1, neighbor, &genes);
     q.write_buffer(&sim.perception_buffer, 0, bytemuck::bytes_of(&perception));
     let present = decide(&sim, &d, &q);

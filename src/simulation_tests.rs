@@ -6,6 +6,9 @@ mod experiments;
 #[path = "capability_experiment.rs"]
 mod capability_experiment;
 
+#[path = "sensing_tests.rs"]
+mod sensing;
+
 #[test]
 fn environment_rotation_preserves_body_traits_and_is_not_a_controller_input() {
     let mut settings = SimSettings::default();
@@ -163,11 +166,9 @@ fn directional_bank_gpu_probe() {
         for b in &mut p.bodies {
             b.slot = MAX_AGENTS;
         }
-        for (k, sample) in p.samples.iter_mut().enumerate() {
-            let dir = [[0.0, -1.0], [1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]][k % 4];
-            let range = if k < 4 { 4.0 } else { 24.0 };
-            sample.offset = [dir[0] * range, dir[1] * range];
-            sample.food = if direction == Some(k % 4) { food } else { 0.0 };
+        for (k, region) in p.regions.iter_mut().enumerate() {
+            let sector = direction.map(|d| [6, 0, 2, 4][d]);
+            region.food = if sector == Some(k % 8) { food } else { 0.0 };
         }
         p
     };
@@ -285,11 +286,8 @@ fn random_founders_are_finite_without_a_mandatory_food_response() {
             for b in &mut perceptions[i].bodies {
                 b.slot = MAX_AGENTS;
             }
-            for (k, sample) in perceptions[i].samples.iter_mut().enumerate() {
-                sample.food = 0.2;
-                let direction = [[0.0, -1.0], [1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]][k % 4];
-                let range = if k < 4 { 4.0 } else { 24.0 };
-                sample.offset = [direction[0] * range, direction[1] * range];
+            for region in &mut perceptions[i].regions {
+                region.food = 0.2;
             }
         }
         q.write_buffer(&s.perception_buffer, 0, bytemuck::cast_slice(&perceptions));
@@ -665,8 +663,8 @@ fn survivor_sample_keeps_current_child_genes_after_extinction() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let mut parent = fixed(5, [0.0; 2]);
-    parent[OUTPUT_BASE + 16 * 17 + 16] = 1.0;
-    parent[OUTPUT_BASE + 17 * 17 + 16] = 0.03;
+    parent[OUTPUT_BASE + MUTATION_OUTPUT * 17 + 16] = 1.0;
+    parent[OUTPUT_BASE + (MUTATION_OUTPUT + 1) * 17 + 16] = 0.03;
     put(&s, &q, 0, body([602.0, 902.0]), &parent);
     step(&mut s, &d, &q, 1);
     let agents = s.agent_snapshot(&d, &q).unwrap();
@@ -994,7 +992,7 @@ fn fixed(action: usize, motion: [f32; 2]) -> [f32; GENOME_SIZE] {
     g[OUTPUT_BASE + 7 * 17 + 16] = motion[1];
     g[OUTPUT_BASE + 8 * 17 + 16] = 3.0;
     if action == 3 {
-        g[OUTPUT_BASE + 14 * 17 + 16] = 1.0;
+        g[OUTPUT_BASE + FORCE_OUTPUT * 17 + 16] = 1.0;
     }
     g
 }
@@ -1021,13 +1019,13 @@ fn temp(name: &str) -> std::path::PathBuf {
 
 #[test]
 fn layout_and_cli_contract() {
-    assert_eq!(GENOME_SIZE, 1794);
+    assert_eq!(GENOME_SIZE, 2646);
     assert_eq!(std::mem::size_of::<AgentGpu>(), 216);
-    assert_eq!(std::mem::size_of::<PerceptionGpu>(), 272);
-    assert_eq!(std::mem::size_of::<DecisionGpu>(), 448);
-    assert_eq!(std::mem::size_of::<SelectionOutput>(), 944);
+    assert_eq!(std::mem::size_of::<PerceptionGpu>(), 400);
+    assert_eq!(std::mem::size_of::<DecisionGpu>(), 640);
+    assert_eq!(std::mem::size_of::<SelectionOutput>(), 1264);
     assert_eq!(std::mem::size_of::<SimParams>(), 96);
-    assert!(MAX_AGENTS as usize * GENOME_SIZE * 4 <= 128 * 1024 * 1024);
+    assert!(MAX_AGENTS as usize * GENOME_SIZE * 4 <= 256 * 1024 * 1024);
     for flag in [
         "--unknown-option",
         "--population-typo",
@@ -1058,8 +1056,8 @@ fn recurrent_cpu_gpu_parity_and_observer_isolation() {
     s.dispatch(&mut e, "decide", 0, 1, 1);
     q.submit(Some(e.finish()));
     let expected = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 1)[0];
-    let mut hidden = [0.0; 16];
-    for (h, value) in hidden.iter_mut().enumerate() {
+    let mut candidate = [0.0; HIDDEN];
+    for (h, value) in candidate.iter_mut().enumerate() {
         let row = h * RECURRENT_ROW;
         let mut v = g[row + RECURRENT_ROW - 1];
         for k in 0..crate::model::INPUTS {
@@ -1069,6 +1067,19 @@ fn recurrent_cpu_gpu_parity_and_observer_isolation() {
             v += g[row + crate::model::INPUTS + k] * a.hidden[k];
         }
         *value = v.tanh();
+    }
+    let mut hidden = [0.0; HIDDEN];
+    for (h, value) in hidden.iter_mut().enumerate() {
+        let row = GATE_BASE + h * (HIDDEN + 1);
+        let gate = (g[row + HIDDEN]
+            + candidate
+                .iter()
+                .enumerate()
+                .map(|(k, v)| g[row + k] * v)
+                .sum::<f32>())
+        .clamp(0.0, 1.0);
+        near(gate, expected.update_gates[h]);
+        *value = (1.0 - gate) * a.hidden[h] + gate * candidate[h];
         near(*value, expected.hidden[h]);
     }
     for o in 0..6 {
@@ -1109,14 +1120,8 @@ fn perception_is_local_and_compass_aligned() {
     put(&s, &q, 1, far, &fixed(0, [0.0; 2]));
     step(&mut s, &d, &q, 1);
     let p = read::<PerceptionGpu>(&d, &q, &s.perception_buffer, 1)[0];
-    near(p.samples[1].offset[0], 4.0);
-    near(p.samples[1].offset[1], 0.0);
-    near(p.samples[1].food, 0.7);
-    assert!(
-        p.samples
-            .iter()
-            .all(|p| p.offset[0].hypot(p.offset[1]) <= 24.001)
-    );
+    assert!(p.regions[0].food > 0.0);
+    assert!(p.regions.iter().skip(1).all(|p| p.food == 0.0));
     assert!(p.bodies.iter().all(|b| b.slot == MAX_AGENTS));
     let renderer =
         crate::renderer::Renderer::new(&d, wgpu::TextureFormat::Rgba8UnormSrgb, &s, 800, 600);
@@ -1279,8 +1284,12 @@ fn transfer_and_signal_are_local_and_payload_is_controller_owned() {
     assert_eq!(bodies[1].signal_tick, 0);
     step(&mut s, &d, &q, 1);
     let decisions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 2);
-    assert_eq!(decisions[1].inputs[51], 1.0);
-    near(decisions[1].inputs[49], (-0.7f32).tanh());
+    let observed = decisions[1].inputs[NEIGHBOR_BASE..]
+        .chunks_exact(NEIGHBOR_INPUTS)
+        .find(|v| v[5] == 1.0)
+        .unwrap();
+    assert_eq!(observed[6], 1.0);
+    near(observed[4], (-0.7f32).tanh());
 }
 #[test]
 fn force_is_paid_displacement_without_recipient_damage_or_food_loss() {
@@ -1327,7 +1336,7 @@ fn force_direction_effort_and_available_energy_bound_actual_displacement() {
         target.food = 0.0;
         target.lineage_id = 2;
         let mut genes = fixed(3, [0.0; 2]);
-        genes[OUTPUT_BASE + 14 * 17 + 16] = effort;
+        genes[OUTPUT_BASE + FORCE_OUTPUT * 17 + 16] = effort;
         put(&s, &q, 0, actor, &genes);
         put(&s, &q, 1, target, &fixed(0, [0.0; 2]));
         step(&mut s, &d, &q, 1);
@@ -1370,11 +1379,16 @@ fn zero_signal_is_present_local_and_does_not_claim_a_physical_pair() {
     );
     step(&mut s, &d, &q, 1);
     let decisions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 3);
-    assert_eq!(decisions[1].inputs[50], 1.0, "Visible body presence");
-    assert_eq!(decisions[1].inputs[51], 1.0, "Zero-valued signal presence");
-    assert_eq!(decisions[1].inputs[49], 0.0);
+    let observed = decisions[1].inputs[NEIGHBOR_BASE..]
+        .chunks_exact(NEIGHBOR_INPUTS)
+        .find(|v| v[5] == 1.0)
+        .unwrap();
+    assert_eq!(observed[6], 1.0, "Zero-valued signal presence");
+    assert_eq!(observed[4], 0.0);
     assert!(
-        decisions[2].inputs[44..].iter().all(|v| *v == 0.0),
+        decisions[2].inputs[NEIGHBOR_BASE..]
+            .iter()
+            .all(|v| *v == 0.0),
         "No remote signal leakage"
     );
 }
@@ -1410,9 +1424,9 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v4");
+    assert_eq!(MODEL_ID, "primitive-v5");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
-    assert_eq!(crate::founders::bundled().version, 5);
+    assert_eq!(crate::founders::bundled().version, 6);
 }
 #[test]
 fn nonfinite_controller_output_is_contained() {
@@ -1536,7 +1550,7 @@ fn dead_selection_after_a_batch_does_not_claim_a_fresh_decision_trace() {
     assert_eq!(terminal.agent.alive, 0);
     assert_eq!(terminal.agent.age, a.max_age);
     assert_eq!(terminal.decision.scores, [0.0; 6]);
-    assert_eq!(terminal.decision.inputs, [0.0; 76]);
+    assert_eq!(terminal.decision.inputs, [0.0; INPUTS]);
     assert!(!view.following);
     assert!(!view.has_decision_trace());
     assert_eq!(view.highlight().0, u32::MAX);

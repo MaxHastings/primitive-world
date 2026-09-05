@@ -19,7 +19,7 @@ The numeric constants below are declared modeling choices, not discovered laws.
 | Signal | One scalar emission per chosen emit action, .02 energy; no target/cooldown |
 | Reproduction | Chosen, age at least 400; 240-tick recovery; paid energy investment |
 | Aging | Death at a freshly sampled maximum age of 9,000–11,000 ticks |
-| Sensing / state | Radius 24, eight food points, up to four bodies, 16 recurrent values |
+| Sensing / state | Radius 24, eight sectors × two distance bands, nearest body per sector, 16 gated recurrent values |
 
 Digestion does not harvest for the agent. Finite throughput and reserves create
 tradeoffs. Development, recovery, aging, sensory geometry and their exact values
@@ -115,8 +115,8 @@ interventions are user experiments; record them when comparing outcomes.
 
 ## Persistence, observation, and limits
 
-Checkpoints use format 16; founder banks use format 5. The primitive-v4 model
-does not load V3 files because its brain has two additional outputs.
+Checkpoints use format 17; founder banks use format 6. The primitive-v5 model
+does not load V4 or earlier files because sensing, targeting, and memory layouts changed.
 Unsupported formats are rejected without rewriting the file.
 Checkpoints preserve settings, bodies, genomes, food, soil, event counters and
 controller traces. Derived indexing/terrain is rebuilt after load. Loading

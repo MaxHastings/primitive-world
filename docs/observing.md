@@ -61,7 +61,8 @@ Settings must contain 256 founder genomes. Each trial specifies a unique file-sa
 
 - `evolved`: the plan’s genomes with the complete controller.
 - `random`: the bundled random genomes with the complete controller.
-- `no_memory`: the evolved genomes with recurrent feedback zeroed on every decision.
+- `no_memory`: the evolved genomes with previous private state zeroed for both
+  recurrent feedback and gated retention on every decision.
   Previous-action and physical-feedback inputs remain available.
 - `no_signals`: the evolved genomes with neighbor signal payload/presence inputs
   masked. Neighbor bodies remain visible; emission costs and other physics remain.

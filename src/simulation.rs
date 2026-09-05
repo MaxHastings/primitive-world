@@ -153,6 +153,12 @@ impl Simulation {
             agent_size <= device.limits().max_storage_buffer_binding_size as u64,
             "GPU storage limit below primitive-world body budget"
         );
+        assert!(
+            MAX_AGENTS as u64 * GENOME_SIZE as u64 * 4
+                <= u64::from(device.limits().max_storage_buffer_binding_size)
+                    .min(device.limits().max_buffer_size),
+            "GPU storage limit below V5 genome budget (166 MiB required)"
+        );
         let genome_buffer = buffer(
             device,
             "inherited genomes",
@@ -1110,13 +1116,16 @@ fn random01(state: &mut u32) -> f32 {
 
 pub fn shader_source(source: &str) -> String {
     format!(
-        "const INPUT_COUNT:u32={}u; const HIDDEN_COUNT:u32={}u; const OUTPUT_COUNT:u32={}u; const GENOME_SIZE:u32={}u; const RECURRENT_ROW:u32={}u; const OUTPUT_BASE:u32={}u;\n{}\n{}",
+        "const INPUT_COUNT:u32={}u; const HIDDEN_COUNT:u32={}u; const OUTPUT_COUNT:u32={}u; const GENOME_SIZE:u32={}u; const RECURRENT_ROW:u32={}u; const OUTPUT_BASE:u32={}u; const GATE_BASE:u32={}u; const FORCE_OUTPUT:u32={}u; const MUTATION_OUTPUT:u32={}u;\n{}\n{}",
         INPUTS,
         HIDDEN,
         OUTPUTS,
         GENOME_SIZE,
         RECURRENT_ROW,
         OUTPUT_BASE,
+        GATE_BASE,
+        FORCE_OUTPUT,
+        MUTATION_OUTPUT,
         include_str!("../shaders/common.wgsl"),
         source
     )
