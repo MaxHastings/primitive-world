@@ -26,6 +26,7 @@ pub struct UiState {
     pub has_world: bool,
     pub saves: Vec<experiments::SavedExperiment>,
     pub library_notice: String,
+    pub library_scan: experiments::LibraryScan,
     pub world_rect: egui::Rect,
     #[cfg(not(windows))]
     pub import_path: String,
@@ -47,6 +48,7 @@ impl UiState {
             has_world: command_line_world,
             saves: Vec::new(),
             library_notice: String::new(),
+            library_scan: experiments::LibraryScan::default(),
             world_rect: egui::Rect::NOTHING,
             #[cfg(not(windows))]
             import_path: String::new(),
@@ -173,6 +175,9 @@ fn draw_home(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                         }
                         ui.add_space(14.0);
                         ui.small(format!("Primitive World {}", env!("CARGO_PKG_VERSION")));
+                        if state.ui.library_scan.busy() {
+                            ui.small("Checking saved experiments in the background…");
+                        }
                         if !state.file_status.is_empty() {
                             ui.label(&state.file_status);
                         }
@@ -268,7 +273,9 @@ fn draw_load(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
             }
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.heading("Your experiments");
-                if state.ui.saves.is_empty() {
+                if state.ui.library_scan.busy() {
+                    ui.label("Refreshing saved experiments… You can keep using the menu.");
+                } else if state.ui.saves.is_empty() {
                     ui.label("No saved experiments yet.");
                 }
                 for saved in &state.ui.saves {

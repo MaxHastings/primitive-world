@@ -5,7 +5,7 @@ and general adaptation are unverified capabilities.
 
 ## Build and data formats
 
-- Application version: 0.6.0.
+- Application version: 0.6.1.
 - Model identifier in reports and exported banks: `primitive-v5`.
 - Checkpoint format: 17.
 - Founder-bank format: 6.

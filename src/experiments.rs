@@ -3,8 +3,9 @@
 use crate::{simulation::Simulation, visible_trial::LoopSnapshot};
 use serde::{Deserialize, Serialize};
 use std::{
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
+    sync::mpsc,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -35,6 +36,49 @@ pub struct SaveRecord {
 pub struct SavedExperiment {
     pub directory: PathBuf,
     pub record: SaveRecord,
+}
+
+type LibraryResult = Result<(Vec<SavedExperiment>, usize), String>;
+
+/// Disk traversal and receipt parsing never run in the window event handler.
+/// Repeated refresh requests coalesce into one follow-up scan.
+#[derive(Default)]
+pub struct LibraryScan {
+    receiver: Option<mpsc::Receiver<LibraryResult>>,
+    pending: Option<PathBuf>,
+}
+
+impl LibraryScan {
+    pub fn request(&mut self, root: PathBuf) {
+        if self.receiver.is_some() {
+            self.pending = Some(root);
+            return;
+        }
+        let (sender, receiver) = mpsc::channel();
+        self.receiver = Some(receiver);
+        std::thread::spawn(move || {
+            let _ = sender.send(list(&root));
+        });
+    }
+
+    pub fn busy(&self) -> bool {
+        self.receiver.is_some()
+    }
+
+    pub fn poll(&mut self) -> Option<LibraryResult> {
+        let result = match self.receiver.as_ref()?.try_recv() {
+            Ok(result) => result,
+            Err(mpsc::TryRecvError::Empty) => return None,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                Err("Save-library scan stopped unexpectedly; refresh to retry".into())
+            }
+        };
+        self.receiver = None;
+        if let Some(root) = self.pending.take() {
+            self.request(root);
+        }
+        Some(result)
+    }
 }
 
 impl SavedExperiment {
@@ -168,7 +212,7 @@ pub fn read_record(path: &Path) -> Result<SavedExperiment, String> {
     if file.metadata().map_err(|e| e.to_string())?.len() > 16_777_216 {
         return Err("Experiment receipt is too large".into());
     }
-    let record: SaveRecord = serde_json::from_reader(file).map_err(|e| e.to_string())?;
+    let record = read_record_data(file)?;
     if record.version != 1 || record.model != crate::model::MODEL_ID {
         return Err("Unsupported experiment save".into());
     }
@@ -199,6 +243,22 @@ pub fn read_record(path: &Path) -> Result<SavedExperiment, String> {
         return Err("Experiment checkpoint is missing".into());
     }
     Ok(SavedExperiment { directory, record })
+}
+
+fn read_record_data(reader: impl Read) -> Result<SaveRecord, String> {
+    const LIMIT: u64 = 16_777_216;
+    let mut bytes = Vec::new();
+    // Bound the actual read too, in case a file grows after the metadata check.
+    reader
+        .take(LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() as u64 > LIMIT {
+        return Err("Experiment receipt is too large".into());
+    }
+    // serde_json::from_reader(File) performs tiny unbuffered OS reads. Parsing
+    // the bounded memory slice avoids millions of disk calls per archive.
+    serde_json::from_slice(&bytes).map_err(|e| e.to_string())
 }
 
 /// One latest valid receipt per experiment. Interrupted saves are skipped, with
@@ -242,6 +302,124 @@ pub fn list(root: &Path) -> Result<(Vec<SavedExperiment>, usize), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn receipt_parsing_batches_reads_and_keeps_the_size_limit() {
+        struct CountedReader {
+            data: std::io::Cursor<Vec<u8>>,
+            calls: usize,
+        }
+        impl Read for CountedReader {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                self.calls += 1;
+                self.data.read(buf)
+            }
+        }
+        let mut value = serde_json::json!({
+            "version": 1, "model": crate::model::MODEL_ID, "name": "Fixture",
+            "origin": "Test", "checkpoint": "save-1.checkpoint", "saved_at_ms": 1,
+            "seed": 42, "tick": 128, "living": 1, "total_ticks": 128, "evolution": null
+        });
+        // Unknown fields remain permitted; a large field isolates I/O behavior.
+        value["padding"] = serde_json::Value::String("x".repeat(1_000_000));
+        let mut reader = CountedReader {
+            data: std::io::Cursor::new(serde_json::to_vec(&value).unwrap()),
+            calls: 0,
+        };
+        assert_eq!(read_record_data(&mut reader).unwrap().tick, 128);
+        assert!(
+            reader.calls < 100,
+            "Receipt caused {} underlying reads",
+            reader.calls
+        );
+        assert!(
+            read_record_data(std::io::repeat(b' ').take(16_777_217))
+                .err()
+                .unwrap()
+                .contains("too large")
+        );
+    }
+
+    #[test]
+    fn library_poll_never_waits_for_slow_work_and_reports_worker_failure() {
+        let (sender, receiver) = mpsc::channel();
+        let mut scan = LibraryScan {
+            receiver: Some(receiver),
+            pending: None,
+        };
+        assert!(scan.busy());
+        assert!(scan.poll().is_none()); // sender has intentionally not replied
+        sender.send(Ok((Vec::new(), 3))).unwrap();
+        assert_eq!(scan.poll().unwrap().unwrap().1, 3);
+        assert!(!scan.busy());
+        let (sender, receiver) = mpsc::channel();
+        scan.receiver = Some(receiver);
+        drop(sender);
+        assert!(scan.poll().unwrap().is_err());
+        assert!(!scan.busy());
+    }
+
+    #[test]
+    fn refreshes_coalesce_and_a_new_scan_follows_inflight_work() {
+        let (sender, receiver) = mpsc::channel();
+        let mut scan = LibraryScan {
+            receiver: Some(receiver),
+            pending: None,
+        };
+        let missing = std::env::temp_dir().join(format!("missing-library-{}", stamp().unwrap()));
+        scan.request(missing.join("superseded"));
+        scan.request(missing.clone());
+        assert_eq!(scan.pending.as_ref(), Some(&missing));
+        assert!(scan.poll().is_none());
+        sender.send(Ok((Vec::new(), 2))).unwrap();
+        assert_eq!(scan.poll().unwrap().unwrap().1, 2);
+        assert!(
+            scan.busy(),
+            "The queued refresh must start after the old result"
+        );
+        assert!(scan.pending.is_none());
+        // Waiting is test-only: the actual UI exclusively uses non-blocking poll.
+        let result = scan
+            .receiver
+            .take()
+            .unwrap()
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        assert!(result.0.is_empty());
+        assert_eq!(result.1, 0);
+    }
+
+    #[test]
+    #[ignore = "read-only local diagnostic; requires PRIMITIVE_RECEIPT_PROBE"]
+    fn receipt_io_throughput_probe() {
+        let path = PathBuf::from(std::env::var_os("PRIMITIVE_RECEIPT_PROBE").unwrap());
+        let start = std::time::Instant::now();
+        let legacy: SaveRecord =
+            serde_json::from_reader(std::fs::File::open(&path).unwrap()).unwrap();
+        let old = start.elapsed();
+        let start = std::time::Instant::now();
+        let new = read_record_data(std::fs::File::open(&path).unwrap()).unwrap();
+        let current = start.elapsed();
+        assert_eq!(
+            serde_json::to_vec(&legacy).unwrap(),
+            serde_json::to_vec(&new).unwrap()
+        );
+        eprintln!(
+            "Same {}-byte receipt: legacy unbuffered {:.3}s; bounded memory parse {:.3}s",
+            std::fs::metadata(path).unwrap().len(),
+            old.as_secs_f64(),
+            current.as_secs_f64()
+        );
+        let start = std::time::Instant::now();
+        let (saves, skipped) = list(&save_root()).unwrap();
+        eprintln!(
+            "Current local library: {:.3}s; {} compatible experiments, {} skipped receipts",
+            start.elapsed().as_secs_f64(),
+            saves.len(),
+            skipped
+        );
+    }
     #[test]
     fn incomplete_save_keeps_previous_receipt_and_path_traversal_is_rejected() {
         let root = std::env::temp_dir().join(format!("primitive-save-test-{}", stamp().unwrap()));

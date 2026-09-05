@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.1
+
+- Fix slow startup and menu freezes caused by parsing save receipts with
+  unbuffered file reads on the UI thread. Receipts are now read in bounded blocks
+  and parsed from memory; the 16 MiB size limit remains enforced.
+- Save-library traversal runs in a background worker with non-blocking polling,
+  coalesced refresh requests, and visible loading status. Returning to Main Menu
+  no longer triggers a redundant library scan.
+- Existing V5 worlds, checkpoints, and evolution rules are unchanged.
+
 ## 0.6.0
 
 - Primitive-v5 replaces eight isolated food probes with eight compass sectors and

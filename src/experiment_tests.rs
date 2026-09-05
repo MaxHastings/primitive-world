@@ -4,7 +4,12 @@ use crate::{experiments, simulation::*, survivor_observer, visible_trial::Visibl
 #[test]
 fn experiment_preserves_memory_archive_and_world_number_across_resume() {
     let (d, q) = gpu();
+    let started = std::time::Instant::now();
     let mut sim = Simulation::new(&d, &q, 1);
+    eprintln!(
+        "Simulation initialization: {:.3}s",
+        started.elapsed().as_secs_f64()
+    );
     sim.settings.population = 4;
     sim.settings.metabolic_cost = 0.08;
     sim.reset(&q);
@@ -26,12 +31,17 @@ fn experiment_preserves_memory_archive_and_world_number_across_resume() {
     let experiment = experiments::Experiment {
         directory,
         name: "A continuing line".into(),
-        origin: "Random V4 fixture".into(),
+        origin: "Random V5 fixture".into(),
         total_ticks: 8000,
     };
+    let started = std::time::Instant::now();
     experiment
         .save(&sim, &d, &q, Some(snapshot.clone()))
         .unwrap();
+    eprintln!(
+        "Complete experiment checkpoint/receipt save: {:.3}s",
+        started.elapsed().as_secs_f64()
+    );
     let (saved, invalid) = experiments::list(&root).unwrap();
     assert_eq!(invalid, 0);
     assert_eq!(saved[0].world_number(), 7);

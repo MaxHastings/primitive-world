@@ -14,6 +14,10 @@ random, untrained brains and immediately begin running. No starter policy or
 survival template is supplied. The app saves experiment receipts under its local
 data folder (on Windows, `%LOCALAPPDATA%\PrimitiveWorld\experiments`).
 
+Save-library discovery runs in the background. New Game remains available while
+the library is loading, and returning to Main Menu does not rescan old receipts.
+Opening Load Game or pressing Refresh requests a new background scan.
+
 Windows users can run `Play.cmd` or `Play.ps1`; arguments pass to the simulator.
 If rebuilding an executable that is already running fails with an access error,
 leave that process alone and use `cargo run --release --target-dir target/another-build`.

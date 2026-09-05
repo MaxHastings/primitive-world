@@ -4,7 +4,14 @@ use std::path::Path;
 
 impl AppState {
     pub(crate) fn refresh_saves(&mut self) {
-        match experiments::list(&experiments::save_root()) {
+        self.ui.library_scan.request(experiments::save_root());
+    }
+
+    pub(crate) fn poll_saves(&mut self) {
+        let Some(result) = self.ui.library_scan.poll() else {
+            return;
+        };
+        match result {
             Ok((saves, invalid)) => {
                 self.ui.saves = saves;
                 self.ui.library_notice = if invalid > 0 {
@@ -62,7 +69,8 @@ impl AppState {
         }
         self.ui.screen = ui::Screen::Home;
         self.shock_mode = ShockMode::Select;
-        self.refresh_saves();
+        // The current world already supplies Continue. Opening Load Game (or
+        // explicit Refresh) requests a background scan; menu navigation doesn't.
     }
 
     fn prepare_replacement(&mut self) -> Result<(), String> {

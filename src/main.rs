@@ -450,6 +450,7 @@ impl AppState {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        self.poll_saves();
         let now = Instant::now();
         let output = self.surface.get_current_texture()?;
         // Read the last completed simulation batch before building this frame's UI.
