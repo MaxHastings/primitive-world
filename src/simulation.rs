@@ -551,24 +551,40 @@ impl Simulation {
             queue.write_buffer(b, 0, bytemuck::cast_slice(&data));
         }
         let habitat = build_habitat(self.seed);
-        let food = build_resources(&habitat);
+        let food = crate::environment::rotate_grid(
+            build_resources(&habitat),
+            RESOURCE_GRID as usize,
+            self.settings.environment_rotation,
+        );
         for b in [&self.resource_buffer, &self.resource_display_buffer] {
             queue.write_buffer(b, 0, bytemuck::cast_slice(&food));
         }
         queue.write_buffer(
             &self.ground_buffer,
             0,
-            bytemuck::cast_slice(&build_ground(&habitat)),
+            bytemuck::cast_slice(&crate::environment::rotate_grid(
+                build_ground(&habitat),
+                RESOURCE_GRID as usize,
+                self.settings.environment_rotation,
+            )),
         );
         queue.write_buffer(
             &self.fertility_buffer,
             0,
-            bytemuck::cast_slice(&habitat.iter().map(|h| 0.4 + h * 0.35).collect::<Vec<_>>()),
+            bytemuck::cast_slice(&crate::environment::rotate_grid(
+                habitat.iter().map(|h| 0.4 + h * 0.35).collect::<Vec<_>>(),
+                RESOURCE_GRID as usize,
+                self.settings.environment_rotation,
+            )),
         );
         queue.write_buffer(
             &self.terrain_buffer,
             0,
-            bytemuck::cast_slice(&build_terrain_pair(self.seed, 0)),
+            bytemuck::cast_slice(&crate::environment::rotate_grid(
+                build_terrain_pair(self.seed, 0),
+                RESOURCE_GRID as usize,
+                self.settings.environment_rotation,
+            )),
         );
         for b in [
             &self.event_buffer,
@@ -614,7 +630,11 @@ impl Simulation {
             if self.terrain_epoch != epoch && self.settings.evolving_landscape {
                 let staging = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("terrain update"),
-                    contents: bytemuck::cast_slice(&build_terrain_pair(self.seed, epoch)),
+                    contents: bytemuck::cast_slice(&crate::environment::rotate_grid(
+                        build_terrain_pair(self.seed, epoch),
+                        RESOURCE_GRID as usize,
+                        self.settings.environment_rotation,
+                    )),
                     usage: wgpu::BufferUsages::COPY_SRC,
                 });
                 e.copy_buffer_to_buffer(&staging, 0, &self.terrain_buffer, 0, staging.size());
@@ -883,17 +903,26 @@ fn params_for(tick: u32, s: &SimSettings, seed: u32) -> SimParams {
             s.motor_response_gain,
             0.0,
         ],
-        lifecycle: [seed, s.birth_cooldown, 0, u32::from(s.evolving_landscape)],
+        lifecycle: [
+            seed,
+            s.birth_cooldown,
+            s.environment_rotation,
+            u32::from(s.evolving_landscape),
+        ],
     }
 }
 fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
     let mut rng = seed.max(1);
     (0..MAX_AGENTS)
         .map(|i| AgentGpu {
-            position: [
-                random01(&mut rng) * WORLD_SIZE,
-                random01(&mut rng) * WORLD_SIZE,
-            ],
+            position: crate::environment::rotate_point(
+                [
+                    random01(&mut rng) * WORLD_SIZE,
+                    random01(&mut rng) * WORLD_SIZE,
+                ],
+                WORLD_SIZE,
+                s.environment_rotation,
+            ),
             energy: 65.0,
             food: if i < s.population { 2.0 } else { 0.0 },
             age: random01(&mut rng) * 300.0,

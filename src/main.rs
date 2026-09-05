@@ -1,3 +1,4 @@
+mod environment;
 mod founders;
 mod headless;
 mod inspection;
@@ -604,6 +605,10 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
     }
 }
 fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
+    ui.small(format!(
+        "Environment orientation: {}°",
+        state.simulation.settings.environment_rotation * 90
+    ));
     ui.label(format!(
         "Build {} · physiology-v2 · checkpoint 14",
         env!("CARGO_PKG_VERSION")

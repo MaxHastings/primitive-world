@@ -1,5 +1,133 @@
 use super::*;
 
+#[test]
+fn environment_rotation_preserves_body_traits_and_is_not_a_controller_input() {
+    let mut settings = SimSettings::default();
+    let original = build_agents(1201, &settings);
+    for turns in 0..4 {
+        settings.environment_rotation = turns;
+        let rotated = build_agents(1201, &settings);
+        for (a, b) in original.iter().zip(rotated) {
+            let mut expected = *a;
+            expected.position = crate::environment::rotate_point(a.position, WORLD_SIZE, turns);
+            assert_eq!(bytemuck::bytes_of(&expected), bytemuck::bytes_of(&b));
+        }
+        assert_eq!(params_for(10, &settings, 1201).lifecycle[2], turns);
+    }
+    for shader in [
+        include_str!("../shaders/decide.wgsl"),
+        include_str!("../shaders/perceive.wgsl"),
+        include_str!("../shaders/update_agents.wgsl"),
+        include_str!("../shaders/apply_births.wgsl"),
+    ] {
+        assert!(!shader.contains("lifecycle.z"));
+    }
+    settings.environment_rotation = 4;
+    assert!(settings.validate().is_err());
+}
+
+#[test]
+fn environment_rotation_permutates_resources_soil_and_weather_across_renewals() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings.evolving_landscape = true;
+    s.settings.resource_regeneration = 0.01;
+    for tick in [0, 16384, 24576, 40960, 49152] {
+        type EnvironmentSnapshot = (Vec<u32>, Vec<[u32; 8]>, Vec<f32>);
+        let mut reference: Option<EnvironmentSnapshot> = None;
+        for turns in 0..4 {
+            s.settings.environment_rotation = turns;
+            s.reset(&q);
+            s.tick = tick;
+            s.terrain_epoch = u32::MAX;
+            step(&mut s, &d, &q, 32);
+            let food = read::<u32>(
+                &d,
+                &q,
+                &s.resource_buffer,
+                (RESOURCE_GRID * RESOURCE_GRID) as usize,
+            );
+            let ground = read::<[u32; 8]>(
+                &d,
+                &q,
+                &s.ground_buffer,
+                (RESOURCE_GRID * RESOURCE_GRID) as usize,
+            );
+            let soil = read::<f32>(
+                &d,
+                &q,
+                &s.fertility_buffer,
+                (RESOURCE_GRID * RESOURCE_GRID) as usize,
+            );
+            if let Some((ref_food, ref_ground, ref_soil)) = &reference {
+                assert_eq!(
+                    food,
+                    crate::environment::rotate_grid(
+                        ref_food.clone(),
+                        RESOURCE_GRID as usize,
+                        turns
+                    )
+                );
+                assert_eq!(
+                    ground,
+                    crate::environment::rotate_grid(
+                        ref_ground.clone(),
+                        RESOURCE_GRID as usize,
+                        turns
+                    )
+                );
+                assert_eq!(
+                    soil,
+                    crate::environment::rotate_grid(
+                        ref_soil.clone(),
+                        RESOURCE_GRID as usize,
+                        turns
+                    )
+                );
+            } else {
+                reference = Some((food, ground, soil));
+            }
+        }
+    }
+}
+
+#[test]
+fn rotation_cli_and_checkpoint_preserve_explicit_environment_settings() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let args = |values: &[&str]| values.iter().map(|v| v.to_string()).collect::<Vec<_>>();
+    crate::headless::configure(&mut s, &args(&["world", "--environment-rotation", "2"])).unwrap();
+    s.reset(&q);
+    let path = temp("rotated.checkpoint");
+    s.save_checkpoint(&d, &q, &path).unwrap();
+    s.settings.environment_rotation = 0;
+    s.load_checkpoint(&q, &path).unwrap();
+    assert_eq!(s.settings.environment_rotation, 2);
+    std::fs::remove_file(path).unwrap();
+    assert!(
+        crate::headless::configure(&mut s, &args(&["world", "--environment-rotation", "4"]))
+            .is_err()
+    );
+    assert!(
+        crate::headless::configure(
+            &mut s,
+            &args(&["world", "--environment-rotation", "1", "--checkpoint", "x"])
+        )
+        .is_err()
+    );
+    let value = serde_json::to_value(SimSettings::default()).unwrap();
+    assert!(
+        value.get("environment_rotation").is_none(),
+        "Identity settings retain old serialization"
+    );
+    assert_eq!(
+        serde_json::from_value::<SimSettings>(value)
+            .unwrap()
+            .environment_rotation,
+        0
+    );
+}
+
 /// Explicit diagnostic: outcomes are measured, never required to point a chosen way.
 /// Run separately after the frozen campaign; normal tests do not read research banks.
 #[test]

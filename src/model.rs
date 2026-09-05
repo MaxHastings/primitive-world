@@ -142,9 +142,16 @@ pub struct SelectionOutput {
     pub selected: u32,
     pub padding: u32,
 }
+fn no_environment_rotation(rotation: &u32) -> bool {
+    *rotation == 0
+}
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SimSettings {
+    /// Quarter turns of the full environment/initial positions, never a brain input.
+    #[serde(default, skip_serializing_if = "no_environment_rotation")]
+    pub environment_rotation: u32,
     pub population: u32,
     pub resource_regeneration: f32,
     pub movement_energy_cost: f32,
@@ -167,6 +174,7 @@ pub struct SimSettings {
 impl Default for SimSettings {
     fn default() -> Self {
         Self {
+            environment_rotation: 0,
             population: 1000,
             resource_regeneration: 0.01,
             movement_energy_cost: 0.01,
@@ -189,7 +197,8 @@ impl Default for SimSettings {
 }
 impl SimSettings {
     pub fn validate(&self) -> Result<(), String> {
-        if self.population > MAX_AGENTS
+        if self.environment_rotation > 3
+            || self.population > MAX_AGENTS
             || self.birth_cooldown > 1_000_000
             || [
                 self.resource_regeneration,

@@ -12,6 +12,7 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
         "--version",
     ];
     let valued = [
+        "--environment-rotation",
         "--seed",
         "--founders",
         "--ticks",
@@ -62,6 +63,7 @@ pub fn configure(sim: &mut Simulation, args: &[String]) -> Result<(), String> {
     }
     if a.contains_key("--checkpoint") {
         for key in [
+            "--environment-rotation",
             "--bootstrap",
             "--founders",
             "--seed",
@@ -80,6 +82,11 @@ pub fn configure(sim: &mut Simulation, args: &[String]) -> Result<(), String> {
                 ));
             }
         }
+    }
+    if let Some(v) = a.get("--environment-rotation") {
+        sim.settings.environment_rotation = v
+            .parse()
+            .map_err(|_| "Invalid environment rotation (0..3 quarter turns)")?;
     }
     if let Some(v) = a.get("--seed") {
         sim.seed = v.parse().map_err(|_| "Invalid seed")?;
