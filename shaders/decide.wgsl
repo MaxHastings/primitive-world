@@ -32,6 +32,9 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
   for(var h=0u;h<HIDDEN_COUNT;h++){v+=genomes[i*GENOME_SIZE+row+h]*d.hidden[h];}
   if(!finite(v)){d.invalid=1u;v=0.0;}out[o]=v;
  }
+ // Direct bounded requests; eight weight units span the genome interval [-4,4].
+ d.mutation_probability=clamp(out[16],0.0,1.0);
+ d.mutation_magnitude=clamp(out[17],0.0,8.0);
  var best=-3.4e38;
  for(var k=0u;k<6u;k++){d.scores[k]=out[k];if(out[k]>best){best=out[k];d.selected_action=k;}}
  // Continuous actuator calibration: no minimum motion or preferred heading.
@@ -41,6 +44,6 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  best=-3.4e38;
  for(var k=0u;k<4u;k++){if(p.bodies[k].slot<INVALID && out[10u+k]>best){best=out[10u+k];d.target_id=p.bodies[k].slot;d.target_generation=p.bodies[k].generation;}}
  // Fault containment only: do not replace finite but ineffective intentions.
- if(d.invalid!=0u){d.selected_action=NONE;d.movement=vec2<f32>(0);d.amount=0.0;d.payload=0.0;d.force=vec2<f32>(0);for(var h=0u;h<HIDDEN_COUNT;h++){d.hidden[h]=0.0;}}
+ if(d.invalid!=0u){d.selected_action=NONE;d.movement=vec2<f32>(0);d.amount=0.0;d.payload=0.0;d.force=vec2<f32>(0);d.mutation_probability=0.0;d.mutation_magnitude=0.0;for(var h=0u;h<HIDDEN_COUNT;h++){d.hidden[h]=0.0;}}
  decisions[i]=d;
 }

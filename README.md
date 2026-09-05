@@ -59,10 +59,11 @@ the information lens. See the [play guide](docs/play.md) for saving and resuming
 
 ## What evolves?
 
-Each agent has **1,760 inherited weights**, **16 private recurrent state values**,
+Each agent has **1,794 inherited weights**, **16 private recurrent state values**,
 local senses, six discrete action choices, and independent continuous movement.
-Weights stay fixed during life; offspring receive small mutations. Memory state
-changes during life and resets at birth. Survival and reproduction determine
+Weights stay fixed during life; the parent brain chooses offspring mutation
+probability and magnitude. Memory state changes during life and resets at birth.
+Survival and reproduction determine
 which lineages remain. There is no migration reward, authored vocabulary, or
 handwritten destination planner.
 

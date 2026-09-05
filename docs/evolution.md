@@ -8,9 +8,12 @@ and no authored starter policy.
 
 Brains choose actions and continuous outputs from local senses and private state.
 Their weights do not learn by gradient descent during life. A birth copies the
-parent’s current weights, with approximately 2% mutation probability per weight,
-an additive change in [-0.03, 0.03], and clipping to [-4, 4]. The child’s private
-state starts empty. Useful behavior can spread when its carriers leave descendants.
+parent’s current weights using two of that parent’s current outputs: mutation
+probability per weight [0,1] and mutation magnitude [0,8]. Selected weights get a
+uniform additive change in [-magnitude, magnitude], then clip to [-4,4]. Both
+requests may be zero, so exact copying and a permanently frozen lineage are
+allowed outcomes. The child’s private state starts empty. Useful behavior can
+spread when its carriers leave descendants.
 
 There is no loss function, survival reward buffer, action-use bonus, or requirement
 to communicate, fight, cooperate, or migrate. In-world reproduction is chosen and
@@ -18,14 +21,26 @@ must be paid for. Extinction is allowed.
 
 ## Between worlds
 
-Every 128 ticks the observer captures up to 64 hash-sampled living bodies and their
-**current** genomes. It replaces its previous sample only when bodies are alive.
-At extinction it keeps the latest nonempty sample, not an original ancestor’s
-weights and not necessarily the exact final 64 deaths.
+The visible loop maintains a rolling archive of up to 64 distinct bodies. Every
+128 ticks, and after each playback batch with 64 or fewer living bodies, it
+captures current survivors and their genomes. Current sampled bodies take priority;
+earlier entries fill the remaining places. Reobserving a lingering individual
+updates its one entry, not its share of the archive. A recovering population can
+replace older entries. Playback keeps its chosen batch size.
 
-Each sampled genome is copied unchanged once. Balanced mutated replicas fill a
-256-genome bank using the same mutation probability/range as births, with an
-explicit versioned PRNG. The bank seeds fresh bodies in a new seeded world.
+At extinction the archive seeds the next world automatically. It represents the
+latest observed survivors plus retained earlier bodies, not an exact ranking of
+the final 64 deaths. Every entry records its own observation tick and mutation
+requests. An abrupt collapse retains the preceding archive. If fewer than 64
+distinct bodies have been observed, all available entries are used.
+
+Each sampled genome is copied unchanged once. Balanced replicas fill a 256-genome
+bank using that sampled survivor’s most recent mutation requests, with an explicit
+versioned PRNG. The bank seeds fresh bodies in a new seeded world.
+With 64 entries each contributes four bank genomes: one exact copy and three
+offspring replicas. Brains are never averaged or merged. Equal representation
+prevents one archive entry dominating transfer; related or identical brains can
+still occur. The number 64 is an experimental choice, not a proven optimum.
 Energy, age, inventory, signals, and private state reset. Genes retain inherited
 changes. The user’s final physical settings carry forward.
 

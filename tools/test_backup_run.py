@@ -14,7 +14,7 @@ from run_io import save_state, exclusive_run
 
 def checkpoint_bytes():
     settings = b"{}"
-    return (b"PRIMWORLD015" + struct.pack("<III", 42, 128, len(settings))
+    return (b"PRIMWORLD016" + struct.pack("<III", 42, 128, len(settings))
             + settings + b"".join(struct.pack("<Q", 4) + b"data" for _ in range(9)))
 
 

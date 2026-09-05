@@ -5,15 +5,15 @@ and general adaptation are unverified capabilities.
 
 ## Build and data formats
 
-- Application version: 0.4.0.
-- Model identifier in reports and exported banks: `primitive-world`.
-- Checkpoint format: 15.
-- Founder-bank format: 4.
+- Application version: 0.5.0.
+- Model identifier in reports and exported banks: `primitive-v4`.
+- Checkpoint format: 16.
+- Founder-bank format: 5.
 
 Data-format numbers identify storage contracts, independently of the application
-version. Compatible saves retain their settings and genomes. The bank loader
-accepts the equivalent stored model identifier for existing format-4 banks;
-exports use `primitive-world`. Unsupported formats or models fail validation.
+version. V4's expanded brain changes the genome and storage layouts, so V3
+checkpoints and founder banks are intentionally rejected. Unsupported formats or
+models fail validation.
 
 ## Before publishing a GitHub release
 

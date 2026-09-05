@@ -14,6 +14,7 @@ struct Agent {
  lineage_id:u32,parent_lineage:u32,birth_tick:u32,birth_parent_slot:u32,
  ancestry_depth:u32,lifetime_births:u32,distance_travelled:f32,founder_family:u32,
  hidden:array<f32,HIDDEN_COUNT>,
+ mutation_probability:f32,mutation_magnitude:f32,
 };
 struct Sample {offset:vec2<f32>,food:f32,padding:f32,};
 struct Body {offset:vec2<f32>,velocity:vec2<f32>,food:f32,signal:f32,slot:u32,generation:u32,};
@@ -21,7 +22,7 @@ struct Perception {resource_here:f32,local_count:f32,padding:vec2<f32>,samples:a
 struct Decision {
  scores:array<f32,6>,selected_action:u32,score_padding:u32,movement:vec2<f32>,amount:f32,
  payload:f32,target_id:u32,target_generation:u32,invalid:u32,body_padding:u32,
- force:vec2<f32>,hidden:array<f32,HIDDEN_COUNT>,inputs:array<f32,INPUT_COUNT>,
+ force:vec2<f32>,mutation_probability:f32,mutation_magnitude:f32,hidden:array<f32,HIDDEN_COUNT>,inputs:array<f32,INPUT_COUNT>,
 };
 struct SimParams {
  world_size:f32,resource_grid_size:u32,agent_count:u32,tick:u32,

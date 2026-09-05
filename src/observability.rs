@@ -238,7 +238,7 @@ impl Simulation {
                     path.display()
                 )
             })?;
-        file.write_all(b"PRIMWORLD015").map_err(|e| e.to_string())?;
+        file.write_all(b"PRIMWORLD016").map_err(|e| e.to_string())?;
         for n in [self.seed, self.tick, settings.len() as u32] {
             file.write_all(&n.to_le_bytes())
                 .map_err(|e| e.to_string())?;
@@ -257,11 +257,28 @@ impl Simulation {
         queue: &wgpu::Queue,
         path: &std::path::Path,
     ) -> Result<(), String> {
-        let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+        let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+        self.load_checkpoint_reader(queue, file)
+    }
+
+    pub fn load_checkpoint_reader(
+        &mut self,
+        queue: &wgpu::Queue,
+        file: impl Read,
+    ) -> Result<(), String> {
+        self.load_checkpoint_checked(queue, file, None)
+    }
+
+    pub fn load_checkpoint_checked(
+        &mut self,
+        queue: &wgpu::Queue,
+        mut file: impl Read,
+        expected: Option<(u32, u32, u32)>,
+    ) -> Result<(), String> {
         let mut magic = [0; 12];
         file.read_exact(&mut magic).map_err(|e| e.to_string())?;
-        if &magic != b"PRIMWORLD015" {
-            return Err("Unsupported checkpoint: expected format 15".into());
+        if &magic != b"PRIMWORLD016" {
+            return Err("Unsupported checkpoint: expected format 16".into());
         }
         let mut fields = [0; 12];
         file.read_exact(&mut fields).map_err(|e| e.to_string())?;
@@ -318,6 +335,8 @@ impl Simulation {
                     a.max_age,
                     a.body_padding,
                     a.signal_payload,
+                    a.mutation_probability,
+                    a.mutation_magnitude,
                     a.collected,
                     a.ingested,
                     a.spent,
@@ -328,6 +347,8 @@ impl Simulation {
                 .chain(&a.velocity)
                 .chain(&a.moved)
                 .any(|v| !v.is_finite())
+                || !(0.0..=1.0).contains(&a.mutation_probability)
+                || !(0.0..=8.0).contains(&a.mutation_magnitude)
                 || a.food < 0.0
                 || a.food > 8.001
                 || a.energy < 0.0
@@ -395,6 +416,8 @@ impl Simulation {
             if d.selected_action > 5
                 || d.invalid > 1
                 || d.target > MAX_AGENTS
+                || !(0.0..=1.0).contains(&d.mutation_probability)
+                || !(0.0..=8.0).contains(&d.mutation_magnitude)
                 || [d.amount, d.payload]
                     .iter()
                     .chain(&d.movement)
@@ -413,6 +436,16 @@ impl Simulation {
             return Err("Trailing checkpoint data".into());
         }
         // Apply only after the entire checkpoint has been read and checked.
+        if let Some((expected_seed, expected_tick, expected_living)) = expected {
+            let living = data[0]
+                .chunks_exact(std::mem::size_of::<AgentGpu>())
+                .map(bytemuck::pod_read_unaligned::<AgentGpu>)
+                .filter(|a| a.alive != 0)
+                .count() as u32;
+            if (seed, tick, living) != (expected_seed, expected_tick, expected_living) {
+                return Err("The experiment receipt and checkpoint do not match".into());
+            }
+        }
         for (buffer, bytes) in buffers.iter().zip(&data) {
             queue.write_buffer(buffer, 0, bytes);
         }

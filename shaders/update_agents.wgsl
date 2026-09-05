@@ -34,6 +34,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
   a.energy-=0.02;a.spent+=0.02;a.signal_payload=d.payload;a.signal_tick=params.tick+1u;
   atomicAdd(&stats[9],1u);
  }
+ a.mutation_probability=d.mutation_probability;a.mutation_magnitude=d.mutation_magnitude;
  a.hidden=d.hidden;a.rng=hash_u32(a.rng+params.tick+1u);
  if(a.energy<=0.0||a.age>=a.max_age){a.alive=0u;if(a.age>=a.max_age){atomicAdd(&stats[2],1u);}else{atomicAdd(&stats[1],1u);}}
  if(a.alive!=0u && d.selected_action==REPRODUCE){

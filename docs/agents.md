@@ -6,16 +6,18 @@ same implementation in interactive and headless worlds.
 ## Computation and memory
 
 76 local measurements plus 16 previous recurrent state values produce 16 next
-state values and 16 outputs. There are 1,760 inherited weights. Each state unit
+state values and 18 outputs. There are 1,794 inherited weights. Each state unit
 uses tanh(input projection + recurrent projection + bias); outputs are linear
 projections of that state. The 16 float32 state values occupy 64 bytes. They are
 not 16 labelled memories, a map, or a list of places. Retention is controller-owned.
 
 Weights do not update during life. Only recurrent state changes during decisions.
-At birth, each weight has approximately 2% mutation probability, adding a hashed
-perturbation in [-.03,.03], then clipping to [-4,4]. Child state starts empty.
-No loss function, online reward, gradient optimizer, or reward-dependent mutation
-exists. Useful long-term memory and communication are unverified capabilities.
+At reproduction, the parent controller requests a per-weight mutation probability
+and magnitude. Each selected weight receives a uniform additive perturbation in
+[-magnitude, magnitude], then clips to [-4,4]. Exact copying is allowed. Child
+state starts empty. No loss function, online reward, gradient optimizer, or
+reward-dependent mutation exists. Useful long-term memory and communication are
+unverified capabilities.
 
 ## Inputs (zero-based)
 
@@ -62,6 +64,8 @@ absolute position, destination, lineage or global population input.
 | 9 | Emitted scalar, tanh [-1,1] |
 | 10–13 | Target logits over the four visible neighbors |
 | 14–15 | Contact displacement vector, independent of voluntary movement |
+| 16 | Per-offspring-weight mutation probability, direct clamp [0,1] |
+| 17 | Mutation magnitude, direct clamp [0,8] |
 
 Largest action logit wins; ties favor the earlier slot. Movement accompanies one
 body action. Target choice applies to transfer and force, not local emissions.
@@ -91,9 +95,10 @@ genome using the environment seed. --founders loads an explicitly named bank
 without additional initialization noise. Invalid banks fail, never fall back.
 
 Birth inheritance and [between-world evolution](evolution.md) are distinct.
-The native survivor loop carries actual late-surviving bodies' current genomes,
+The native survivor loop carries a rolling archive of up to 64 bodies' genomes,
 including descendant mutations, into the next world. It does not rank original
 founders by family scores. Each sampled genome is retained exactly, with balanced
-mutated replicas filling the next bank. Body state and memories reset; genes do not.
+replicas filling the next bank using that sampled parent's most recent mutation
+requests at its recorded observation tick. Body state and memories reset; genes do not.
 
 The bundled bank contains untrained random weights. Random does not mean competent.

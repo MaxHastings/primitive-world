@@ -25,5 +25,10 @@ fn apply(@builtin(global_invocation_id) id: vec3<u32>) {
   } else {
     let old_value = f32(resource_values[index]);
     resource_values[index] = u32(clamp(old_value + intervention.delta * SCALE, 0.0, SCALE));
+    // The erase brush also removes manually painted and death-dropped food.
+    // This pass owns each cell and is dispatched separately from agent actions.
+    let dropped = atomicLoad(&ground[index].dropped);
+    let removed = min(dropped, u32(round(-intervention.delta * SCALE)));
+    atomicStore(&ground[index].dropped, dropped - removed);
   }
 }

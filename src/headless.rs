@@ -379,7 +379,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     if let Some(path) = a.get("--save-checkpoint") {
         sim.save_checkpoint(&device, &queue, Path::new(path))?;
     }
-    let report = serde_json::json!({"schema":2,"build_version":env!("CARGO_PKG_VERSION"),"model":MODEL_ID,"checkpoint_version":15,"capacity":MAX_AGENTS,"seed":sim.seed,
+    let report = serde_json::json!({"schema":2,"build_version":env!("CARGO_PKG_VERSION"),"model":MODEL_ID,"checkpoint_version":16,"capacity":MAX_AGENTS,"seed":sim.seed,
   "initial_tick":initial_tick,"requested_ticks":ticks,"elapsed_ticks":sim.tick-initial_tick,"adapter":format!("{info:?}"),
   "termination_reason":if extinct {"extinction"} else {"tick_limit"},
   "extinction_detection_max_delay_ticks":31,

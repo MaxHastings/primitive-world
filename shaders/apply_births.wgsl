@@ -26,7 +26,9 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  child.max_age=9000.0+2000.0*random01(p.rng^ci);
  for(var k=0u;k<GENOME_SIZE;k++){
   let key=p.rng^ci^(k*0x9e3779b9u)^params.tick;
-  let mutation=select(0.0,(random01(key)-0.5)*0.06,random01(key^0xb5297a4du)<0.02);
+  // Half-open draw makes probability 0 and 1 exact endpoints.
+  let draw=f32(hash_u32(key^0xb5297a4du)>>8u)/16777216.0;
+  let mutation=select(0.0,(random01(key)*2.0-1.0)*d.mutation_magnitude,draw<d.mutation_probability);
   genomes[ci*GENOME_SIZE+k]=clamp(genomes[pi*GENOME_SIZE+k]+mutation,-4.0,4.0);
  }
  child.alive=1u;child.rng=hash_u32(p.rng^ci^params.tick);child.generation=agents[ci].generation+1u;

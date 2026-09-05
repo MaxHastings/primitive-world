@@ -4,9 +4,9 @@ use crate::{
     founders::FounderBank,
     simulation::{AgentGpu, GENOME_SIZE, Simulation, observability::read_buffer},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SampledBody {
     pub slot: usize,
     pub lineage_id: u32,
@@ -16,15 +16,41 @@ pub struct SampledBody {
     pub age: f32,
     pub energy: f32,
     pub food: f32,
+    pub mutation_probability: f32,
+    pub mutation_magnitude: f32,
+    /// None means the source did not record an individual observation tick.
+    pub observed_tick: Option<u32>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SurvivorSample {
     #[serde(flatten)]
     pub bank: FounderBank,
     pub source_population: usize,
     pub bodies: Vec<SampledBody>,
-    pub selection: &'static str,
+    pub selection: String,
+}
+
+impl SurvivorSample {
+    /// Current living bodies take priority; retain earlier bodies to fill vacant
+    /// archive entries. Reobserving one individual never gives it another entry.
+    pub fn retain_previous(&mut self, previous: &Self) {
+        if self.bank.source_seed != previous.bank.source_seed {
+            return;
+        }
+        let mut identities: std::collections::HashSet<_> =
+            self.bodies.iter().map(|b| b.lineage_id).collect();
+        for (body, genome) in previous.bodies.iter().zip(&previous.bank.genomes) {
+            if self.bodies.len() == 64 {
+                break;
+            }
+            if identities.insert(body.lineage_id) {
+                self.bodies.push(body.clone());
+                self.bank.genomes.push(genome.clone());
+            }
+        }
+        self.selection = "Rolling archive of up to 64 distinct bodies: current sampled survivors first, then previously observed bodies to fill remaining entries. Each body retains its own genome and mutation requests from its recorded observation tick. Source tick/population describe the latest live observation, not all archived bodies.".into();
+    }
 }
 
 fn slots(agents: &[AgentGpu], seed: u32, tick: u32) -> Vec<usize> {
@@ -83,7 +109,7 @@ pub fn observe(
     crate::founders::validate_genomes(&genomes)?;
     *latest = Some(SurvivorSample {
         bank: FounderBank {
-            version: 4,
+            version: 5,
             model: crate::model::MODEL_ID.into(),
             name: format!("survivors-seed{}-tick{}", sim.seed, sim.tick),
             source_seed: sim.seed,
@@ -104,10 +130,13 @@ pub fn observe(
                     age: a.age,
                     energy: a.energy,
                     food: a.food,
+                    mutation_probability: a.mutation_probability,
+                    mutation_magnitude: a.mutation_magnitude,
+                    observed_tick: Some(sim.tick),
                 }
             })
             .collect(),
-        selection: "Up to 64 hash-sampled living bodies at latest nonempty observation; founders and descendants eligible; current slot genomes, never ancestor substitution.",
+        selection: "Up to 64 hash-sampled living bodies at latest nonempty observation; founders and descendants eligible; current slot genomes, never ancestor substitution.".into(),
     });
     Ok(())
 }

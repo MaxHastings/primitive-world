@@ -1,6 +1,6 @@
 [package]
 name = "primitive_world"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.93"
 description = "A local GPU artificial-life sandbox with evolving recurrent agents"
@@ -17,3 +17,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 wgpu = "24"
 winit = "0.30"
+
+[target.'cfg(windows)'.dependencies]
+rfd = "0.15"

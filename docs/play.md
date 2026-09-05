@@ -2,16 +2,17 @@
 
 ## Start a world
 
-Run commands from the repository root:
+Run this from the repository root:
 
 ```sh
-cargo run --release -- --seed 42
+cargo run --release
 ```
 
-The default is a frozen set of 256 reproducible **random**, untrained genomes,
-cycled across 1,000 initial bodies. `--random-founders` instead generates a genome
-for each initial body from the chosen seed. Neither option supplies a survival
-template. `--founders path/to/pool.bank.json` explicitly uses a compatible gene pool.
+The home screen opens first. Choose **New Game**, name the experiment, choose its
+seed and conditions, and press **Start evolution**. New games use seed-specific
+random, untrained brains and immediately begin running. No starter policy or
+survival template is supplied. The app saves experiment receipts under its local
+data folder (on Windows, `%LOCALAPPDATA%\PrimitiveWorld\experiments`).
 
 Windows users can run `Play.cmd` or `Play.ps1`; arguments pass to the simulator.
 If rebuilding an executable that is already running fails with an access error,
@@ -30,8 +31,8 @@ your GPU, population, and observation workload.
 
 At extinction, survivor genes seed a new world in the same window. Speed, camera,
 lens, and final physical settings carry forward. There is no world-length or
-round limit. Loading another world and resetting are disabled in this mode.
-Closing the viewer saves the current world and stops; it does not secretly reopen.
+round limit. Closing the viewer saves the current world and stops; it does not
+secretly reopen.
 
 The viewer writes a full checkpoint at startup and every five wall-clock minutes
 while a loop is active and its state changes. Saving briefly stalls the viewer.
@@ -49,7 +50,7 @@ against disk failure.
 | WASD / arrows | Pan |
 | Mouse wheel | Zoom |
 | Home | Fit the world |
-| L | Change information lens |
+| Lens menu, lower-left | Change information lens |
 | Click a body | Inspect that individual |
 
 The inspector follows identity, not just a reusable storage slot. Death ends
@@ -60,11 +61,16 @@ Physical controls affect the live world. Seed and initial population apply at
 the next reset/world creation. Adding/removing food and killing bodies are manual
 experiments, not hidden assistance. Record interventions when comparing results.
 
-## Saves versus gene pools
+## Saves and gene pools
 
-**Save new checkpoint** preserves bodies, genes, private state, settings, and the
-world in a new file under `reports/checkpoints/`. The status message shows its path.
-**Load checkpoint** restores the entered path paused in ordinary play.
+**Save** preserves bodies, genes, private state, settings, and the current
+survivor-transfer archive. The status line shows the result. **Menu → Load Game**
+lists the latest complete save for each experiment; interrupted or incompatible
+saves are left untouched and skipped. Continuing a save opens it paused. **Use
+brains in a new world** branches from its living or archived survivors.
+
+**Import save…** can import a compatible experiment receipt or a raw checkpoint.
+The imported data becomes a new local experiment, leaving the source untouched.
 
 To open a checkpoint from the command line:
 
@@ -82,16 +88,18 @@ CLI checkpoint launches begin running. The checkpoint’s settings take preceden
 physical overrides cannot accompany `--checkpoint`. The new loop’s world numbering
 starts at 1, but the loaded tick, bodies, genes, and state are preserved.
 
-**Export living descendants** saves a sample of descendant genomes for fresh
-bodies in another world. It does not save settings or memories. No living
-descendants means there is nothing eligible for this particular export. The
-automatic evolution loop separately samples late survivors, including founders.
+**Export living descendants** in the Experiment tab saves a sample of descendant
+genomes for fresh bodies in another world. It does not save settings or memories.
+No living descendants means there is nothing eligible for this particular export.
+The automatic evolution loop separately samples late survivors, including founders.
 
 **Export history** writes a uniquely named JSON file under `reports/history/`.
 It contains the latest 400 metric samples, not the entire run. Old exports are not
 overwritten. Use headless sampling for a complete bounded diagnostic history.
 
-Checkpoints use format 15; founder banks use format 4. Unsupported formats are
+Checkpoints use format 16; founder banks use format 5. Primitive-v4 intentionally
+rejects V3 saves and banks because its expanded brain has a different genome
+layout. Unsupported formats are
 rejected without modifying the file. See [release status](release.md).
 
 ## Reading the behavior

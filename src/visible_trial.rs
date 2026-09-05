@@ -18,6 +18,35 @@ pub struct VisibleTrial {
     pub world_number: u64,
 }
 
+/// The between-world survivor archive is part of an experiment save, even when
+/// the current world is extinct. A body checkpoint alone cannot restore it.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct LoopSnapshot {
+    pub world_number: u64,
+    pub latest: SurvivorSample,
+}
+
+impl LoopSnapshot {
+    pub fn validate(&self) -> Result<(), String> {
+        self.latest.bank.validate()?;
+        if self.world_number == 0
+            || self.latest.bank.genomes.len() > 64
+            || self.latest.bank.genomes.len() != self.latest.bodies.len()
+            || self.latest.source_population == 0
+            || self.latest.source_population > crate::model::MAX_AGENTS as usize
+            || self.latest.bodies.iter().any(|b| {
+                !(0.0..=1.0).contains(&b.mutation_probability)
+                    || !(0.0..=8.0).contains(&b.mutation_magnitude)
+                    || b.observed_tick
+                        .is_some_and(|tick| tick > self.latest.bank.source_tick)
+            })
+        {
+            return Err("Invalid saved evolution archive".into());
+        }
+        Ok(())
+    }
+}
+
 // Explicit between-world variation, with a versioned native PRNG.
 // No action priors or within-life weight updates.
 fn random_u64(state: &mut u64) -> u64 {
@@ -36,7 +65,13 @@ fn replicate(
     seed: u64,
 ) -> Result<(crate::founders::FounderBank, serde_json::Value), String> {
     let parents = &sample.bank.genomes;
-    crate::founders::validate_genomes(parents)?;
+    sample.bank.validate()?;
+    if sample.bodies.iter().any(|b| {
+        !(0.0..=1.0).contains(&b.mutation_probability)
+            || !(0.0..=8.0).contains(&b.mutation_magnitude)
+    }) {
+        return Err("Invalid survivor mutation requests".into());
+    }
     if parents.is_empty() || parents.len() > 64 || parents.len() != sample.bodies.len() {
         return Err("Invalid survivor population; refusing a random fallback".into());
     }
@@ -58,11 +93,13 @@ fn replicate(
             if genomes.len() == 256 {
                 break;
             }
+            let probability = sample.bodies[i].mutation_probability;
+            let magnitude = sample.bodies[i].mutation_magnitude;
             let child: Vec<_> = parents[i]
                 .iter()
                 .map(|&v| {
-                    if random_unit(&mut rng) < 0.02 {
-                        (v + (random_unit(&mut rng) * 2.0 - 1.0) * 0.03).clamp(-4.0, 4.0)
+                    if random_unit(&mut rng) < probability {
+                        (v + (random_unit(&mut rng) * 2.0 - 1.0) * magnitude).clamp(-4.0, 4.0)
                     } else {
                         v
                     }
@@ -75,13 +112,13 @@ fn replicate(
                 .count();
             genomes.push(child);
             provenance.push(
-                serde_json::json!({"parent":i,"kind":"mutated_replica","changed_weights":changes}),
+                serde_json::json!({"parent":i,"kind":"offspring_replica","changed_weights":changes,"mutation_probability":probability,"mutation_magnitude":magnitude}),
             );
         }
     }
     Ok((
         crate::founders::FounderBank {
-            version: 4,
+            version: 5,
             model: crate::model::MODEL_ID.into(),
             name: format!(
                 "native-survivors-seed{}-tick{}",
@@ -91,8 +128,8 @@ fn replicate(
             source_tick: sample.bank.source_tick,
             genomes,
         },
-        serde_json::json!({"algorithm":"splitmix64-f32-v1","seed":seed,"mutation_probability":0.02,
-            "mutation_range":0.03,"provenance":provenance,"source_bodies":sample.bodies}),
+        serde_json::json!({"algorithm":"splitmix64-f32-v2-parent-controls","seed":seed,
+            "mutation_controls":"Most recent sampled controller requests; zero before first decision","provenance":provenance,"source_bodies":sample.bodies}),
     ))
 }
 
@@ -128,7 +165,7 @@ impl VisibleTrial {
             root: None,
             world_number: 1,
         };
-        survivor_observer::observe(&mut trial.latest, sim, d, q)?;
+        trial.observe(sim, d, q)?;
         if trial.latest.is_none() {
             return Err("Visible survivor worlds need an initial living population".into());
         }
@@ -159,7 +196,8 @@ impl VisibleTrial {
             "mode":"native_single_window_survivor_loop","model":crate::model::MODEL_ID,
             "build":env!("CARGO_PKG_VERSION"),"initial_seed":sim.seed,"initial_tick":sim.tick,
             "initial_settings":sim.settings,"tick_limit":null,"round_limit":null,
-            "variation":"splitmix64-f32-v1; .02 probability per weight and ±.03 range",
+            "variation":"splitmix64-f32-v2-parent-controls; each sampled parent's latest mutation probability and magnitude",
+            "selection":"rolling archive of up to 64 distinct observed bodies; current survivors first, earlier entries retained to fill vacancies",
             "ending":"extinction advances in place; user close saves and stops"}),
         )?;
         trial.root = Some(root.into());
@@ -168,6 +206,56 @@ impl VisibleTrial {
 
     pub fn is_loop(&self) -> bool {
         self.root.is_some()
+    }
+
+    pub fn transfer_cohort_size(&self) -> Option<usize> {
+        self.latest.as_ref().map(|sample| sample.bodies.len())
+    }
+
+    pub fn snapshot(&self) -> Result<LoopSnapshot, String> {
+        let snapshot = LoopSnapshot {
+            world_number: self.world_number,
+            latest: self.latest.clone().ok_or("No saved survivor archive")?,
+        };
+        snapshot.validate()?;
+        Ok(snapshot)
+    }
+
+    /// Each resume owns a new output session. Existing world reports are kept;
+    /// the evolutionary world number and actual late survivors carry forward.
+    pub fn resume_loop(
+        root: &Path,
+        snapshot: LoopSnapshot,
+        sim: &Simulation,
+    ) -> Result<Self, String> {
+        snapshot.validate()?;
+        if snapshot.latest.bank.source_seed != sim.seed
+            || snapshot.latest.bank.source_tick > sim.tick
+        {
+            return Err("The saved survivor archive does not belong to this world".into());
+        }
+        if let Some(parent) = root.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::create_dir(root).map_err(|e| e.to_string())?;
+        let directory = root.join(format!("world-{:06}", snapshot.world_number));
+        std::fs::create_dir(&directory).map_err(|e| e.to_string())?;
+        write_new(
+            &directory.join("ready.json"),
+            &serde_json::json!({
+                "model": crate::model::MODEL_ID, "seed": sim.seed, "initial_tick": sim.tick,
+                "world_number": snapshot.world_number, "resumed": true
+            }),
+        )?;
+        Ok(Self {
+            directory,
+            finished: false,
+            latest: Some(snapshot.latest),
+            initial_tick: sim.tick,
+            initial_settings: sim.settings.clone(),
+            root: Some(root.into()),
+            world_number: snapshot.world_number,
+        })
     }
 
     pub fn autosave(
@@ -276,7 +364,15 @@ impl VisibleTrial {
         d: &wgpu::Device,
         q: &wgpu::Queue,
     ) -> Result<(), String> {
-        survivor_observer::observe(&mut self.latest, sim, d, q)
+        let mut current = None;
+        survivor_observer::observe(&mut current, sim, d, q)?;
+        if let Some(mut sample) = current {
+            if let Some(previous) = &self.latest {
+                sample.retain_previous(previous);
+            }
+            self.latest = Some(sample);
+        }
+        Ok(())
     }
 
     pub fn finish(
@@ -303,7 +399,7 @@ impl VisibleTrial {
         write_new(
             &self.directory.join("report.json"),
             &serde_json::json!({
-            "model":crate::model::MODEL_ID,"checkpoint_version":15,"seed":sim.seed,
+            "model":crate::model::MODEL_ID,"checkpoint_version":16,"seed":sim.seed,
             "initial_tick":self.initial_tick,"elapsed_ticks":sim.tick-self.initial_tick,
             "tick_limit":null,"termination_reason":if user_closed {"user_closed"} else {"extinction"},
             "initial_settings":self.initial_settings,"final_settings":sim.settings,"end":metrics,
@@ -312,5 +408,68 @@ impl VisibleTrial {
         )?;
         self.finished = true;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample(probability: f32, magnitude: f32) -> SurvivorSample {
+        let genome = vec![0.0; crate::model::GENOME_SIZE];
+        SurvivorSample {
+            bank: crate::founders::FounderBank {
+                version: 5,
+                model: crate::model::MODEL_ID.into(),
+                name: "fixture".into(),
+                source_seed: 1,
+                source_tick: 2,
+                genomes: vec![genome],
+            },
+            source_population: 1,
+            bodies: vec![crate::survivor_observer::SampledBody {
+                slot: 0,
+                lineage_id: 1,
+                parent_lineage: 0,
+                ancestry_depth: 0,
+                founder_family: 0,
+                age: 1.0,
+                energy: 1.0,
+                food: 0.0,
+                mutation_probability: probability,
+                mutation_magnitude: magnitude,
+                observed_tick: Some(2),
+            }],
+            selection: "fixture".into(),
+        }
+    }
+
+    #[test]
+    fn survivor_transfer_honors_parent_mutation_controls() {
+        let (exact, _) = replicate(&sample(0.0, 8.0), 42).unwrap();
+        assert!(
+            exact
+                .genomes
+                .iter()
+                .all(|genome| genome.iter().all(|&v| v == 0.0))
+        );
+
+        let (varied, transfer) = replicate(&sample(1.0, 0.5), 42).unwrap();
+        assert!(
+            varied
+                .genomes
+                .iter()
+                .skip(1)
+                .flatten()
+                .all(|&v| (-0.5..=0.5).contains(&v))
+        );
+        assert!(
+            varied
+                .genomes
+                .iter()
+                .skip(1)
+                .any(|genome| genome.iter().any(|&v| v != 0.0))
+        );
+        assert_eq!(transfer["algorithm"], "splitmix64-f32-v2-parent-controls");
     }
 }

@@ -4,7 +4,7 @@ use crate::simulation::{AgentGpu, GENOME_SIZE, Simulation, observability::read_b
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct FounderBank {
     pub version: u32,
     pub model: String,
@@ -16,10 +16,9 @@ pub struct FounderBank {
 
 impl FounderBank {
     pub fn validate(&self) -> Result<(), String> {
-        // Format 4 stores the same genome layout under either identifier.
-        let compatible_model = self.model == crate::model::MODEL_ID || self.model == "primitive-v3";
-        if self.version != 4 || !compatible_model || self.genomes.is_empty() {
-            return Err("Expected a nonempty Primitive World founder bank in format 4".into());
+        let compatible_model = self.model == crate::model::MODEL_ID;
+        if self.version != 5 || !compatible_model || self.genomes.is_empty() {
+            return Err("Expected a nonempty Primitive World founder bank in format 5".into());
         }
         validate_genomes(&self.genomes)
     }
@@ -35,7 +34,7 @@ pub fn bundled() -> &'static FounderBank {
             .map(|_| crate::model::random_genome(&mut rng).to_vec())
             .collect();
         FounderBank {
-            version: 4,
+            version: 5,
             model: crate::model::MODEL_ID.into(),
             name: "primitive-world-random-256".into(),
             source_seed: 0,
@@ -96,7 +95,7 @@ impl Simulation {
             x ^ (x >> 16)
         });
         let bank = FounderBank {
-            version: 4,
+            version: 5,
             model: crate::model::MODEL_ID.into(),
             name: format!(
                 "primitive-world-descendants-seed{}-tick{}",
@@ -127,7 +126,7 @@ mod tests {
 
     fn bank(model: &str) -> FounderBank {
         serde_json::from_value(serde_json::json!({
-            "version": 4, "model": model, "name": "test-pool",
+            "version": 5, "model": model, "name": "test-pool",
             "source_seed": 42, "source_tick": 128,
             "genomes": [vec![0.125; GENOME_SIZE]]
         }))
@@ -135,24 +134,24 @@ mod tests {
     }
 
     #[test]
-    fn compatible_bank_identifiers_preserve_genomes_and_provenance() {
-        for model in [crate::model::MODEL_ID, "primitive-v3"] {
-            let bank = bank(model);
-            let before = serde_json::to_value(&bank).unwrap();
-            bank.validate().unwrap();
-            assert_eq!(serde_json::to_value(&bank).unwrap(), before);
-            assert_eq!(bank.genomes, vec![vec![0.125; GENOME_SIZE]]);
-        }
+    fn current_bank_preserves_genomes_and_provenance() {
+        let bank = bank(crate::model::MODEL_ID);
+        let before = serde_json::to_value(&bank).unwrap();
+        bank.validate().unwrap();
+        assert_eq!(serde_json::to_value(&bank).unwrap(), before);
+        assert_eq!(bank.genomes, vec![vec![0.125; GENOME_SIZE]]);
         assert_eq!(bundled().model, crate::model::MODEL_ID);
     }
 
     #[test]
     fn bank_validation_rejects_unknown_models_formats_and_invalid_genomes() {
         assert!(bank("unrelated-model").validate().is_err());
+        assert!(bank("primitive-v3").validate().is_err());
+        assert!(bank("primitive-world").validate().is_err());
         let mut bank = bank(crate::model::MODEL_ID);
         bank.version = 0;
         assert!(bank.validate().is_err());
-        bank.version = 4;
+        bank.version = 5;
         bank.genomes[0].pop();
         assert!(bank.validate().is_err());
         bank.genomes = vec![vec![5.0; GENOME_SIZE]];

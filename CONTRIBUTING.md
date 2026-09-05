@@ -28,7 +28,8 @@ On a machine with a compatible GPU, run the full simulation suite serially:
 cargo test --release -- --test-threads=1
 ```
 
-The ignored manual diagnostic is not part of the default suite. CPU-only CI skips
+The ignored manual diagnostics require explicit inputs and are outside the default
+suite. CPU-only CI skips
 the `simulation::tests` module; that must not be reported as full GPU verification.
 Physics and wiring tests establish integrity, not intelligence.
 

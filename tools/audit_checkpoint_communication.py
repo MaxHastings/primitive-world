@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 
 
-N, H, G = 16384, 16, 1760
+N, H, G = 16384, 16, 1794
 ACTIONS = ["none", "collect", "transfer", "force", "emit", "reproduce"]
 
 
@@ -32,16 +32,16 @@ AGENT = dtype([
     ('moved','f4',2),('lineage_id','u4',()),('parent_lineage','u4',()),
     ('birth_tick','u4',()),('birth_parent_slot','u4',()),('ancestry_depth','u4',()),
     ('lifetime_births','u4',()),('distance_travelled','f4',()),('founder_family','u4',()),
-    ('hidden','f4',16)])
+    ('hidden','f4',16),('mutation_probability','f4',()),('mutation_magnitude','f4',())])
 DECISION = dtype([
     ('scores','f4',6),('selected_action','u4',()),('score_padding','u4',()),
     ('movement','f4',2),('amount','f4',()),('payload','f4',()),('target','u4',()),
     ('target_generation','u4',()),('invalid','u4',()),('body_padding','u4',()),
-    ('force','f4',2),('hidden','f4',16),('inputs','f4',76)])
+    ('force','f4',2),('mutation_probability','f4',()),('mutation_magnitude','f4',()),('hidden','f4',16),('inputs','f4',76)])
 
 
 def suppression(genomes):
-    out = genomes[:,1488:].reshape(-1,16,17).astype(np.float64)
+    out = genomes[:,1488:].reshape(-1,18,17).astype(np.float64)
     result = {}
     for action in [2,3,4]:
         # For h in [-1,1]^16, min(score_rival-score_action) = db - sum(abs(dw)).
@@ -61,16 +61,16 @@ def suppression(genomes):
 
 def audit(path):
     raw = path.read_bytes()
-    assert raw[:12] == b'PRIMWORLD015', 'Expected primitive-world checkpoint 15'
+    assert raw[:12] == b'PRIMWORLD016', 'Expected primitive-world checkpoint 16'
     seed,tick,size = struct.unpack_from('<III',raw,12)
     settings = json.loads(raw[24:24+size]); pos=24+size; buffers=[]
-    expected=[N*208,512*512*4,512*512*4,512*512*32,128,65536*40,N*272,N*440,N*G*4]
+    expected=[N*216,512*512*4,512*512*4,512*512*32,128,65536*40,N*272,N*448,N*G*4]
     for length in expected:
         actual=struct.unpack_from('<Q',raw,pos)[0]; pos+=8
         assert actual == length, (actual,length)
         buffers.append(memoryview(raw)[pos:pos+actual]); pos+=actual
     assert pos == len(raw), 'Truncated or trailing checkpoint data'
-    assert AGENT.itemsize==208 and DECISION.itemsize==440
+    assert AGENT.itemsize==216 and DECISION.itemsize==448
     agents=np.frombuffer(buffers[0],dtype=AGENT)
     stats=np.frombuffer(buffers[4],dtype='<u4').astype(np.uint64)
     decisions=np.frombuffer(buffers[7],dtype=DECISION)
@@ -83,7 +83,7 @@ def audit(path):
     # a slot with a stale decision; verify surviving bodies match decision state.
     valid=alive & (agents['birth_tick'] < tick-1)
     assert np.array_equal(agents['hidden'][valid],decisions['hidden'][valid])
-    out=genomes[valid,1488:].reshape(-1,16,17).astype(np.float64)
+    out=genomes[valid,1488:].reshape(-1,18,17).astype(np.float64)
     recomputed=np.einsum('noh,nh->no',out[:,:6,:16],decisions['hidden'][valid].astype(np.float64))+out[:,:6,16]
     error=float(np.max(np.abs(recomputed-decisions['scores'][valid])))
     assert error<1e-4, ('Saved GPU score parity failed',error)
@@ -92,7 +92,7 @@ def audit(path):
     founders=np.asarray(settings.pop('founder_genomes'),dtype=np.float32)
     result={
         'checkpoint':str(path.resolve()),'checkpoint_sha256':hashlib.sha256(raw).hexdigest(),
-        'model':'primitive-world','checkpoint_schema':15,'seed':seed,'tick':tick,
+        'model':'primitive-v4','checkpoint_schema':16,'seed':seed,'tick':tick,
         'settings_without_genomes':settings,'living':len(slots),
         'births':int(stats[3]),'starvation_deaths':int(stats[1]),'age_deaths':int(stats[2]),
         'emissions':int(stats[9]),'completed_transfers':int(stats[4]),'completed_force':int(stats[5]),

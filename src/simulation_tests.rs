@@ -1,5 +1,11 @@
 use super::*;
 
+#[path = "experiment_tests.rs"]
+mod experiments;
+
+#[path = "capability_experiment.rs"]
+mod capability_experiment;
+
 #[test]
 fn environment_rotation_preserves_body_traits_and_is_not_a_controller_input() {
     let mut settings = SimSettings::default();
@@ -658,7 +664,9 @@ fn founder_export_requires_descendants_and_preserves_existing_files() {
 fn survivor_sample_keeps_current_child_genes_after_extinction() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
-    let parent = fixed(5, [0.0; 2]);
+    let mut parent = fixed(5, [0.0; 2]);
+    parent[OUTPUT_BASE + 16 * 17 + 16] = 1.0;
+    parent[OUTPUT_BASE + 17 * 17 + 16] = 0.03;
     put(&s, &q, 0, body([602.0, 902.0]), &parent);
     step(&mut s, &d, &q, 1);
     let agents = s.agent_snapshot(&d, &q).unwrap();
@@ -696,6 +704,27 @@ fn survivor_sample_keeps_current_child_genes_after_extinction() {
     s.tick += 128;
     crate::survivor_observer::observe(&mut latest, &s, &d, &q).unwrap();
     assert_eq!(serde_json::to_vec(&latest).unwrap(), before);
+}
+
+#[test]
+fn parent_can_request_exact_copy_at_birth() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    // A reproduction fixture with both new outputs at their exact-zero endpoint.
+    let parent = fixed(5, [0.0; 2]);
+    put(&s, &q, 0, body([602.0, 902.0]), &parent);
+    step(&mut s, &d, &q, 1);
+    let agents = s.agent_snapshot(&d, &q).unwrap();
+    let child_slot = agents
+        .iter()
+        .position(|a| a.alive != 0 && a.ancestry_depth == 1)
+        .expect("fixture must produce a child");
+    let genomes = read::<f32>(&d, &q, &s.genome_buffer, MAX_AGENTS as usize * GENOME_SIZE);
+    assert_eq!(
+        &genomes[child_slot * GENOME_SIZE..(child_slot + 1) * GENOME_SIZE],
+        parent.as_slice(),
+        "zero mutation probability must permit exact copying"
+    );
 }
 #[test]
 fn visible_trial_has_no_tick_cutoff_and_exports_only_on_extinction_or_user_close() {
@@ -834,12 +863,8 @@ fn native_visible_loop_reuses_simulation_and_carries_genomes_across_two_extincti
             .zip(transfer["provenance"].as_array().unwrap())
         {
             let parent = &saved.genomes[p["parent"].as_u64().unwrap() as usize];
-            assert!(
-                child
-                    .iter()
-                    .zip(parent)
-                    .all(|(a, b)| (a - b).abs() <= 0.030001)
-            );
+            assert!(child.iter().zip(parent).all(|(a, b)| (a - b).abs()
+                <= p["mutation_magnitude"].as_f64().unwrap_or(0.0) as f32 + 0.000001));
         }
         for name in [
             "ready.json",
@@ -996,11 +1021,11 @@ fn temp(name: &str) -> std::path::PathBuf {
 
 #[test]
 fn layout_and_cli_contract() {
-    assert_eq!(GENOME_SIZE, 1760);
-    assert_eq!(std::mem::size_of::<AgentGpu>(), 208);
+    assert_eq!(GENOME_SIZE, 1794);
+    assert_eq!(std::mem::size_of::<AgentGpu>(), 216);
     assert_eq!(std::mem::size_of::<PerceptionGpu>(), 272);
-    assert_eq!(std::mem::size_of::<DecisionGpu>(), 440);
-    assert_eq!(std::mem::size_of::<SelectionOutput>(), 928);
+    assert_eq!(std::mem::size_of::<DecisionGpu>(), 448);
+    assert_eq!(std::mem::size_of::<SelectionOutput>(), 944);
     assert_eq!(std::mem::size_of::<SimParams>(), 96);
     assert!(MAX_AGENTS as usize * GENOME_SIZE * 4 <= 128 * 1024 * 1024);
     for flag in [
@@ -1385,9 +1410,9 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-world");
+    assert_eq!(MODEL_ID, "primitive-v4");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
-    assert_eq!(crate::founders::bundled().version, 4);
+    assert_eq!(crate::founders::bundled().version, 5);
 }
 #[test]
 fn nonfinite_controller_output_is_contained() {

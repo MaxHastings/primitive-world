@@ -1,6 +1,6 @@
 //! primitive-world: fixed-frame sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
-pub const MODEL_ID: &str = "primitive-world";
+pub const MODEL_ID: &str = "primitive-v4";
 pub const MAX_AGENTS: u32 = 16_384;
 pub const RESOURCE_GRID: u32 = 512;
 pub const OCCUPANCY_GRID: u32 = 256;
@@ -10,7 +10,7 @@ pub const DEATH_STATS_COUNT: u32 = 32;
 pub const EVENT_RING_SIZE: u32 = 65_536;
 pub const INPUTS: usize = 76;
 pub const HIDDEN: usize = 16;
-pub const OUTPUTS: usize = 16;
+pub const OUTPUTS: usize = 18;
 pub const RECURRENT_ROW: usize = INPUTS + HIDDEN + 1;
 pub const OUTPUT_BASE: usize = HIDDEN * RECURRENT_ROW;
 pub const GENOME_SIZE: usize = OUTPUT_BASE + OUTPUTS * (HIDDEN + 1);
@@ -52,6 +52,9 @@ pub struct AgentGpu {
     /// Founder genome slot; observer bookkeeping, never a cognitive input.
     pub founder_family: u32,
     pub hidden: [f32; HIDDEN],
+    /// Most recent controller requests; zero until this body first decides.
+    pub mutation_probability: f32,
+    pub mutation_magnitude: f32,
 }
 impl Default for AgentGpu {
     fn default() -> Self {
@@ -98,6 +101,8 @@ pub struct DecisionGpu {
     pub invalid: u32,
     pub body_padding: u32,
     pub force: [f32; 2],
+    pub mutation_probability: f32,
+    pub mutation_magnitude: f32,
     pub hidden: [f32; HIDDEN],
     pub inputs: [f32; INPUTS],
 }

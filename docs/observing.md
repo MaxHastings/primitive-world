@@ -51,6 +51,46 @@ additionally requires NumPy (`python -m pip install -r tools/requirements.txt`).
 It audits checkpoint counters and provable action suppression; it does not
 establish that communication helps receivers or that unsuppressed actions occur.
 
+## Controlled capability comparisons
+
+The opt-in GPU test `run_registered_comparison` evaluates a frozen population in
+fresh, matched worlds. A registered JSON plan contains physical `settings`, a
+`horizon` (1–32,768 ticks), a positive `sample` interval, `provenance`, and `trials`.
+Settings must contain 256 founder genomes. Each trial specifies a unique file-safe
+`id`, `seed`, `rotation` (0–3), `replicate`, and `condition`:
+
+- `evolved`: the plan’s genomes with the complete controller.
+- `random`: the bundled random genomes with the complete controller.
+- `no_memory`: the evolved genomes with recurrent feedback zeroed on every decision.
+  Previous-action and physical-feedback inputs remain available.
+- `no_signals`: the evolved genomes with neighbor signal payload/presence inputs
+  masked. Neighbor bodies remain visible; emission costs and other physics remain.
+- `simple`: a fixed random walker that collects and reproduces when mature,
+  recovered, and at 75 energy. It uses movement effort 0.5, changes heading every
+  128 ticks, collects amount 1, and invests amount 0.5 in reproduction. This
+  diagnostic policy does not use food cues or evolve its behavior.
+
+All conditions start with byte-identical bodies for a given seed/orientation.
+The experiment changes decisions only in the test executable; ordinary play has
+no diagnostic controller switch. Save the plan before inspecting outcomes and
+use multiple seeds and repeats. Keep the full plan, source provenance, and reports
+locally; founder genes and private checkpoint paths do not belong in source control.
+
+In PowerShell, using a prepared plan and a new output directory:
+
+```powershell
+$env:PRIMITIVE_EXPERIMENT_PLAN = 'reports/comparison/plan.json'
+$env:PRIMITIVE_EXPERIMENT_OUTPUT = 'reports/comparison/trials'
+cargo test --release run_registered_comparison -- --ignored --nocapture --test-threads=1
+```
+
+Reports include population history, food acquisition, births, action counters,
+and total agent-ticks. Extinction is detected within 31 extra ticks; worlds alive
+at the horizon are censored. GPU repeat variation must be considered when
+interpreting treatment differences. A memory-removal effect shows dependence on
+recurrence, not necessarily long-term recall; signal sends alone do not demonstrate
+useful communication. A fixed walker is one explicit baseline, not an optimal one.
+
 ## Back up an evolution run
 
 ```sh

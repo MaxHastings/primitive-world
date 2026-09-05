@@ -115,7 +115,8 @@ interventions are user experiments; record them when comparing outcomes.
 
 ## Persistence, observation, and limits
 
-Checkpoints use format 15; founder banks use format 4.
+Checkpoints use format 16; founder banks use format 5. The primitive-v4 model
+does not load V3 files because its brain has two additional outputs.
 Unsupported formats are rejected without rewriting the file.
 Checkpoints preserve settings, bodies, genomes, food, soil, event counters and
 controller traces. Derived indexing/terrain is rebuilt after load. Loading

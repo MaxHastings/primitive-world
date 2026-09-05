@@ -19,7 +19,7 @@ def read(path):
 def checkpoint_header(path):
     size = path.stat().st_size
     with path.open("rb") as stream:
-        if stream.read(12) != b"PRIMWORLD015":
+        if stream.read(12) != b"PRIMWORLD016":
             raise ValueError(f"Unexpected checkpoint version: {path}")
         seed, tick, settings_size = struct.unpack("<III", stream.read(12))
         if not 1 <= settings_size <= 32 * 1024 * 1024:
@@ -33,7 +33,7 @@ def checkpoint_header(path):
         if stream.tell() != size:
             raise ValueError("Checkpoint has trailing bytes")
     return dict(seed=seed, tick=tick, bytes=size,
-                validation="Schema15 header, JSON settings and all nine buffer boundaries; not a GPU semantic load test")
+                validation="Schema16 header, JSON settings and all nine buffer boundaries; not a GPU semantic load test")
 
 
 def archive(destination, name, sources):
