@@ -26,6 +26,6 @@ jobs:
       - name: Lint and compile all targets
         run: cargo +1.93.1 clippy --locked --all-targets -- -D warnings
       - name: CPU tests (GPU suite is a separate release gate)
-        run: cargo +1.93.1 test --locked -- --skip simulation::tests::
+        run: 'cargo +1.93.1 test --locked -- --skip simulation::tests::'
       - name: Python tool tests
         run: python -m unittest discover -s tools -p "test_*.py"
