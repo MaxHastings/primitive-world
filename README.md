@@ -3,6 +3,11 @@
 **Playable build 0.2.0:** [quick play guide](PLAY_GUIDE.md) ·
 [calibration and held-out results](reports/PLAYABLE_RELEASE.md).
 
+The broader adaptation goal is **not achieved**: see the
+[completion contract](GOAL_CONTRACT.md) and [research status](reports/RESEARCH_STATUS.md).
+Experimental physiology-v2 and its training campaign are isolated from this
+released model; neither has been promoted into main.
+
 One GPU artificial-life model: **recurrent-v1**, checkpoint **12**.
 Agents inherit neural weights, keep private recurrent state, and directly request
 movement, attention, interactions and reproduction. There is no destination
