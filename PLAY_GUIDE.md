@@ -1,13 +1,12 @@
 # Play Primitive World
 
-> This is the historical v1 play guide. On the isolated physiology-v2 research
-> branch, the executable is0.3.0-dev/checkpoint14 with UNPREPARED founders.
-> See experiments/PHYSIOLOGY_V2_PLAN.md and CONTROLLER.md. It is not a promoted
-> replacement for the main build, and v1 save/bank files remain incompatible.
+This guide describes the isolated physiology-v2 research branch, not the
+released main build. It uses UNPREPARED founders by default and has not met the
+broad adaptation goal. See CONTROLLER.md for what is authored and what can evolve.
 
 Double-click **Play.cmd**, or run `.\Play.ps1` from this folder.
 The launcher builds the current source in `target/play` before starting it.
-The window/inspector should identify **build 0.2.0**, recurrent-v1/checkpoint12.
+The window/inspector should identify **build0.3.0-dev**, physiology-v2/checkpoint14.
 This is a local sandbox: no account, server, Python trainer or external model
 is needed to play. Rust and a supported GPU are needed for the launcher build.
 
@@ -53,8 +52,11 @@ Costs/sensitivity controls affect the live world. Initial-body count and seed
 take effect on reset. Reset uses current settings and the loaded founder bank,
 not the present world's evolved survivors. Export them first if needed.
 
-Old compatible checkpoints keep their original settings, including gain1 when
-the old file has no gain field. Use this build to open newly created files.
+Only v2 checkpoint14 is compatible; it retains its explicitly saved settings.
+V1 checkpoints and banks are rejected without modifying them. The current UI
+save/load filename remains recurrent-world.checkpoint despite the new schema;
+check the inspector's model identity, not the filename. CLI save/load supports
+explicit paths. Existing saves are never overwritten by a save operation.
 Do not compare runs with different settings and call the difference learning.
 
 This remains a finite artificial-life experiment. No scripted migration,

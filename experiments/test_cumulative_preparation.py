@@ -3,6 +3,7 @@ import copy
 import unittest
 
 from cumulative_preparation import bank_statistics, packed, physical, validate_report
+from inspect_bank_choices import decide, inputs
 
 
 class IntegrityTests(unittest.TestCase):
@@ -54,6 +55,22 @@ class IntegrityTests(unittest.TestCase):
         bank["genomes"][0][0] = float("nan")
         with self.assertRaises(AssertionError):
             bank_statistics(bank, self.bank)
+
+    def test_reset_state_assay_layout_ties_and_motor_cap(self):
+        x = inputs(50, 2, .2)
+        self.assertEqual(len(x), 63)
+        self.assertEqual(x[:4], [.5, .25, .2, .05])
+        self.assertEqual(x[18:21], [.2, 4/24, 0])  # near east
+        self.assertEqual(x[30:33], [.2, 1, 0])     # far east
+        genes = [0.0]*1518
+        self.assertEqual(decide(genes, x), (0, 0, 0))
+        genes[1280+5*17+16] = 2
+        genes[1280+6*17+16] = 4
+        genes[1280+7*17+16] = 4
+        action, speed, margin = decide(genes, x)
+        self.assertEqual(action, 5)
+        self.assertAlmostEqual(speed, 1.2)
+        self.assertEqual(margin, 2)
 
 
 if __name__ == "__main__":

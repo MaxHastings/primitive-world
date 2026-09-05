@@ -1,141 +1,78 @@
-# Primitive World
+# Primitive World — physiology-v2 research branch
 
-> **Research branch: physiology-v2, 0.3.0-dev, checkpoint14. Not promoted.**
-> This branch changes the body and uses an **unprepared** founder bank. Read
-> [the v2 development contract](experiments/PHYSIOLOGY_V2_PLAN.md) for current
-> changes, authored priors and the registered experiment. The v1 documentation
-> below and historical reports describe main, not this experimental executable.
-> Survival in this alternative model is not proof of improved inherited behavior.
+**Experimental build0.3.0-dev · checkpoint14 · unprepared default founders.**
+This branch is not promoted. Main remains recurrent-v1/build0.2.0/checkpoint12.
+The broader [completion contract](GOAL_CONTRACT.md) is active and unachieved.
 
-**Playable build 0.2.0:** [quick play guide](PLAY_GUIDE.md) ·
-[calibration and held-out results](reports/PLAYABLE_RELEASE.md).
+The model gives bodies local measurements,16 recurrent state values,6 action
+choices and simultaneous continuous movement. Their1518 neural weights change
+only through birth mutation. Gathering and reproduction are chosen; digestion of
+carried food is automatic and bounded. There is no destination planner, scripted
+migration, automatic population rescue or reward for desired-looking behavior.
 
-One GPU artificial-life model: **recurrent-v1**, checkpoint **12**.
-Agents inherit neural weights, keep private recurrent state, and directly request
-movement, attention, interactions and reproduction. There is no destination
-scorer, place-memory manager, automatic birth lottery or alternate controller.
+## Run or inspect
 
-The clean cutover is implemented. The bundled bank contains actual descendants
-prepared on seeds 11 and 22. Held-out results and limitations are in
-[the validation record](reports/RECURRENT_VALIDATION.md).
-The newer prepared bank did not meet the separate promotion gate; it remains
-experimental rather than silently replacing these released weights.
+See [the play guide](PLAY_GUIDE.md) for controls and persistence. To launch this
+experimental source yourself, use `.\Play.ps1` or double-click Play.cmd. It
+builds into target/play and does not stop an older running application.
+Rust and a supported GPU are required; no Python trainer or server is needed.
 
-## Run
-
-```powershell
-.\Play.ps1
-```
-
-Requires Rust and a GPU supported by wgpu. On Windows, close an older copy
-yourself before rebuilding its executable, or use a separate Cargo target
-directory. We do not automatically stop running applications.
-You can also double-click **Play.cmd**. The launcher builds into `target/play`,
-separate from older `target/release` builds, and then starts the game. It forwards
-CLI arguments, e.g. `.\Play.ps1 --seed 42`. Close a previous copy launched from
-`target/play` before rebuilding that same copy. No app is stopped automatically.
-
-The window and inspector identify recurrent-v1/checkpoint 12. An already-running
-old process will continue showing the old model until you launch the new build.
-Old checkpoints are rejected, never migrated or deleted.
-
-Defaults: 1,000 founders from `policies/recurrent-v1.json`, 16,384 body slots,
-a 2048-unit square, eight directional food samples, four observed neighbors,
-and sixteen recurrent state values per body. These are finite modeling and
-engineering choices, not promises of intelligence or population equilibrium.
-
-Fresh worlds use **0.06 metabolism**, **0.01 movement cost**, regeneration
-**0.010**, and **motor response gain 4**. The lower-cost experiment (0.005/0.002)
-made survival possible but often reached the storage ceiling; it is no longer
-the default. Instead, continuous motor sensitivity is calibrated independently
-of energy costs. Zero intent still stops; maximum speed remains 1.2. This is an
-explicit physical parameter, not a migration rule or learned intelligence.
-
-The original response is available with `--motor-gain 1`. Compatible old
-checkpoint-12 files without that setting retain gain1, and all checkpoints
-restore their own costs. New checkpoints contain the new setting and should
-be opened with this build, not an older executable. Running/previously built
-processes retain their old settings; rebuild/relaunch for fresh-world defaults.
-Reset uses current sliders and the loaded founder bank, not the world's current
-survivors. Export descendants explicitly if you want to reuse their weights.
-
-## Controls
-
-- Space: pause/resume. UI: step and speed. Keys 1, 2, 4, 8, 6, M select speeds.
-- WASD/arrows: pan; wheel: zoom; Home: camera reset; L: cycle lens.
-- Select a body for raw observations, intentions, actual consequences and state.
-- UI provides explicit food/kill interventions, reset, checkpoints and history.
-
-Save uses `recurrent-world.checkpoint`; load restores that world and pauses.
-A save refuses to overwrite an existing file: preserve/rename it before saving
-again. History export uses `recurrent-history.json` and replaces that export.
-No automatic reset or reseeding follows extinction.
-
-## Headless operation
-
-```powershell
-cargo test -- --test-threads=1
-cargo run --release -- --headless --seed 101 --ticks 12000 --sample 1000 --output reports/my-run.json
-```
-
-Headless runs use GPU compute without creating a window. The report directory
-must exist; report, founder-export and checkpoint paths must be new.
-`--help` lists supported options; `--version` identifies the model without
-opening a window. No Python is needed for normal simulation.
-
-- `--bootstrap`: explicitly unprepared, mutable seed weights with standing variation.
-- `--founders PATH`: another compatible recurrent-v1 bank; missing/invalid files fail.
-- `--checkpoint PATH`: resume saved settings, weights, private state and tick.
-  It cannot be combined with seed/founder/world-setting overrides.
-- `--no-force`, `--no-signals`: disable those physical capabilities.
-- `--static-landscape`: freeze geography, not weather.
-- `--metabolic-cost X`, `--movement-cost X`, `--motor-gain X`: explicit body
-  settings, also available as live controls. Cannot override saved checkpoints.
-- `--famine-at T --restore-at U`: remove vegetation and stop regeneration at
-  absolute tick T; restore the configured growth rate at U. Carried/dropped food
-  remain. Restoration is not a map refill.
-- `--save-checkpoint PATH`, `--export-founders PATH`: explicit artifacts.
-  Export requires living descendants; export failure is recorded in the report.
-
-The inspector can export living descendants and load a compatible bank into a
-new world. Loading a bank resets personal experience; loading a checkpoint
-restores it. Exporting a bank neither validates it nor changes the default bank.
-
-Headless reports include sampled path distance versus endpoint displacement,
-matched only for agents alive at consecutive observations. This distinguishes
-some circling from net movement, but is not a route or intelligence score.
-
-`training/prepare.py` uses Python's standard library, registers a finite run
-budget before launching, and never selects weights from evaluation worlds:
+For headless operation:
 
 ```powershell
 cargo build --release
-python training/prepare.py --directory reports/new-campaign
+.\target\release\primitive_world.exe --version
+.\target\release\primitive_world.exe --headless --seed 808 --ticks 200000 --sample 1024 --output reports/my-v2-world.json
 ```
 
-## What this model does—and does not—claim
+Use a new output filename. Inspect `--help` for options. `--founders PATH`
+loads a compatible bank; `--export-founders PATH` samples living descendants
+at the end; `--save-checkpoint PATH` preserves a whole world. Existing saves
+and founder exports are not overwritten. V1 banks/checkpoints are rejected,
+never silently converted. Do not load experimental banks into main.
 
-Weights change only through birth mutation. During life the controller changes
-its sixteen numerical memory values, not its weights. Those values have no
-assigned meanings, guaranteed storage duration, or built-in map. A finite
-recurrent controller can retain information; useful memory and navigation must
-still arise from its weights and experience.
+Fresh defaults:1000 bodies,16,384 available slots,2048-unit world, metabolic
+cost0.06, movement cost0.01, regeneration0.01, maximum adult speed1.2, motor gain4.
+No extra initialization noise is added to a loaded bank. The default frozen bank
+contains128 unprepared variants of disclosed authored starting dispositions.
+It is not blank random weights and is not the old prepared v1 bank.
+`--bootstrap` instead generates standing variation from the environment seed.
 
-The initialization is not a blank slate: mutable seed weights favor basic
-feeding, local food-directed movement and reproduction. The documented
-preparation produced viable descendants, not evidence that these capabilities
-were discovered from nothing. We still author bodies, sensors, ecology,
-initial conditions, network size and mutation.
+## What the research has established
 
-The ecology was preserved: fertile hubs, low-yield bands and barren gaps,
-harvest depletion, rain/drought and geography blending every 8,192 ticks.
-Existing bands are authored terrain, not agent-built roads. Clusters or visible
-tracks alone are not evidence of social organization or route planning.
-All seven campaign runs reproduced; none exercised transfer, force or signaling
-in ordinary operation. Wiring tests exercise those actions separately.
+[The initial v2 development batch](reports/PHYSIOLOGY_DEVELOPMENT.md) completed
+four runs across three distinct seeds. One seed survived200k; none recorded a
+complete sampled depleted-area/crossing/feeding/reproduction sequence. Those
+outcomes do not prove that the body is sufficient, that more training cannot
+help, or that changing the body improved intelligence. Main remains unchanged.
 
-Read [CONTROLLER.md](CONTROLLER.md) for the exact neural contract,
-[KERNEL_SPEC.md](KERNEL_SPEC.md) for costs and physical resolution, and
-[DESIGN_PLAN.md](DESIGN_PLAN.md) for the cutover decision.
-The old implementation remains at Git tag `pre-recurrent-cutover`.
-Historical reports are retained as history, not descriptions of this runtime.
+[The registered cumulative-preparation experiment](experiments/CUMULATIVE_PREPARATION_PLAN.md)
+holds that executable and body fixed. It carries descendant weights through
+training worlds and evaluates separate snapshots. Evaluation descendants never
+feed training. A training extinction stops the chain without restoring an older
+bank. This is a development learning curve, not final eight-seed validation.
+
+The preserved local frozen artifacts are under reports/physiology-development-20260904.
+The cumulative runner requires that exact artifact set and writes a fresh output
+directory; it does not rebuild or change the executable. Rebuilding with another
+toolchain may change its hash and requires a newly registered experiment.
+
+## Contracts and limits
+
+- [CONTROLLER.md](CONTROLLER.md): actual inputs, recurrence, outputs, authored
+  initialization, mutation and founder selection.
+- [KERNEL_SPEC.md](KERNEL_SPEC.md): physical costs, tick order, ecology, conservation
+  and replay limits.
+- [Model-change contract](experiments/PHYSIOLOGY_V2_PLAN.md): why this differs from v1.
+- [GOAL_CONTRACT.md](GOAL_CONTRACT.md): unchanged acceptance requirements.
+
+`cargo test --release` checks controller/physics/layout/persistence fixtures;
+`python -m unittest discover -s experiments -p test_cumulative_preparation.py`
+checks experiment integrity and an offline choice assay. Neither proves evolved
+adaptation. Sampled journey evidence has explicit gaps and does not yet establish
+attribution across major geography renewals. Parallel population runs are not
+promised bitwise deterministic.
+
+Historical reports, v1 policies and earlier experiment runners are retained for
+provenance, not compatible v2 instructions. The pre-recurrent implementation
+remains at Git tag pre-recurrent-cutover. No personal artifacts were removed.
