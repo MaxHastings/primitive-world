@@ -1,4 +1,10 @@
-# Sampled journey evidence, schema1
+# Sampled journey evidence, schema2
+
+Schema2 also streams ended departure attempts, distinguishes observed death,
+identity loss and horizon censoring, and includes reserves, motion and age in
+each waypoint. A global observer-only scan records the nearest qualifying food
+cell/footprint at departure. No global measurement is supplied to the agents.
+See `DEPARTURE_ATTRITION_PLAN.md` for definitions and analysis limitations.
 
 This optional headless instrument observes physical state. It does not feed
 anything into controllers, change weights, reward behavior or classify agents

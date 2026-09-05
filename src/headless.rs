@@ -227,6 +227,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 let line = serde_json::json!({"type": "journey", "evidence": event});
                 writeln!(file, "{line}").map_err(|e| e.to_string())?;
             }
+            for event in journeys.take_ended_attempts() {
+                let line = serde_json::json!({"type": "ended_attempt", "evidence": event});
+                writeln!(file, "{line}").map_err(|e| e.to_string())?;
+            }
         }
         if sim.tick.is_multiple_of(sample) || sim.tick == target {
             let m = sim.metrics(&device, &queue)?;
@@ -243,6 +247,11 @@ pub fn run(args: &[String]) -> Result<(), String> {
     }
     let evolution = sim.evolution_snapshot(&device, &queue)?;
     if let Some(file) = &mut journey_file {
+        journeys.finish(sim.tick);
+        for event in journeys.take_ended_attempts() {
+            let line = serde_json::json!({"type": "ended_attempt", "evidence": event});
+            writeln!(file, "{line}").map_err(|e| e.to_string())?;
+        }
         let footer =
             serde_json::json!({"type": "summary", "observer": journeys.report(journey_sample)});
         writeln!(file, "{footer}").map_err(|e| e.to_string())?;

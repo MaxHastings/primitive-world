@@ -1,6 +1,46 @@
 use super::*;
 
 #[test]
+fn released_bank_empty_inventory_feeding_diagnostic() {
+    let (d, q) = gpu();
+    let s = scene(&d, &q);
+    let bank = crate::founders::bundled();
+    for energy in [10.0, 30.0, 50.0, 80.0] {
+        let mut perceptions = vec![PerceptionGpu::default(); bank.genomes.len()];
+        for (i, g) in bank.genomes.iter().enumerate() {
+            let mut a = body([1026.0, 1026.0]);
+            a.energy = energy;
+            a.food = 0.0;
+            put(&s, &q, i, a, g.as_slice().try_into().unwrap());
+            perceptions[i].resource_here = 0.2;
+            for b in &mut perceptions[i].bodies {
+                b.slot = MAX_AGENTS;
+            }
+            for (k, sample) in perceptions[i].samples.iter_mut().enumerate() {
+                sample.food = 0.2;
+                let direction = [[0.0, -1.0], [1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]][k % 4];
+                let range = if k < 4 { 4.0 } else { 24.0 };
+                sample.offset = [direction[0] * range, direction[1] * range];
+            }
+        }
+        q.write_buffer(&s.perception_buffer, 0, bytemuck::cast_slice(&perceptions));
+        let mut e = d.create_command_encoder(&Default::default());
+        s.dispatch(&mut e, "decide", s.current_buffer, 2, 1);
+        q.submit(Some(e.finish()));
+        let decisions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, bank.genomes.len());
+        let mut counts = [0u32; 7];
+        for decision in decisions {
+            assert_eq!(decision.invalid, 0);
+            counts[decision.selected_action as usize] += 1;
+        }
+        println!("energy={energy} empty_inventory underfoot_food=0.2 action_counts={counts:?}");
+        if energy == 10.0 {
+            assert_eq!(counts[2], 128, "Frozen bank's hungry-empty-ingest prior");
+        }
+    }
+}
+
+#[test]
 fn journey_observation_does_not_modify_physical_state() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);

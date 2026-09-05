@@ -12,6 +12,14 @@ pub struct Point {
     pub collected_last_tick: f32,
     pub ingested_last_tick: f32,
     pub energy: f32,
+    pub inventory: f32,
+    pub age: f32,
+    pub max_age: f32,
+    pub max_speed: f32,
+    pub velocity: [f32; 2],
+    pub distance_travelled: f32,
+    pub attention: f32,
+    pub action: u32,
     pub lifetime_births: u32,
 }
 
@@ -33,11 +41,36 @@ pub struct Journey {
     pub waypoints: Vec<Point>,
 }
 
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct Destination {
+    pub position: [f32; 2],
+    pub distance: f32,
+    pub footprint_vegetation: f32,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct EndedAttempt {
+    pub lineage_id: u32,
+    pub generation: u32,
+    pub birth_tick: u32,
+    pub ended_at_sample: u32,
+    pub end_reason: &'static str,
+    pub last_stage: &'static str,
+    pub terminal_observation: Option<Point>,
+    pub source: Point,
+    pub source_peak_vegetation: f32,
+    pub source_vegetation_at_departure: f32,
+    pub departure_tick: u32,
+    pub nearest_destination_at_departure: Option<Destination>,
+    pub waypoints: Vec<Point>,
+}
+
 struct Track {
     birth_tick: u32,
     source: Point,
     peak: f32,
     departure: Option<(u32, f32)>,
+    nearest_destination: Option<Destination>,
     poor_start: Option<Point>,
     corridor: Option<(Point, Point)>,
     collection: Option<Point>,
@@ -58,6 +91,7 @@ pub struct Stats {
     pub invalid_observations: u64,
     pub truncated_tracks: u64,
     pub lost_tracks: u64,
+    pub ended_attempts: u64,
 }
 
 #[derive(Default)]
@@ -65,6 +99,7 @@ pub struct JourneyObserver {
     tracks: HashMap<(u32, u32), Track>,
     last_tick: Option<u32>,
     pub stats: Stats,
+    ended: Vec<EndedAttempt>,
 }
 
 fn distance(a: [f32; 2], b: [f32; 2]) -> f32 {
@@ -96,7 +131,111 @@ fn vegetation(resources: &[u32], position: [f32; 2]) -> f32 {
     total / 9.0
 }
 
+fn point(tick: u32, a: &AgentGpu, resources: &[u32]) -> Point {
+    Point {
+        tick,
+        position: a.position,
+        collection_position: [a.position[0] - a.moved[0], a.position[1] - a.moved[1]],
+        local_vegetation: vegetation(resources, a.position),
+        collected_last_tick: a.collected,
+        ingested_last_tick: a.ingested,
+        energy: a.energy,
+        inventory: a.food,
+        age: a.age,
+        max_age: a.max_age,
+        max_speed: a.max_speed,
+        velocity: a.velocity,
+        distance_travelled: a.distance_travelled,
+        attention: a.attention,
+        action: a.action,
+        lifetime_births: a.lifetime_births,
+    }
+}
+
+/// Observer-only global lower-distance bound, never a destination given to agents.
+/// Cell center must contain >=0.04 vegetation, have the same >=0.04 footprint
+/// used by collection classification, and be >=96 units from the origin.
+fn nearest_destination(
+    resources: &[u32],
+    position: [f32; 2],
+    origin: [f32; 2],
+) -> Option<Destination> {
+    let mut nearest: Option<Destination> = None;
+    for (index, _) in resources
+        .iter()
+        .enumerate()
+        .filter(|(_, food)| **food >= 40)
+    {
+        let p = [
+            ((index % RESOURCE_GRID as usize) as f32 + 0.5) * 4.0,
+            ((index / RESOURCE_GRID as usize) as f32 + 0.5) * 4.0,
+        ];
+        let d = distance(p, position);
+        if distance(p, origin) < 96.0 || nearest.as_ref().is_some_and(|n| d >= n.distance) {
+            continue;
+        }
+        let footprint = vegetation(resources, p);
+        if footprint >= 0.04 {
+            nearest = Some(Destination {
+                position: p,
+                distance: d,
+                footprint_vegetation: footprint,
+            });
+        }
+    }
+    nearest
+}
+
 impl JourneyObserver {
+    fn end_track(
+        &mut self,
+        key: (u32, u32),
+        t: Track,
+        tick: u32,
+        reason: &'static str,
+        terminal: Option<Point>,
+    ) {
+        let Some((departure_tick, source_vegetation_at_departure)) = t.departure else {
+            return;
+        };
+        let last_stage = if t.ingestion.is_some() {
+            "ingestion"
+        } else if t.collection.is_some() {
+            "destination_collection"
+        } else if t.corridor.is_some() {
+            "poor_crossing"
+        } else {
+            "departure"
+        };
+        self.ended.push(EndedAttempt {
+            lineage_id: key.0,
+            generation: key.1,
+            birth_tick: t.birth_tick,
+            ended_at_sample: tick,
+            end_reason: reason,
+            last_stage,
+            terminal_observation: terminal,
+            source: t.source,
+            source_peak_vegetation: t.peak,
+            source_vegetation_at_departure,
+            departure_tick,
+            nearest_destination_at_departure: t.nearest_destination,
+            waypoints: t.points,
+        });
+        self.stats.ended_attempts += 1;
+    }
+
+    pub fn take_ended_attempts(&mut self) -> Vec<EndedAttempt> {
+        std::mem::take(&mut self.ended)
+    }
+
+    /// Unfinished live tracks at the horizon are censored, not failed migrations.
+    pub fn finish(&mut self, tick: u32) {
+        for (key, t) in std::mem::take(&mut self.tracks) {
+            self.end_track(key, t, tick, "run_end_censored", None);
+        }
+    }
+
     pub fn observe(
         &mut self,
         tick: u32,
@@ -119,7 +258,17 @@ impl JourneyObserver {
                 .iter()
                 .chain(&a.moved)
                 .chain(&a.velocity)
-                .chain([&a.energy, &a.collected, &a.ingested])
+                .chain([
+                    &a.energy,
+                    &a.collected,
+                    &a.ingested,
+                    &a.food,
+                    &a.age,
+                    &a.max_age,
+                    &a.max_speed,
+                    &a.distance_travelled,
+                    &a.attention,
+                ])
                 .all(|v| v.is_finite())
                 || a.collected < 0.0
                 || a.ingested < 0.0
@@ -127,20 +276,11 @@ impl JourneyObserver {
                 self.stats.invalid_observations += 1;
                 continue;
             }
-            let p = Point {
-                tick,
-                position: a.position,
-                collection_position: [a.position[0] - a.moved[0], a.position[1] - a.moved[1]],
-                local_vegetation: vegetation(resources, a.position),
-                collected_last_tick: a.collected,
-                ingested_last_tick: a.ingested,
-                energy: a.energy,
-                lifetime_births: a.lifetime_births,
-            };
-            let mut track = self
-                .tracks
-                .remove(&key)
-                .filter(|t| t.birth_tick == a.birth_tick);
+            let p = point(tick, a, resources);
+            let mut track = self.tracks.remove(&key);
+            if track.as_ref().is_some_and(|t| t.birth_tick != a.birth_tick) {
+                self.end_track(key, track.take().unwrap(), tick, "birth_tick_changed", None);
+            }
             let collecting_in_patch =
                 a.collected > 0.0 && vegetation(resources, p.collection_position) >= 0.04;
             if let Some(t) = &mut track
@@ -148,7 +288,13 @@ impl JourneyObserver {
                     || a.lifetime_births < t.points.last().unwrap().lifetime_births)
             {
                 self.stats.truncated_tracks += 1;
-                track = None;
+                self.end_track(
+                    key,
+                    track.take().unwrap(),
+                    tick,
+                    "counter_reset_or_observation_limit",
+                    Some(p.clone()),
+                );
             }
             if let Some(t) = &mut track {
                 t.points.push(p.clone());
@@ -162,6 +308,8 @@ impl JourneyObserver {
                     && source_now <= (t.peak * 0.25).min(0.02)
                 {
                     t.departure = Some((tick, source_now));
+                    t.nearest_destination =
+                        nearest_destination(resources, p.position, t.source.collection_position);
                     self.stats.depleted_departures += 1;
                 }
                 let voluntary = distance(a.moved, a.velocity) <= 0.001;
@@ -237,6 +385,7 @@ impl JourneyObserver {
                     source: p.clone(),
                     peak: vegetation(resources, p.collection_position),
                     departure: None,
+                    nearest_destination: None,
                     poor_start: None,
                     corridor: None,
                     collection: None,
@@ -249,6 +398,39 @@ impl JourneyObserver {
             }
         }
         self.stats.lost_tracks += self.tracks.len() as u64;
+        let bodies: HashMap<_, _> = agents
+            .iter()
+            .map(|a| ((a.lineage_id, a.generation), a))
+            .collect();
+        for (key, t) in std::mem::take(&mut self.tracks) {
+            let terminal = bodies.get(&key).filter(|a| a.birth_tick == t.birth_tick);
+            let reason = match terminal {
+                Some(a) if a.alive == 0 => "observed_dead",
+                Some(_) => "invalid_observation",
+                None => "identity_missing_or_reused",
+            };
+            let terminal_point = terminal
+                .filter(|a| {
+                    a.position
+                        .iter()
+                        .chain([
+                            &a.energy,
+                            &a.food,
+                            &a.age,
+                            &a.max_age,
+                            &a.max_speed,
+                            &a.distance_travelled,
+                            &a.attention,
+                            &a.collected,
+                            &a.ingested,
+                        ])
+                        .chain(&a.velocity)
+                        .chain(&a.moved)
+                        .all(|v| v.is_finite())
+                })
+                .map(|a| point(tick, a, resources));
+            self.end_track(key, t, tick, reason, terminal_point);
+        }
         self.tracks = current;
         self.last_tick = Some(tick);
         self.stats.samples += 1;
@@ -257,12 +439,14 @@ impl JourneyObserver {
     }
 
     pub fn report(&self, sample: u32) -> serde_json::Value {
-        serde_json::json!({"schema": 1, "sample_ticks": sample, "stats": self.stats,
+        serde_json::json!({"schema": 2, "sample_ticks": sample, "stats": self.stats,
             "definition": "Sampled source collection in a vegetation footprint >=0.04; source falls to <=25% of its observed peak and <=0.02; departure >=48 units; consecutive poor-footprint samples <=0.01 with no observed collection or force displacement cross >=48 net units; collection >=96 units from source in footprint >=0.04; later ingestion and an actual birth-counter increase while sampled positions remain within48 of destination.",
             "limits": ["Only the last tick's feeding is visible at each sample. Unsampled feeding, death and route details are missed. Poor-space continuity means consecutive samples, not every intervening tick.",
                 "Patch means a radius24 nine-point vegetation footprint, not a global connected-component identity. Dropped food is excluded from patch classification but can contribute to actual collection.",
                 "Records demonstrate a sampled sequence, not foresight, causation of survival, successful offspring survival, or event attribution to major geography renewal. Final-goal relocation attribution needs additional verification.",
-                "Tracks reset on missing/dead identities, changed birth tick, decreasing birth counters, completion, or512 points. Reproduction is located to an interval, not an invented exact tick."]})
+                "Tracks reset on missing/dead identities, changed birth tick, decreasing birth counters, completion, or512 points. Reproduction is located to an interval, not an invented exact tick.",
+                "Ended attempts retain sampled trajectories after qualifying departure. Observed-dead, identity-missing, reset and run-end-censored records are distinct. A missing identity is not a diagnosed cause of death.",
+                "Nearest destination is a read-only global scan at departure of qualifying cell centers outside96 of source. It supplies a straight-line distance, not a known target, navigable route, durable food guarantee or migration reward."]})
     }
 }
 
@@ -423,6 +607,59 @@ mod tests {
                 "{missing}"
             );
         }
+    }
+
+    #[test]
+    fn ended_attempts_distinguish_death_missing_identity_and_censoring() {
+        for reason in [
+            "observed_dead",
+            "identity_missing_or_reused",
+            "run_end_censored",
+        ] {
+            let mut o = JourneyObserver::default();
+            let origin = field(&[[502.0, 502.0]]);
+            let bare = field(&[]);
+            o.observe(0, &[body(502.0, 0.02, 0.0, 0)], &origin).unwrap();
+            o.observe(32, &[body(550.0, 0.0, 0.0, 0)], &bare).unwrap();
+            if reason == "run_end_censored" {
+                o.finish(32);
+            } else {
+                let mut dead = body(550.0, 0.0, 0.0, 0);
+                dead.alive = 0;
+                dead.energy = 0.0;
+                if reason == "identity_missing_or_reused" {
+                    dead.generation += 1;
+                }
+                o.observe(64, &[dead], &bare).unwrap();
+            }
+            let ended = o.take_ended_attempts();
+            assert_eq!(ended.len(), 1);
+            assert_eq!(ended[0].end_reason, reason);
+            assert_eq!(ended[0].departure_tick, 32);
+            assert_eq!(ended[0].waypoints.len(), 2);
+            assert_eq!(
+                ended[0].terminal_observation.is_some(),
+                reason == "observed_dead"
+            );
+            if reason == "observed_dead" {
+                assert_eq!(ended[0].terminal_observation.as_ref().unwrap().energy, 0.0);
+            }
+            assert!(o.take_ended_attempts().is_empty());
+            serde_json::to_string(&ended).unwrap();
+        }
+    }
+
+    #[test]
+    fn nearest_food_scan_excludes_origin_and_requires_a_footprint() {
+        let origin = [502.0, 502.0];
+        assert!(nearest_destination(&field(&[origin]), origin, origin).is_none());
+        let resources = field(&[origin, [702.0, 502.0]]);
+        let target = nearest_destination(&resources, origin, origin).unwrap();
+        assert!(target.distance >= 160.0 && target.distance <= 200.0);
+        assert!(target.footprint_vegetation >= 0.04);
+        let mut crumbs = field(&[]);
+        crumbs[125 * 512 + 175] = 40;
+        assert!(nearest_destination(&crumbs, origin, origin).is_none());
     }
 
     #[test]

@@ -83,6 +83,12 @@ heldouts. Two longer lifetimes suggest the mismatch matters ecologically; this
 single paired run per seed does not estimate effect uncertainty or establish it
 as the sole cause of extinction.
 
+Subsequent evidence strengthens that caution: an unmodified-controller seed808
+trace lasted196k rather than98k without an intended behavior change. The apparent
+survival benefit of the sensor ablation needs replication; do not present it as
+a reliable causal effect size. See `DEPARTURE_ATTRITION.md`. The controlled
+single-decision coordinate mismatch remains directly reproduced.
+
 The fixed-sensor GPU probe produced a positive paired food response for128/128
 genomes at all four angles (mean x0.13055..0.13087). The intended manipulation
 worked. It is still not a clean final model: the attention actuator no longer
