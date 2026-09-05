@@ -59,13 +59,23 @@ descendants to training. The body/executable/baseline remain fixed. A failed
 training population is recorded, not secretly restored from an older bank.
 
 Completed development checkpoint results now show survival1/3 at budget0,
-1/3 after4 preparation worlds, and2/3 after8. Complete sampled journeys total
-0,3,10 respectively. This is preliminary development evidence, not final
+1/3 after4 preparation worlds,2/3 after8,and3/3 after16. Complete sampled journeys total
+0,3,10,22 respectively. One of the22 budget16 records belongs to a founder, not
+a descendant; some precede the first major relocation. Neither aggregate
+journey count nor survival can pass the relocation-evidence gate. This is preliminary development evidence, not final
 validation or proof of a repeatable/generalizable gain. Reports are recorded on
-the research branch in `reports/CUMULATIVE_BUDGET4.md` and `CUMULATIVE_BUDGET8.md`.
+the research branch in `reports/CUMULATIVE_BUDGET4.md`, `CUMULATIVE_BUDGET8.md`
+and `CUMULATIVE_BUDGET16.md`.
 All16 training worlds have since completed (1,048,576 preparation ticks); the
-budget16 comparisons and end-of-campaign baseline repeats are still in progress.
+budget16 comparisons completed, while end-of-campaign baseline repeats are still in progress.
 Do not equate a newer exported bank with a better tested bank.
+
+The user reports strong leftward movement followed by collapse in play. A
+read-only CPU reset-state probe finds a condition-dependent leftward bias in
+the latest bank (especially when carrying food), but has not established the
+cause of the live extinction. GPU and reversed-cue checks are queued after the
+frozen campaign. Keep this limitation visible alongside the successful runs;
+do not prescribe rightward movement or adjust weights to hide it.
 
 An [independent foundation review](INDEPENDENT_FOUNDATION_REVIEW.md) recommends
 finishing this experiment before another architecture change, fixing stale

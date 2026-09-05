@@ -55,9 +55,16 @@ The GPU confirmed the sensor-slot / motor-coordinate initialization mismatch.
 Six development worlds with/without sensor rotation found longer survival on two
 seeds but universal extinction. See `reports/FOUNDATION_FRAME_AUDIT.md`.
 
-The sampled journey observer recorded depleted departures and poor-space
-crossings, but no complete journeys in one98k-tick control world. Next retain
-failed departure trajectories/energy so losses after departure can be examined.
-Establish a clean versioned sensory/motor contract instead of releasing a dead
-attention actuator, then evaluate preparation separately. Major-relocation
-attribution is still missing. No final holdouts have been drawn or consumed.
+Failed departure trajectories/energy are now retained and audited. The isolated
+physiology-v2 branch establishes a fixed-compass contract and bounded automatic
+digestion with chosen collection; it is not the main runtime. Its cumulative
+preparation checkpoints survived1/3,1/3,2/3,3/3 development seeds after0,4,8,16
+training worlds respectively. The16-world bank completed1,048,576 preparation
+ticks, but final baseline repeats are still running. These are preliminary
+development results, not satisfaction of the criteria above.
+
+Next finish the registered comparison, verify the reported directional-bias
+weakness, complete identity-aware live inspection/persistence checks, and close
+between-sample feeding/birth/patch and major-relocation evidence gaps BEFORE
+final registration. No final holdouts have been drawn or consumed. See
+`reports/RESEARCH_STATUS.md` for the active evidence and build distinction.
