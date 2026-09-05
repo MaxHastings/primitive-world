@@ -12,7 +12,7 @@ executable, mutation and initialization match the original unprepared baseline.
 
 | Evaluation seed | Original baseline end / living | Budget4 end / living | Baseline complete journeys | Budget4 complete journeys |
 | --- | --- | --- | --- | --- |
-|808|98,304 /0 (both repeats)|98,304 /0|0|0|
+|808|98,304 /0 (both repeats)|98,304 /0|0|1|
 |909|200,000 /1,181|200,000 /1,260|0|2|
 |1001|96,256 /0|97,280 /0|0|0|
 
@@ -21,7 +21,11 @@ extinction-sample difference on1001 is not evidence of a reliable gain. Baseline
 replication at the end of the full chain is still required by its development
 plan. No invalids, accounting discrepancies or cap exposure in these evaluations.
 
-## Inspecting the two complete sampled sequences
+The checkpoint recorded three complete sequences in total: two on909 and one
+on808. The808 population nevertheless went extinct. An earlier draft of this
+report incorrectly listed zero for808; the raw JSONL and summary show one.
+
+## Inspecting the two seed909 complete sampled sequences
 
 These are raw-record inspections, not just aggregate counters. Both came from
 budget4/seed909, and both involved bodies born during the evaluation world.
