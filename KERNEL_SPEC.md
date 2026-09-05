@@ -1,4 +1,4 @@
-# Kernel contract — recurrent-v1
+# Kernel contract — physiology-v2 (experimental)
 
 The world supplies capabilities and consequences. The controller decides how
 to use them. Every numeric choice below is an authored model or engineering
@@ -8,7 +8,7 @@ bound, not a discovered law.
 
 - World: space, ecology, possession, physical costs, interaction arbitration.
 - Body: finite reserves, sensors, motion and action limits.
-- Controller: recurrent state, attention, movement, action, amount, target, payload.
+- Controller: recurrent state, movement, action, amount, target, payload.
 - Heredity: actual birth allocation, copied/mutated weights, cleared child state.
 - Observer: counts, traces, lineage, plots, exports. No behavioral feedback loop.
 
@@ -29,13 +29,13 @@ birth, action lottery, population floor, live reseeding or policy fallback.
 | Motor response | tanh(4 * motor logit), vector length capped at one; continuous actuator sensitivity, zero stays zero |
 | Development | Speed scales from 60% to 100% through maturity at age 400 |
 | Collection | Up to 0.025 food * amount per tick, subject to stock/capacity; finite throughput |
-| Ingestion | Up to 0.1 food * amount per tick, 8 energy/food, energy headroom bound |
+| Digestion | Automatic, up to 0.1 carried food per tick, 8 energy/food, inventory/energy headroom bound |
 | Contact radius | 6 units; transfer and force require physical proximity |
 | Signal range | Minimum of sender/receiver sensory radii; 0.02 energy, four-tick recovery |
 | Reproduction | Maturity 400, recovery 240 ticks; finite development/reproductive throughput |
 | Lifespan | 9,000–11,000 ticks; declared age-limited bodies |
 | Sensor budget | Eight food points, up to four bodies, default radius 24 |
-| Memory / genome | 16 float32 state values / 1,568 weights; finite computation |
+| Memory / genome | 16 float32 state values / 1,518 weights; finite computation |
 
 These rates set timescales, not a guaranteed ecological equilibrium. Age,
 maturity, recovery and force costs remain modeling assumptions to question.
@@ -43,8 +43,8 @@ They are not justified by wanting fewer fights or a prettier birth curve.
 The low-cost diagnostic (0.005/0.002) is retained as experimental history, not
 the default: it often hit storage capacity. Original costs are restored and
 motor sensitivity is calibrated separately, not as a minimum speed or food
-gradient. Old checkpoint12 settings missing the gain field use historical gain1;
-new worlds use gain4. Compatible saves retain their own physical settings.
+gradient. Only checkpoint14 is accepted on this branch; motor gain is explicit
+in every saved settings object. Compatible saves retain their own physical settings.
 Numerical settings are validated; safety bounds include regeneration 0..1,
 costs 0..100, conversion 0.000001..1000, sensory range 4..48, maturity 0..11000
 and recovery up to 1,000,000 ticks. Extreme legal settings need not sustain life.
@@ -58,7 +58,7 @@ Movement is kinematic, not momentum-conserving mechanics.
 2. Update ecology and rebuild occupancy/spatial indexing.
 3. Sense locally; compute all controller intentions from the same pre-action world.
 4. Collect at pre-movement positions using atomic stock subtraction.
-5. Apply collected food, ingestion, voluntary movement, metabolism, age and
+5. Apply collected food, automatic digestion, voluntary movement, metabolism, age and
    recurrent state. Record reproduction requests meeting pre-interaction limits.
 6. Propose and resolve disjoint local interaction pairs at post-movement positions.
 7. Allocate births and recheck actual parent reserves after interactions.
@@ -73,7 +73,7 @@ distance. Basal metabolism then consumes remaining energy up to its cost.
 Deaths occur at zero energy or maximum age.
 
 No action substitutes for another. Sharing one tick with movement does not make
-collection/ingestion/reproduction free; all draw from current reserves in the
+collection/digestion/reproduction free; all draw from current reserves in the
 order above. Statistics are observations, not rewards.
 
 ## Interaction semantics
@@ -132,15 +132,19 @@ multi-scale irregularity and barren gaps. Weather, seasonal variation, fertility
 recovery and harvest depletion modulate growth. Food capacity can contract,
 recorded as weather loss. Fractional regeneration accumulates rather than being
 discarded. Food painted into barren space remains collectible without regrowing.
-Terrain blends normalized-productivity keyframes every 8,192 ticks.
+Terrain blends normalized-productivity keyframes every 8,192 ticks. Hub-center
+seeding changes every third keyframe. The transition into keyframe3 occurs over
+ticks16,384–24,576; subsequent major-transition intervals repeat every24,576
+ticks. Thus a nominal renewal boundary is the end of a gradual transition, not
+an instantaneous food teleport. Smaller drift and weather continue between them.
 
 The regeneration default is 0.01. `--static-landscape` freezes geography only.
 The existing ecology is authored substrate; its bands cannot be counted as
-emergent roads. No ecology retuning was used to make the new controller pass.
+emergent roads. V2 retains v1 ecology unchanged; no adaptation gate has passed.
 
 ## State, accounting and replay limits
 
-Checkpoint 12 saves settings, bodies/state, cold genomes, food, soil, ground
+Checkpoint 14 saves settings, bodies/state, cold genomes, food, soil, ground
 accounting, event counters/ring and observation/decision traces. Loading reads
 and validates the entire file before touching live buffers. Derived spatial
 indexing/terrain buffers are rebuilt. Old schemas are rejected, not rewritten.
@@ -154,7 +158,7 @@ overflow them. Summary reserve rounding is 0.001 per body. Reported ingestion
 also rounds each event; do not claim exact long-run energy closure from these
 counters. Per-action conservation is tested directly on body values.
 
-Genome storage alone is 102,760,448 bytes (98 MiB); body buffers, observations,
+Genome storage alone is 99,483,648 bytes (94.875 MiB); body buffers, observations,
 decisions, ecology, staging and rendering add overhead. Checkpoints exceed
 100 MiB. These bounds deliberately replace the old 100,000-body capacity.
 
@@ -162,7 +166,7 @@ Atomic allocation/collection can diverge between population runs even at the
 same seed. Isolated deterministic fixtures verify batching and checkpoint
 continuation; cross-GPU or population-wide bitwise determinism is not promised.
 GUI render pipeline construction is tested headlessly; manual GUI interactions
-were not exercised for this release.
+were not exercised for this experimental branch.
 
 ## Extension rule
 

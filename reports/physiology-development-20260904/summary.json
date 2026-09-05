@@ -1,0 +1,187 @@
+{
+  "status": "complete",
+  "runs": [
+    {
+      "seed": 808,
+      "repeat": 1,
+      "tick": 98304,
+      "living": 0,
+      "births": 17019,
+      "energy_deaths": 15668,
+      "age_deaths": 2351,
+      "max_population": 2221,
+      "invalid": 0,
+      "accounting_consistent": true,
+      "cap_sample_fraction": 0.0,
+      "cap_sampled_time_fraction": 0.0,
+      "max_ancestry": 0,
+      "journey": {
+        "definition": "Sampled source collection in a vegetation footprint >=0.04; source falls to <=25% of its observed peak and <=0.02; departure >=48 units; consecutive poor-footprint samples <=0.01 with no observed collection or force displacement cross >=48 net units; collection >=96 units from source in footprint >=0.04; later ingestion and an actual birth-counter increase while sampled positions remain within48 of destination.",
+        "limits": [
+          "Only the last tick's feeding is visible at each sample. Unsampled feeding, death and route details are missed. Poor-space continuity means consecutive samples, not every intervening tick.",
+          "Patch means a radius24 nine-point vegetation footprint, not a global connected-component identity. Dropped food is excluded from patch classification but can contribute to actual collection.",
+          "Records demonstrate a sampled sequence, not foresight, causation of survival, successful offspring survival, or event attribution to major geography renewal. Final-goal relocation attribution needs additional verification.",
+          "Tracks reset on missing/dead identities, changed birth tick, decreasing birth counters, completion, or512 points. Reproduction is located to an interval, not an invented exact tick.",
+          "Ended attempts retain sampled trajectories after qualifying departure. Observed-dead, identity-missing, reset and run-end-censored records are distinct. A missing identity is not a diagnosed cause of death.",
+          "Nearest destination is a read-only global scan at departure of qualifying cell centers outside96 of source. It supplies a straight-line distance, not a known target, navigable route, durable food guarantee or migration reward."
+        ],
+        "sample_ticks": 32,
+        "schema": 2,
+        "stats": {
+          "completed_journeys": 0,
+          "depleted_departures": 695,
+          "destination_collections": 3,
+          "destination_ingestions": 3,
+          "ended_attempts": 695,
+          "invalid_observations": 0,
+          "lost_tracks": 17186,
+          "maximum_poor_sample_net_distance": 52.20405578613281,
+          "poor_corridors": 96,
+          "samples": 3073,
+          "source_anchors": 168160,
+          "truncated_tracks": 0
+        }
+      },
+      "report_sha256": "f3408c8dd54dc260c76b3fec6a780be626526c33e0cb85a587c2483336524d52",
+      "journey_sha256": "b23c45940349904078c6fa35051be1246d70353b07c91b0b296dec3fecbb17ab",
+      "wall_seconds": 111.7674272
+    },
+    {
+      "seed": 909,
+      "repeat": 1,
+      "tick": 200000,
+      "living": 1181,
+      "births": 37604,
+      "energy_deaths": 33756,
+      "age_deaths": 3667,
+      "max_population": 2054,
+      "invalid": 0,
+      "accounting_consistent": true,
+      "cap_sample_fraction": 0.0,
+      "cap_sampled_time_fraction": 0.0,
+      "max_ancestry": 67,
+      "journey": {
+        "definition": "Sampled source collection in a vegetation footprint >=0.04; source falls to <=25% of its observed peak and <=0.02; departure >=48 units; consecutive poor-footprint samples <=0.01 with no observed collection or force displacement cross >=48 net units; collection >=96 units from source in footprint >=0.04; later ingestion and an actual birth-counter increase while sampled positions remain within48 of destination.",
+        "limits": [
+          "Only the last tick's feeding is visible at each sample. Unsampled feeding, death and route details are missed. Poor-space continuity means consecutive samples, not every intervening tick.",
+          "Patch means a radius24 nine-point vegetation footprint, not a global connected-component identity. Dropped food is excluded from patch classification but can contribute to actual collection.",
+          "Records demonstrate a sampled sequence, not foresight, causation of survival, successful offspring survival, or event attribution to major geography renewal. Final-goal relocation attribution needs additional verification.",
+          "Tracks reset on missing/dead identities, changed birth tick, decreasing birth counters, completion, or512 points. Reproduction is located to an interval, not an invented exact tick.",
+          "Ended attempts retain sampled trajectories after qualifying departure. Observed-dead, identity-missing, reset and run-end-censored records are distinct. A missing identity is not a diagnosed cause of death.",
+          "Nearest destination is a read-only global scan at departure of qualifying cell centers outside96 of source. It supplies a straight-line distance, not a known target, navigable route, durable food guarantee or migration reward."
+        ],
+        "sample_ticks": 32,
+        "schema": 2,
+        "stats": {
+          "completed_journeys": 0,
+          "depleted_departures": 860,
+          "destination_collections": 1,
+          "destination_ingestions": 1,
+          "ended_attempts": 860,
+          "invalid_observations": 0,
+          "lost_tracks": 36586,
+          "maximum_poor_sample_net_distance": 54.15694808959961,
+          "poor_corridors": 205,
+          "samples": 6251,
+          "source_anchors": 437753,
+          "truncated_tracks": 0
+        }
+      },
+      "report_sha256": "15f19d455b2eab3cb533738db4361d4abbdb6860b5ca8b1f705541272be7a3db",
+      "journey_sha256": "d884e7f9ff88cfed48acaee887f3fd9344784f9175dd037eb6e16afa41329105",
+      "wall_seconds": 228.1618393
+    },
+    {
+      "seed": 1001,
+      "repeat": 1,
+      "tick": 96256,
+      "living": 0,
+      "births": 13376,
+      "energy_deaths": 12431,
+      "age_deaths": 1945,
+      "max_population": 1919,
+      "invalid": 0,
+      "accounting_consistent": true,
+      "cap_sample_fraction": 0.0,
+      "cap_sampled_time_fraction": 0.0,
+      "max_ancestry": 0,
+      "journey": {
+        "definition": "Sampled source collection in a vegetation footprint >=0.04; source falls to <=25% of its observed peak and <=0.02; departure >=48 units; consecutive poor-footprint samples <=0.01 with no observed collection or force displacement cross >=48 net units; collection >=96 units from source in footprint >=0.04; later ingestion and an actual birth-counter increase while sampled positions remain within48 of destination.",
+        "limits": [
+          "Only the last tick's feeding is visible at each sample. Unsampled feeding, death and route details are missed. Poor-space continuity means consecutive samples, not every intervening tick.",
+          "Patch means a radius24 nine-point vegetation footprint, not a global connected-component identity. Dropped food is excluded from patch classification but can contribute to actual collection.",
+          "Records demonstrate a sampled sequence, not foresight, causation of survival, successful offspring survival, or event attribution to major geography renewal. Final-goal relocation attribution needs additional verification.",
+          "Tracks reset on missing/dead identities, changed birth tick, decreasing birth counters, completion, or512 points. Reproduction is located to an interval, not an invented exact tick.",
+          "Ended attempts retain sampled trajectories after qualifying departure. Observed-dead, identity-missing, reset and run-end-censored records are distinct. A missing identity is not a diagnosed cause of death.",
+          "Nearest destination is a read-only global scan at departure of qualifying cell centers outside96 of source. It supplies a straight-line distance, not a known target, navigable route, durable food guarantee or migration reward."
+        ],
+        "sample_ticks": 32,
+        "schema": 2,
+        "stats": {
+          "completed_journeys": 0,
+          "depleted_departures": 373,
+          "destination_collections": 0,
+          "destination_ingestions": 0,
+          "ended_attempts": 373,
+          "invalid_observations": 0,
+          "lost_tracks": 13521,
+          "maximum_poor_sample_net_distance": 51.852230072021484,
+          "poor_corridors": 42,
+          "samples": 3009,
+          "source_anchors": 146588,
+          "truncated_tracks": 0
+        }
+      },
+      "report_sha256": "4275f102244ffd85a536b486cadea52631f47e73c65585b2b5569dd2ae087c73",
+      "journey_sha256": "cdc2f22c6df008367e67497d8fb4e3fb1f0bf59653e60de49d6ac57bf79fef85",
+      "wall_seconds": 108.2310617
+    },
+    {
+      "seed": 808,
+      "repeat": 2,
+      "tick": 98304,
+      "living": 0,
+      "births": 17042,
+      "energy_deaths": 15673,
+      "age_deaths": 2369,
+      "max_population": 2219,
+      "invalid": 0,
+      "accounting_consistent": true,
+      "cap_sample_fraction": 0.0,
+      "cap_sampled_time_fraction": 0.0,
+      "max_ancestry": 0,
+      "journey": {
+        "definition": "Sampled source collection in a vegetation footprint >=0.04; source falls to <=25% of its observed peak and <=0.02; departure >=48 units; consecutive poor-footprint samples <=0.01 with no observed collection or force displacement cross >=48 net units; collection >=96 units from source in footprint >=0.04; later ingestion and an actual birth-counter increase while sampled positions remain within48 of destination.",
+        "limits": [
+          "Only the last tick's feeding is visible at each sample. Unsampled feeding, death and route details are missed. Poor-space continuity means consecutive samples, not every intervening tick.",
+          "Patch means a radius24 nine-point vegetation footprint, not a global connected-component identity. Dropped food is excluded from patch classification but can contribute to actual collection.",
+          "Records demonstrate a sampled sequence, not foresight, causation of survival, successful offspring survival, or event attribution to major geography renewal. Final-goal relocation attribution needs additional verification.",
+          "Tracks reset on missing/dead identities, changed birth tick, decreasing birth counters, completion, or512 points. Reproduction is located to an interval, not an invented exact tick.",
+          "Ended attempts retain sampled trajectories after qualifying departure. Observed-dead, identity-missing, reset and run-end-censored records are distinct. A missing identity is not a diagnosed cause of death.",
+          "Nearest destination is a read-only global scan at departure of qualifying cell centers outside96 of source. It supplies a straight-line distance, not a known target, navigable route, durable food guarantee or migration reward."
+        ],
+        "sample_ticks": 32,
+        "schema": 2,
+        "stats": {
+          "completed_journeys": 0,
+          "depleted_departures": 686,
+          "destination_collections": 0,
+          "destination_ingestions": 0,
+          "ended_attempts": 686,
+          "invalid_observations": 0,
+          "lost_tracks": 17209,
+          "maximum_poor_sample_net_distance": 54.387630462646484,
+          "poor_corridors": 92,
+          "samples": 3073,
+          "source_anchors": 169019,
+          "truncated_tracks": 0
+        }
+      },
+      "report_sha256": "21be068c54d71240155e0a14da6325196cceff4a22f387ac03835284c1a9386b",
+      "journey_sha256": "3733c3cd6c6fc558b55632e13e4dfc27acb2851b167e244523c2f90984b1332a",
+      "wall_seconds": 111.8589676
+    }
+  ],
+  "prepared": false,
+  "final_validation": false
+}

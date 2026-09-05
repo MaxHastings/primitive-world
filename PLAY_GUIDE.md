@@ -1,5 +1,10 @@
 # Play Primitive World
 
+> This is the historical v1 play guide. On the isolated physiology-v2 research
+> branch, the executable is0.3.0-dev/checkpoint14 with UNPREPARED founders.
+> See experiments/PHYSIOLOGY_V2_PLAN.md and CONTROLLER.md. It is not a promoted
+> replacement for the main build, and v1 save/bank files remain incompatible.
+
 Double-click **Play.cmd**, or run `.\Play.ps1` from this folder.
 The launcher builds the current source in `target/play` before starting it.
 The window/inspector should identify **build 0.2.0**, recurrent-v1/checkpoint12.
