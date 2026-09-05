@@ -16,6 +16,13 @@ is needed to play. Rust and a supported GPU are needed for the launcher build.
   watch generations and weather changes rather than individual decisions.
 - WASD/arrows move the camera, the wheel zooms, Home fits the world, L changes
   the information lens. Select an agent to inspect its actual inputs/actions.
+- The inspector refreshes the selected body each frame and labels the observed
+  tick (before the next frame's simulation steps). Death or slot reuse stops
+  tracking and leaves an explicitly labelled snapshot; a newborn is never
+  silently substituted. Initial/newborn bodies show no decision until their
+  first controller update. Dead bodies retain terminal body data, but no claim
+  about their last controller inputs: those GPU buffers may already be cleared.
+  Selecting empty space clears the inspector.
 - Watch energy, inventory and reproduction together. Lots of agents or motion
   alone is not evidence of intelligence. Population collapses are not hidden.
 - Change the seed under Physical settings, then click Reset / new world to
@@ -29,8 +36,11 @@ Fresh worlds load the named founder weights and create fresh bodies with empty
 private state. Births copy parent weights with small mutations; an adult's
 weights do not train during its lifetime. Its recurrent state does change.
 
-**Save checkpoint** preserves that exact world, weights, state and settings.
-Loading restores it paused. Save refuses to overwrite an existing checkpoint.
+**Save new checkpoint** preserves that exact world, weights, state and settings
+in a uniquely named file under `reports/checkpoints`. It fills the editable
+checkpoint path; **Load checkpoint** restores that path paused. Paste a previous
+save's path to load it. Saving again preserves previous files, including when
+paused at the same tick. A filename collision fails rather than overwriting.
 
 Under **Founder banks**, export living descendants to preserve a sample of the
 current gene pool. The output path appears in the status message. Loading that
@@ -53,10 +63,10 @@ take effect on reset. Reset uses current settings and the loaded founder bank,
 not the present world's evolved survivors. Export them first if needed.
 
 Only v2 checkpoint14 is compatible; it retains its explicitly saved settings.
-V1 checkpoints and banks are rejected without modifying them. The current UI
-save/load filename remains recurrent-world.checkpoint despite the new schema;
-check the inspector's model identity, not the filename. CLI save/load supports
-explicit paths. Existing saves are never overwritten by a save operation.
+V1 checkpoints and banks are rejected without modifying them. The initial load
+path is `recurrent-world.checkpoint` for existing saves; new saves use the folder
+above. Check the inspector's model identity, not the filename. CLI save/load
+supports explicit paths. Existing saves are never overwritten by a save operation.
 Do not compare runs with different settings and call the difference learning.
 
 This remains a finite artificial-life experiment. No scripted migration,

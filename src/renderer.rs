@@ -11,7 +11,7 @@ pub struct CameraUniform {
     pub lens: u32,
     pub point_size: f32,
     pub selected_id: u32,
-    pub _padding: u32,
+    pub selected_generation: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -85,7 +85,7 @@ impl Renderer {
             lens: Lens::Energy as u32,
             point_size: 2.0,
             selected_id: u32::MAX,
-            _padding: 0,
+            selected_generation: 0,
         };
         let camera_buffer = wgpu::util::DeviceExt::create_buffer_init(
             device,

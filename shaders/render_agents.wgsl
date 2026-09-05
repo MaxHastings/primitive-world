@@ -1,5 +1,5 @@
 struct Camera {
-  center: vec2<f32>, zoom: f32, aspect: f32, lens: u32, point_size: f32, selected_id: u32, padding: u32,
+  center: vec2<f32>, zoom: f32, aspect: f32, lens: u32, point_size: f32, selected_id: u32, selected_generation: u32,
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;
@@ -39,7 +39,7 @@ fn vs(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: u32) -
     var colors=array<vec3<f32>,6>(vec3<f32>(0.5),vec3<f32>(0.3,0.65,1.0),vec3<f32>(1.0,0.75,0.1),vec3<f32>(0.95,0.4,0.9),vec3<f32>(1.0,0.12,0.1),vec3<f32>(0.4,1.0,1.0));
     color=colors[min(agent.action,5u)];
   }
-  if (index == camera.selected_id) { color = vec3<f32>(1.0, 1.0, 1.0); }
+  if (index == camera.selected_id && agent.generation == camera.selected_generation) { color = vec3<f32>(1.0, 1.0, 1.0); }
   var corners = array<vec2<f32>, 6>(
     vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0),
     vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0));

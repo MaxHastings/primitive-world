@@ -1,7 +1,9 @@
 mod founders;
 mod headless;
+mod inspection;
 mod journey_observer;
 mod model;
+mod play_files;
 mod renderer;
 mod simulation;
 mod travel_observer;
@@ -57,10 +59,11 @@ struct AppState {
     history: std::collections::VecDeque<simulation::observability::WorldMetrics>,
     file_status: String,
     founder_path: String,
+    checkpoint_path: String,
     recent_events: Vec<simulation::observability::InteractionEvent>,
     evolution_snapshot: Option<simulation::observability::EvolutionSnapshot>,
     cursor_position: PhysicalPosition<f64>,
-    selected: Option<SelectionOutput>,
+    inspection: inspection::Inspection,
     seed_input: u32,
     shock_mode: ShockMode,
     shock_radius: f32,
@@ -253,10 +256,11 @@ impl AppState {
             history: Default::default(),
             file_status: String::new(),
             founder_path: String::new(),
+            checkpoint_path: "recurrent-world.checkpoint".into(),
             recent_events: Vec::new(),
             evolution_snapshot: None,
             cursor_position: PhysicalPosition::new(0.0, 0.0),
-            selected: None,
+            inspection: inspection::Inspection::default(),
             seed_input: initial_seed,
             shock_mode: ShockMode::Select,
             shock_radius: 45.0,
@@ -291,17 +295,14 @@ impl AppState {
         let world = self.screen_to_world(self.cursor_position);
         match self.shock_mode {
             ShockMode::Select => {
-                self.selected = self.simulation.select_agent(
+                let selected = self.simulation.select_agent(
                     &self.device,
                     &self.queue,
                     world,
                     14.0 / self.renderer.camera.zoom,
                 );
-                self.renderer.camera.selected_id = self
-                    .selected
-                    .as_ref()
-                    .map(|selected| selected.agent_id())
-                    .unwrap_or(u32::MAX);
+                self.inspection.select(selected, self.simulation.tick);
+                self.update_selection_highlight();
             }
             ShockMode::AddResource => self.simulation.apply_resource_shock(
                 &self.device,
@@ -347,9 +348,41 @@ impl AppState {
         ));
     }
 
+    fn save_new_checkpoint(&mut self) -> Result<String, String> {
+        let path = play_files::new_checkpoint_path(self.simulation.seed, self.simulation.tick)?;
+        std::fs::create_dir_all(path.parent().expect("checkpoint folder"))
+            .map_err(|e| e.to_string())?;
+        self.simulation
+            .save_checkpoint(&self.device, &self.queue, &path)?;
+        self.checkpoint_path = path.to_string_lossy().into_owned();
+        Ok(format!("Saved {}", self.checkpoint_path))
+    }
+
+    fn update_selection_highlight(&mut self) {
+        (
+            self.renderer.camera.selected_id,
+            self.renderer.camera.selected_generation,
+        ) = self.inspection.highlight();
+    }
+
+    fn refresh_inspection(&mut self) {
+        if self.inspection.following
+            && let Some(previous) = self.inspection.snapshot
+        {
+            let result =
+                self.simulation
+                    .refresh_selected_agent(&self.device, &self.queue, &previous);
+            self.inspection.refresh(result, self.simulation.tick);
+        }
+        self.update_selection_highlight();
+    }
+
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let now = Instant::now();
         let output = self.surface.get_current_texture()?;
+        // Read the last completed simulation batch before building this frame's UI.
+        // The label states its tick; the world advances by this frame's batch next.
+        self.refresh_inspection();
         let raw_input = self.egui_state.take_egui_input(&self.window);
         let context = self.egui_context.clone();
         let full_output = context.run(raw_input, |ctx| draw_ui(ctx, self));
@@ -557,7 +590,7 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
     if reset {
         state.simulation.seed = state.seed_input;
         state.simulation.reset(&state.queue);
-        state.selected = None;
+        state.inspection = inspection::Inspection::default();
         state.history.clear();
         state.recent_events.clear();
         state.evolution_snapshot = None;
@@ -657,25 +690,20 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
             }
         });
     }
+    ui.label("Checkpoint path to load:");
+    ui.text_edit_singleline(&mut state.checkpoint_path);
+    ui.small("Save creates a new file in reports/checkpoints and fills this path. Existing saves are kept.");
     ui.horizontal(|ui| {
-        if ui.button("Save checkpoint").clicked() {
-            state.file_status = state
-                .simulation
-                .save_checkpoint(
-                    &state.device,
-                    &state.queue,
-                    std::path::Path::new("recurrent-world.checkpoint"),
-                )
-                .map(|_| "Saved recurrent-world.checkpoint".into())
-                .unwrap_or_else(|e| e);
+        if ui.button("Save new checkpoint").clicked() {
+            state.file_status = state.save_new_checkpoint().unwrap_or_else(|e| e);
         }
         if ui.button("Load checkpoint").clicked() {
             state.file_status = match state.simulation.load_checkpoint(
                 &state.queue,
-                std::path::Path::new("recurrent-world.checkpoint"),
+                std::path::Path::new(state.checkpoint_path.trim()),
             ) {
                 Ok(()) => {
-                    state.selected = None;
+                    state.inspection = inspection::Inspection::default();
                     state.renderer.camera.selected_id = u32::MAX;
                     state.history.clear();
                     state.recent_events.clear();
@@ -890,8 +918,15 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
             ));
         }
     });
-    if let Some(s) = state.selected {
+    if let Some(s) = state.inspection.snapshot {
         ui.separator();
+        ui.small(format!(
+            "Inspector snapshot: tick {} (before this frame's steps)",
+            state.inspection.tick
+        ));
+        if !state.inspection.notice.is_empty() {
+            ui.label(&state.inspection.notice);
+        }
         ui.label(format!(
             "Agent {} · incarnation {} · ancestry {}",
             s.agent_id(),
@@ -906,50 +941,62 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
             "Position {:.1}, {:.1} · fixed compass sensors",
             s.agent.position[0], s.agent.position[1]
         ));
-        ui.label(format!(
-            "Body action: {} · movement {:.2}, {:.2}",
-            action_name(s.agent.action),
-            s.decision.movement[0],
-            s.decision.movement[1]
-        ));
-        ui.small(format!(
-            "Requested amount {:.3} · signal {:.3} · target {}:{}",
-            s.decision.amount, s.decision.payload, s.decision.target, s.decision.target_generation
-        ));
-        ui.collapsing("Actual feedback",|ui|{ui.label(format!("Collected {:.3} · ingested {:.3} · spent {:.3} · received {:.3} · displacement {:?}",s.agent.collected,s.agent.ingested,s.agent.spent,s.agent.received,s.agent.moved));});
-        ui.collapsing("Local food samples", |ui| {
-            ui.label(format!("Underfoot {:.3}", s.perception.resource_here));
-            for p in s.perception.samples {
-                ui.small(format!(
-                    "Offset {:.2}, {:.2}: food {:.3}",
-                    p.offset[0], p.offset[1], p.food
-                ));
-            }
-        });
-        ui.collapsing("Observed bodies", |ui| {
-            for b in s.perception.bodies.iter().filter(|b| b.slot < MAX_AGENTS) {
-                ui.small(format!(
-                    "{}:{} offset {:?} · food {:.3} · event {:.3}",
-                    b.slot, b.generation, b.offset, b.food, b.event
-                ));
-            }
-        });
-        ui.collapsing("Action logits (not rewards)", |ui| {
-            for (name, v) in model::ACTION_NAMES.iter().zip(s.decision.scores) {
-                ui.label(format!("{name}: {v:.3}"));
-            }
-        });
-        ui.collapsing("Internal recurrent state", |ui| {
-            for (i, v) in s.agent.hidden.iter().enumerate() {
-                ui.small(format!("{i}: {v:.4}"));
-            }
-            ui.small("Numeric state has no assigned semantic labels.");
-        });
-        ui.collapsing("Raw controller input vector", |ui| {
-            for (i, v) in s.decision.inputs.iter().enumerate() {
-                ui.small(format!("{i}: {v:.4}"));
-            }
-        });
+        ui.collapsing("Actual feedback (last body update)",|ui|{ui.label(format!("Collected {:.3} · ingested {:.3} · spent {:.3} · received {:.3} · displacement {:?}",s.agent.collected,s.agent.ingested,s.agent.spent,s.agent.received,s.agent.moved));});
+        if state.inspection.has_decision_trace() {
+            ui.small(
+                "Inputs were sensed before the last step's movement; body feedback is after it.",
+            );
+            ui.label(format!(
+                "Last body action: {} · requested movement {:.2}, {:.2}",
+                action_name(s.agent.action),
+                s.decision.movement[0],
+                s.decision.movement[1]
+            ));
+            ui.small(format!(
+                "Requested amount {:.3} · signal {:.3} · target {}:{}",
+                s.decision.amount,
+                s.decision.payload,
+                s.decision.target,
+                s.decision.target_generation
+            ));
+            ui.collapsing("Local food samples", |ui| {
+                ui.label(format!("Underfoot {:.3}", s.perception.resource_here));
+                for p in s.perception.samples {
+                    ui.small(format!(
+                        "Offset {:.2}, {:.2}: food {:.3}",
+                        p.offset[0], p.offset[1], p.food
+                    ));
+                }
+            });
+            ui.collapsing("Observed bodies", |ui| {
+                for b in s.perception.bodies.iter().filter(|b| b.slot < MAX_AGENTS) {
+                    ui.small(format!(
+                        "{}:{} offset {:?} · food {:.3} · event {:.3}",
+                        b.slot, b.generation, b.offset, b.food, b.event
+                    ));
+                }
+            });
+            ui.collapsing("Action logits (not rewards)", |ui| {
+                for (name, v) in model::ACTION_NAMES.iter().zip(s.decision.scores) {
+                    ui.label(format!("{name}: {v:.3}"));
+                }
+            });
+            ui.collapsing("Internal recurrent state", |ui| {
+                for (i, v) in s.agent.hidden.iter().enumerate() {
+                    ui.small(format!("{i}: {v:.4}"));
+                }
+                ui.small("Numeric state has no assigned semantic labels.");
+            });
+            ui.collapsing("Raw controller input vector", |ui| {
+                for (i, v) in s.decision.inputs.iter().enumerate() {
+                    ui.small(format!("{i}: {v:.4}"));
+                }
+            });
+        } else if s.agent.alive == 0 {
+            ui.small("Terminal body data only: decision/perception buffers may have been cleared after death.");
+        } else {
+            ui.small("No controller decision yet for this body; first update pending.");
+        }
     }
     if !state.file_status.is_empty() {
         ui.small(&state.file_status);

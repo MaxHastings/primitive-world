@@ -1,5 +1,141 @@
 use super::*;
 
+/// Explicit diagnostic: outcomes are measured, never required to point a chosen way.
+/// Run separately after the frozen campaign; normal tests do not read research banks.
+#[test]
+#[ignore = "requires PRIMITIVE_DIRECTION_BANK and new PRIMITIVE_DIRECTION_OUTPUT path"]
+fn directional_bank_gpu_probe() {
+    let bank_path = std::env::var("PRIMITIVE_DIRECTION_BANK").expect("bank path");
+    let output_path = std::env::var("PRIMITIVE_DIRECTION_OUTPUT").expect("new report path");
+    let bank: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&bank_path).unwrap()).unwrap();
+    assert_eq!(bank["model"], "physiology-v2");
+    assert_eq!(bank["version"], 3);
+    let genomes: Vec<Vec<f32>> = serde_json::from_value(bank["genomes"].clone()).unwrap();
+    assert!(!genomes.is_empty() && genomes.len() <= 128);
+    assert!(
+        genomes
+            .iter()
+            .all(|g| g.len() == GENOME_SIZE && g.iter().all(|v| v.is_finite()))
+    );
+    let mut output = std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(output_path)
+        .unwrap();
+    let (d, q) = gpu();
+    let s = scene(&d, &q);
+    let perception = |direction: Option<usize>, food: f32| {
+        let mut p = PerceptionGpu::default();
+        for b in &mut p.bodies {
+            b.slot = MAX_AGENTS;
+        }
+        for (k, sample) in p.samples.iter_mut().enumerate() {
+            let dir = [[0.0, -1.0], [1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]][k % 4];
+            let range = if k < 4 { 4.0 } else { 24.0 };
+            sample.offset = [dir[0] * range, dir[1] * range];
+            sample.food = if direction == Some(k % 4) { food } else { 0.0 };
+        }
+        p
+    };
+    let dispatch = |p: PerceptionGpu| {
+        q.write_buffer(
+            &s.perception_buffer,
+            0,
+            bytemuck::cast_slice(&vec![p; genomes.len()]),
+        );
+        let mut encoder = d.create_command_encoder(&Default::default());
+        s.dispatch(
+            &mut encoder,
+            "decide",
+            s.current_buffer,
+            (genomes.len() as u32).div_ceil(64),
+            1,
+        );
+        q.submit(Some(encoder.finish()));
+        let decisions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, genomes.len());
+        assert!(
+            decisions
+                .iter()
+                .all(|x| x.invalid == 0 && x.movement.iter().all(|v| v.is_finite()))
+        );
+        decisions
+    };
+    let mut cases = Vec::new();
+    for (energy, inventory) in [(10.0, 0.0), (50.0, 0.0), (50.0, 2.0), (100.0, 2.0)] {
+        for food in [0.02, 0.2] {
+            for (name, direction) in [
+                ("bare", None),
+                ("north", Some(0)),
+                ("right", Some(1)),
+                ("south", Some(2)),
+                ("left", Some(3)),
+            ] {
+                for (slot, g) in genomes.iter().enumerate() {
+                    let mut a = body([1026.0, 1026.0]);
+                    a.energy = energy;
+                    a.food = inventory;
+                    put(&s, &q, slot, a, g.as_slice().try_into().unwrap());
+                }
+                let decisions = dispatch(perception(direction, food));
+                let motors: Vec<_> = decisions
+                    .iter()
+                    .map(|v| [v.movement[0] * 1.2, v.movement[1] * 1.2])
+                    .collect();
+                cases.push(
+                    serde_json::json!({"energy":energy,"inventory":inventory,"food_on_probes":food,
+                    "food_side":name,"motors":motors}),
+                );
+            }
+        }
+    }
+    let mut sequences = Vec::new();
+    for food in [0.02, 0.2] {
+        for first in [1usize, 3usize] {
+            let mut bodies: Vec<_> = genomes
+                .iter()
+                .enumerate()
+                .map(|(slot, g)| {
+                    let mut a = body([1026.0, 1026.0]);
+                    a.energy = 50.0;
+                    a.food = 2.0;
+                    put(&s, &q, slot, a, g.as_slice().try_into().unwrap());
+                    a
+                })
+                .collect();
+            let mut steps = Vec::new();
+            for tick in 0..128 {
+                let direction = if tick < 64 { first } else { 4 - first };
+                let decisions = dispatch(perception(Some(direction), food));
+                let motors: Vec<_> = decisions
+                    .iter()
+                    .map(|v| [v.movement[0] * 1.2, v.movement[1] * 1.2])
+                    .collect();
+                for ((a, decision), motor) in bodies.iter_mut().zip(&decisions).zip(&motors) {
+                    a.hidden = decision.hidden;
+                    a.velocity = *motor;
+                    a.moved = *motor;
+                    a.action = decision.selected_action;
+                }
+                q.write_buffer(
+                    &s.agent_buffers[s.current_buffer],
+                    0,
+                    bytemuck::cast_slice(&bodies),
+                );
+                steps.push(
+                    serde_json::json!({"step":tick+1,"food_direction":direction,"motors":motors}),
+                );
+            }
+            sequences.push(
+                serde_json::json!({"first_direction":first,"food_on_probes":food,"steps":steps}),
+            );
+        }
+    }
+    let report = serde_json::json!({"bank_path":bank_path,"bank_name":bank["name"],"cases":cases,"sequences":sequences,
+        "scope":"Actual GPU decision shader with synthetic mirrored perception, not full-world simulation. First decisions have empty state. Sequences hold adult age500, energy50, inventory2 and position fixed, carry hidden state, last action and motor feedback; cue reverses after64 of128 updates. No births, selection, sensing dispatch or ecological fitness measured."});
+    std::io::Write::write_all(&mut output, &serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+}
+
 #[test]
 fn unprepared_bank_can_gather_when_hungry_empty() {
     let (d, q) = gpu();
@@ -827,6 +963,133 @@ fn nonfinite_controller_output_is_contained() {
     assert!(after.hidden.iter().all(|x| x.is_finite()));
     assert_eq!(s.metrics(&d, &q).unwrap().invalid_outputs, 1);
 }
+#[test]
+fn live_selection_follows_identity_without_changing_simulation_state() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let a = body([602.0, 902.0]);
+    let g = fixed(0, [0.1, 0.2]);
+    put(&s, &q, 0, a, &g);
+    let original = s.select_agent(&d, &q, a.position, 2.0).unwrap();
+    step(&mut s, &d, &q, 16);
+    let buffers = [
+        &s.agent_buffers[0],
+        &s.agent_buffers[1],
+        &s.genome_buffer,
+        &s.resource_buffer,
+        &s.ground_buffer,
+    ];
+    let before: Vec<_> = buffers
+        .iter()
+        .map(|buffer| observability::read_buffer(&d, &q, buffer).unwrap())
+        .collect();
+    let metrics_before = serde_json::to_value(s.metrics(&d, &q).unwrap()).unwrap();
+    let current = s
+        .refresh_selected_agent(&d, &q, &original)
+        .unwrap()
+        .unwrap();
+    assert_eq!(current.selected, original.selected);
+    assert_eq!(current.agent.lineage_id, a.lineage_id);
+    assert!(current.agent.position[0] > a.position[0] + 2.0);
+    assert_eq!(current.agent.age, a.age + 16.0);
+    let actual = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
+    assert_eq!(
+        bytemuck::bytes_of(&current.agent),
+        bytemuck::bytes_of(&actual)
+    );
+    for (buffer, expected) in buffers.iter().zip(before) {
+        assert_eq!(
+            observability::read_buffer(&d, &q, buffer).unwrap(),
+            expected
+        );
+    }
+    assert_eq!(
+        serde_json::to_value(s.metrics(&d, &q).unwrap()).unwrap(),
+        metrics_before
+    );
+    assert_eq!(s.tick, 16);
+
+    // A dead body can yield a terminal snapshot, but no replacement is followed.
+    let mut dead = current.agent;
+    dead.alive = 0;
+    put(&s, &q, 0, dead, &g);
+    assert_eq!(
+        s.refresh_selected_agent(&d, &q, &original)
+            .unwrap()
+            .unwrap()
+            .agent
+            .alive,
+        0
+    );
+    for component in 0..3 {
+        let mut replacement = current.agent;
+        match component {
+            0 => replacement.generation += 1,
+            1 => replacement.lineage_id += 1,
+            _ => replacement.birth_tick += 1,
+        }
+        put(&s, &q, 0, replacement, &g);
+        assert!(
+            s.refresh_selected_agent(&d, &q, &original)
+                .unwrap()
+                .is_none()
+        );
+    }
+    let invalid = SelectionOutput::default();
+    assert!(
+        s.refresh_selected_agent(&d, &q, &invalid)
+            .unwrap()
+            .is_none()
+    );
+    let invalid = SelectionOutput {
+        selected: MAX_AGENTS + 1,
+        ..original
+    };
+    assert!(
+        s.refresh_selected_agent(&d, &q, &invalid)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn dead_selection_after_a_batch_does_not_claim_a_fresh_decision_trace() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut a = body([602.0, 902.0]);
+    a.max_age = a.age + 1.0;
+    put(&s, &q, 0, a, &fixed(0, [0.1, 0.2]));
+    let original = s.select_agent(&d, &q, a.position, 2.0).unwrap();
+    let mut view = crate::inspection::Inspection::default();
+    view.select(Some(original), 0);
+    // Death occurs on the first tick; remaining ticks clear the trace buffers.
+    step(&mut s, &d, &q, 4);
+    let result = s.refresh_selected_agent(&d, &q, &original);
+    view.refresh(result, s.tick);
+    let terminal = view.snapshot.unwrap();
+    assert_eq!(terminal.agent.alive, 0);
+    assert_eq!(terminal.agent.age, a.max_age);
+    assert_eq!(terminal.decision.scores, [0.0; 6]);
+    assert_eq!(terminal.decision.inputs, [0.0; 63]);
+    assert!(!view.following);
+    assert!(!view.has_decision_trace());
+    assert_eq!(view.highlight().0, u32::MAX);
+    assert!(view.notice.contains("terminal snapshot"));
+}
+
+#[test]
+fn inspector_render_pipelines_accept_incarnation_aware_camera() {
+    let (d, q) = gpu();
+    let s = scene(&d, &q);
+    let mut renderer =
+        crate::renderer::Renderer::new(&d, wgpu::TextureFormat::Rgba8Unorm, &s, 1280, 820);
+    assert_eq!(std::mem::size_of::<crate::renderer::CameraUniform>(), 32);
+    renderer.camera.selected_id = 4;
+    renderer.camera.selected_generation = 7;
+    renderer.update_camera(&q);
+    d.poll(wgpu::Maintain::Wait);
+}
+
 #[test]
 fn batching_checkpoint_and_selection_preserve_state() {
     let (d, q) = gpu();

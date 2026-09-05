@@ -6,7 +6,7 @@ struct Camera {
   lens: u32,
   point_size: f32,
   selected_id: u32,
-  padding: u32,
+  selected_generation: u32,
 };
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(1) @binding(0) var<storage, read> resources: array<u32>;

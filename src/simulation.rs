@@ -711,6 +711,38 @@ impl Simulation {
         let result: SelectionOutput = bytemuck::pod_read_unaligned(&bytes);
         (result.selected != 0).then_some(result)
     }
+    /// Read the same body by slot AND incarnation, not the nearest new neighbor.
+    /// Only observer buffers are written; all simulation buffers remain read-only.
+    pub fn refresh_selected_agent(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        previous: &SelectionOutput,
+    ) -> Result<Option<SelectionOutput>, String> {
+        if previous.selected == 0 || previous.selected > MAX_AGENTS {
+            return Ok(None);
+        }
+        let slot = previous.selected - 1;
+        queue.write_buffer(&self.selection_key_buffer, 0, bytemuck::bytes_of(&slot));
+        let mut encoder = device.create_command_encoder(&Default::default());
+        encoder.clear_buffer(&self.selection_output_buffer, 0, None);
+        self.dispatch(
+            &mut encoder,
+            "selected",
+            self.current_buffer,
+            MAX_AGENTS.div_ceil(64),
+            1,
+        );
+        queue.submit(Some(encoder.finish()));
+        let bytes = observability::read_buffer(device, queue, &self.selection_output_buffer)?;
+        let current: SelectionOutput = bytemuck::pod_read_unaligned(&bytes);
+        Ok((current.selected == previous.selected
+            && current.agent.generation == previous.agent.generation
+            && current.agent.lineage_id == previous.agent.lineage_id
+            && current.agent.birth_tick == previous.agent.birth_tick)
+            .then_some(current))
+    }
+
     pub fn apply_resource_shock(
         &self,
         device: &wgpu::Device,
