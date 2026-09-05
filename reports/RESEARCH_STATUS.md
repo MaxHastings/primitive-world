@@ -67,15 +67,31 @@ validation or proof of a repeatable/generalizable gain. Reports are recorded on
 the research branch in `reports/CUMULATIVE_BUDGET4.md`, `CUMULATIVE_BUDGET8.md`
 and `CUMULATIVE_BUDGET16.md`.
 All16 training worlds have since completed (1,048,576 preparation ticks); the
-budget16 comparisons completed, while end-of-campaign baseline repeats are still in progress.
+budget16 comparisons and end-of-campaign baseline repeats completed. The repeated
+baseline again survived1/3:808 and1001 extinct at73,728;909 alive at200,000.
 Do not equate a newer exported bank with a better tested bank.
 
 The user reports strong leftward movement followed by collapse in play. A
-read-only CPU reset-state probe finds a condition-dependent leftward bias in
-the latest bank (especially when carrying food), but has not established the
-cause of the live extinction. GPU and reversed-cue checks are queued after the
-frozen campaign. Keep this limitation visible alongside the successful runs;
+read-only CPU reset-state probe found a condition-dependent leftward bias in
+the latest bank (especially when carrying food). Actual GPU checks confirmed it:
+with energy50/inventory2, repeated weak right-hand cues leave126/128 moving left,
+but strong cues reverse all128. These synthetic probes have not established the
+cause of the live extinction. Keep this limitation visible alongside successful runs;
 do not prescribe rightward movement or adjust weights to hide it.
+
+Research source `b1a1e5f` is now build0.3.1-dev, with headlessly verified live
+identity-aware inspection and repeated-safe checkpoint saves (46 release tests
+passed, plus10 experiment-helper tests). The frozen0.3.0-dev experimental
+executable remains untouched; v2 body/controller rules have not changed.
+The endpoint bank, complete registration/summary and compact probe results are
+committed on the research branch, without promoting them to main.
+
+The existing channel delivered29,368 scalar signals across the three budget16
+worlds. That is usage, not demonstrated useful communication. A direct CPU pulse
+probe shows receiver sensitivity but rapid decay of private-state differences
+under fixed inputs. No language, honesty, trust or direction semantics were
+added. The research branch's `reports/DIRECTION_AND_SIGNALS.md` separates these
+facts and limitations. Follow-up measurement must not reward a preferred behavior.
 
 An [independent foundation review](INDEPENDENT_FOUNDATION_REVIEW.md) recommends
 finishing this experiment before another architecture change, fixing stale

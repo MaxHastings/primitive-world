@@ -60,11 +60,12 @@ physiology-v2 branch establishes a fixed-compass contract and bounded automatic
 digestion with chosen collection; it is not the main runtime. Its cumulative
 preparation checkpoints survived1/3,1/3,2/3,3/3 development seeds after0,4,8,16
 training worlds respectively. The16-world bank completed1,048,576 preparation
-ticks, but final baseline repeats are still running. These are preliminary
+ticks; completed final baseline repeats again survived1/3. These are preliminary
 development results, not satisfaction of the criteria above.
 
-Next finish the registered comparison, verify the reported directional-bias
-weakness, complete identity-aware live inspection/persistence checks, and close
+GPU probes confirmed conditional directional bias but also successful reversal
+under strong food cues. Research build0.3.1-dev passed its headless live
+inspection/persistence checks. Next close
 between-sample feeding/birth/patch and major-relocation evidence gaps BEFORE
 final registration. No final holdouts have been drawn or consumed. See
 `reports/RESEARCH_STATUS.md` for the active evidence and build distinction.
