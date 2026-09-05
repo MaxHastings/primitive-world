@@ -137,8 +137,8 @@ fn directional_bank_gpu_probe() {
     let output_path = std::env::var("PRIMITIVE_DIRECTION_OUTPUT").expect("new report path");
     let bank: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&bank_path).unwrap()).unwrap();
-    assert_eq!(bank["model"], "physiology-v2");
-    assert_eq!(bank["version"], 3);
+    assert_eq!(bank["model"], "primitive-v3");
+    assert_eq!(bank["version"], 4);
     let genomes: Vec<Vec<f32>> = serde_json::from_value(bank["genomes"].clone()).unwrap();
     assert!(!genomes.is_empty() && genomes.len() <= 128);
     assert!(
@@ -265,7 +265,7 @@ fn directional_bank_gpu_probe() {
 }
 
 #[test]
-fn unprepared_bank_can_gather_when_hungry_empty() {
+fn random_founders_are_finite_without_a_mandatory_food_response() {
     let (d, q) = gpu();
     let s = scene(&d, &q);
     let bank = crate::founders::bundled();
@@ -289,7 +289,7 @@ fn unprepared_bank_can_gather_when_hungry_empty() {
         }
         q.write_buffer(&s.perception_buffer, 0, bytemuck::cast_slice(&perceptions));
         let mut e = d.create_command_encoder(&Default::default());
-        s.dispatch(&mut e, "decide", s.current_buffer, 2, 1);
+        s.dispatch(&mut e, "decide", s.current_buffer, 4, 1);
         q.submit(Some(e.finish()));
         let decisions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, bank.genomes.len());
         let mut counts = [0u32; 6];
@@ -298,9 +298,7 @@ fn unprepared_bank_can_gather_when_hungry_empty() {
             counts[decision.selected_action as usize] += 1;
         }
         println!("energy={energy} empty_inventory underfoot_food=0.2 action_counts={counts:?}");
-        if energy == 10.0 {
-            assert_eq!(counts[1], 128, "Gathering is still the controller choice");
-        }
+        assert_eq!(counts.iter().sum::<u32>(), bank.genomes.len() as u32);
     }
 }
 
@@ -333,7 +331,7 @@ fn journey_observation_does_not_modify_physical_state() {
     );
 }
 
-/// Diagnostic of the unprepared v2 bank, not a required evolved behavior.
+/// Sensor invariance, without prescribing what random or evolved brains choose.
 /// Paired gradients cancel unconditional drift; only the food field changes.
 #[test]
 fn fixed_compass_sensors_ignore_reserved_body_padding() {
@@ -365,8 +363,8 @@ fn fixed_compass_sensors_ignore_reserved_body_padding() {
                 .collect();
             q.write_buffer(&s.resource_buffer, 0, bytemuck::cast_slice(&resources));
             let mut e = d.create_command_encoder(&Default::default());
-            s.dispatch(&mut e, "perceive", s.current_buffer, 2, 1);
-            s.dispatch(&mut e, "decide", s.current_buffer, 2, 1);
+            s.dispatch(&mut e, "perceive", s.current_buffer, 4, 1);
+            s.dispatch(&mut e, "decide", s.current_buffer, 4, 1);
             q.submit(Some(e.finish()));
             let decisions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, bank.genomes.len());
             assert!(decisions.iter().all(|v| v.invalid == 0));
@@ -374,10 +372,10 @@ fn fixed_compass_sensors_ignore_reserved_body_padding() {
             let east_slot = [0usize, 1, 2, 3]
                 .into_iter()
                 .max_by(|&a, &b| {
-                    decisions[0].inputs[16 + 3 * a].total_cmp(&decisions[0].inputs[16 + 3 * b])
+                    decisions[0].inputs[21 + 3 * a].total_cmp(&decisions[0].inputs[21 + 3 * b])
                 })
                 .unwrap();
-            assert!(decisions[0].inputs[16 + 3 * east_slot] > 0.16);
+            assert!(decisions[0].inputs[21 + 3 * east_slot] > 0.16);
             paired.push(decisions);
         }
         let deltas: Vec<[f32; 2]> = paired[0]
@@ -404,28 +402,23 @@ fn fixed_compass_sensors_ignore_reserved_body_padding() {
     for response in &summary[1..] {
         near(response.0, summary[0].0);
     }
-    assert!(summary[0].0 > 0.02 && summary[0].1 == bank.genomes.len());
-    assert!(
-        summary
-            .iter()
-            .all(|s| s.0 > 0.02 && s.1 == bank.genomes.len())
-    );
+    // Sensor geometry must be invariant; random brains need not seek food.
 }
 
 #[test]
-fn reproduction_rechecks_reserves_after_force() {
+fn displacement_does_not_impose_a_hidden_reproduction_penalty() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let mut parent = body([602.0, 902.0]);
     let amount = 1.0 / (1.0 + (-3.0f32).exp());
-    // Digestion adds0.8 before eligibility; force subsequently makes it inadequate.
+    // Physical displacement must not impose the old arbitrary energy damage.
     parent.energy = 50.0 * (0.2 + 0.8 * amount) - 0.5;
     put(&s, &q, 0, parent, &fixed(5, [0.0; 2]));
     put(&s, &q, 1, body([604.0, 902.0]), &fixed(3, [0.0; 2]));
     step(&mut s, &d, &q, 1);
     let m = s.metrics(&d, &q).unwrap();
+    assert_eq!(m.birth_gates[4], 1);
     assert_eq!(m.birth_gates[5], 1);
-    assert_eq!(m.birth_gates[6], 0);
     assert_eq!(m.events[5], 1);
 }
 #[test]
@@ -443,7 +436,7 @@ fn dead_slot_reuse_resets_experience_and_advances_incarnation() {
     assert_eq!(bodies[0].generation, 9);
     assert_eq!(bodies[0].hidden, [0.0; 16]);
     assert_eq!(bodies[0].ancestry_depth, 1);
-    assert_eq!(bodies[0].event_actor, MAX_AGENTS);
+    assert_eq!(bodies[0].signal_tick, 0);
     near(s.metrics(&d, &q).unwrap().dropped_food as f32, 2.0);
 }
 #[test]
@@ -533,7 +526,7 @@ fn physical_cli_overrides_validate_and_cannot_override_checkpoints() {
 fn unprepared_default_is_the_declared_bank_not_a_silent_fallback() {
     let settings = SimSettings::default();
     let bank = crate::founders::bundled();
-    assert_eq!(bank.genomes.len(), 128);
+    assert_eq!(bank.genomes.len(), 256);
     assert_eq!(settings.founder_genomes, bank.genomes);
     assert_eq!(settings.founder_name, bank.name);
     assert!(bank.name.contains("unprepared"));
@@ -663,6 +656,208 @@ fn founder_export_requires_descendants_and_preserves_existing_files() {
     std::fs::remove_file(path).unwrap();
 }
 #[test]
+fn survivor_sample_keeps_current_child_genes_after_extinction() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let parent = fixed(5, [0.0; 2]);
+    put(&s, &q, 0, body([602.0, 902.0]), &parent);
+    step(&mut s, &d, &q, 1);
+    let agents = s.agent_snapshot(&d, &q).unwrap();
+    let child_slot = agents
+        .iter()
+        .position(|a| a.alive != 0 && a.ancestry_depth > 0)
+        .unwrap();
+    let actual = read::<f32>(&d, &q, &s.genome_buffer, MAX_AGENTS as usize * GENOME_SIZE);
+    let child = actual[child_slot * GENOME_SIZE..(child_slot + 1) * GENOME_SIZE].to_vec();
+    assert_ne!(
+        child.as_slice(),
+        parent.as_slice(),
+        "fixture must have real birth mutations"
+    );
+    let mut latest = None;
+    crate::survivor_observer::observe(&mut latest, &s, &d, &q).unwrap();
+    let saved = latest.as_ref().unwrap();
+    let index = saved
+        .bodies
+        .iter()
+        .position(|a| a.slot == child_slot)
+        .unwrap();
+    assert_eq!(saved.bank.genomes[index], child);
+    assert!(saved.bodies.iter().any(|a| a.ancestry_depth == 0));
+    let before = serde_json::to_vec(&latest).unwrap();
+    let mut dead = agents;
+    for a in &mut dead {
+        a.alive = 0;
+    }
+    q.write_buffer(
+        &s.agent_buffers[s.current_buffer],
+        0,
+        bytemuck::cast_slice(&dead),
+    );
+    s.tick += 128;
+    crate::survivor_observer::observe(&mut latest, &s, &d, &q).unwrap();
+    assert_eq!(serde_json::to_vec(&latest).unwrap(), before);
+}
+#[test]
+fn visible_trial_has_no_tick_cutoff_and_exports_only_on_extinction_or_user_close() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    put(&s, &q, 0, body([602.0, 902.0]), &fixed(0, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    let directory = temp("visible-extinction");
+    let mut trial = crate::visible_trial::VisibleTrial::new(&directory, &s, &d, &q).unwrap();
+    assert!(crate::visible_trial::VisibleTrial::new(&directory, &s, &d, &q).is_err());
+    for tick in [8192, 200000, 1000001] {
+        s.tick = tick;
+        trial.observe(&s, &d, &q).unwrap();
+        assert!(trial.finish(&s, &d, &q, false).is_err());
+        assert!(!trial.finished);
+        assert!(!directory.join("report.json").exists());
+    }
+    let dead = AgentGpu::default();
+    q.write_buffer(
+        &s.agent_buffers[s.current_buffer],
+        0,
+        bytemuck::bytes_of(&dead),
+    );
+    step(&mut s, &d, &q, 1);
+    trial.finish(&s, &d, &q, false).unwrap();
+    assert!(trial.finished);
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(directory.join("report.json")).unwrap()).unwrap();
+    assert_eq!(report["termination_reason"], "extinction");
+    assert!(report["tick_limit"].is_null());
+    s.load_founders(&directory.join("survivors.bank.json"))
+        .unwrap();
+    assert_eq!(s.settings.founder_genomes.len(), 1);
+    for name in ["ready.json", "report.json", "survivors.bank.json"] {
+        std::fs::remove_file(directory.join(name)).unwrap();
+    }
+    std::fs::remove_dir(directory).unwrap();
+
+    put(&s, &q, 0, body([602.0, 902.0]), &fixed(0, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    let directory = temp("visible-user-close");
+    let mut trial = crate::visible_trial::VisibleTrial::new(&directory, &s, &d, &q).unwrap();
+    trial.finish(&s, &d, &q, true).unwrap();
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(directory.join("report.json")).unwrap()).unwrap();
+    assert_eq!(report["termination_reason"], "user_closed");
+    assert_eq!(report["end"]["living"], 1);
+    s.load_checkpoint(&q, &directory.join("paused.checkpoint"))
+        .unwrap();
+    for name in [
+        "ready.json",
+        "report.json",
+        "survivors.bank.json",
+        "paused.checkpoint",
+    ] {
+        std::fs::remove_file(directory.join(name)).unwrap();
+    }
+    std::fs::remove_dir(directory).unwrap();
+}
+
+#[test]
+fn visible_trial_cli_rejects_headless_and_tick_limits() {
+    let args = |items: &[&str]| items.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert!(crate::headless::arguments(&args(&["world", "--watch-output", "new"])).is_ok());
+    for option in ["--headless", "--ticks", "--families", "--output"] {
+        let mut values = args(&["world", "--watch-output", "new", option]);
+        if option == "--ticks" || option == "--output" {
+            values.push("123".into());
+        }
+        assert!(crate::headless::arguments(&values).is_err());
+    }
+}
+
+#[test]
+fn native_visible_loop_reuses_simulation_and_carries_genomes_across_two_extinctions() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings.population = 4;
+    s.settings.metabolic_cost = 0.083;
+    s.settings.motor_response_gain = 7.0;
+    put(&s, &q, 0, body([602.0, 902.0]), &fixed(5, [0.0; 2]));
+    step(&mut s, &d, &q, 1); // Includes an actual newborn and its current mutations.
+    let root = temp("native-visible-loop");
+    let mut trial = crate::visible_trial::VisibleTrial::new_loop(&root, &s, &d, &q).unwrap();
+    let first_save = trial.autosave(&s, &d, &q).unwrap();
+    let second_save = trial.autosave(&s, &d, &q).unwrap();
+    assert_ne!(first_save, second_save);
+    assert_eq!(first_save.extension().unwrap(), "checkpoint");
+    assert_eq!(
+        std::fs::read(&first_save).unwrap(),
+        std::fs::read(&second_save).unwrap()
+    );
+    s.load_checkpoint(&q, &first_save).unwrap();
+    std::fs::remove_file(first_save).unwrap();
+    std::fs::remove_file(second_save).unwrap();
+    std::fs::remove_dir(root.join("checkpoints")).unwrap();
+    assert!(trial.advance(&mut s, &d, &q).is_err());
+    for expected_world in 2..=3 {
+        trial.observe(&s, &d, &q).unwrap();
+        let old_dir = trial.directory.clone();
+        let old_seed = s.seed;
+        let mut dead = s.agent_snapshot(&d, &q).unwrap();
+        for body in &mut dead {
+            body.alive = 0;
+        }
+        q.write_buffer(
+            &s.agent_buffers[s.current_buffer],
+            0,
+            bytemuck::cast_slice(&dead),
+        );
+        step(&mut s, &d, &q, 1);
+        trial.advance(&mut s, &d, &q).unwrap();
+        assert_eq!(trial.world_number, expected_world);
+        assert!(trial.is_loop());
+        assert!(!trial.finished); // The same AppState must not exit its event loop.
+        assert_eq!(s.tick, 0);
+        assert_ne!(s.seed, old_seed);
+        assert_eq!(s.settings.metabolic_cost, 0.083);
+        assert_eq!(s.settings.motor_response_gain, 7.0);
+        assert_eq!(s.metrics(&d, &q).unwrap().living, 4);
+        let saved: crate::founders::FounderBank =
+            serde_json::from_slice(&std::fs::read(old_dir.join("survivors.bank.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            s.settings.founder_genomes[..saved.genomes.len()],
+            saved.genomes
+        );
+        let transfer: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(old_dir.join("transfer.json")).unwrap()).unwrap();
+        assert_eq!(transfer["provenance"].as_array().unwrap().len(), 256);
+        for (child, p) in s
+            .settings
+            .founder_genomes
+            .iter()
+            .zip(transfer["provenance"].as_array().unwrap())
+        {
+            let parent = &saved.genomes[p["parent"].as_u64().unwrap() as usize];
+            assert!(
+                child
+                    .iter()
+                    .zip(parent)
+                    .all(|(a, b)| (a - b).abs() <= 0.030001)
+            );
+        }
+        for name in [
+            "ready.json",
+            "report.json",
+            "survivors.bank.json",
+            "next.bank.json",
+            "transfer.json",
+        ] {
+            std::fs::remove_file(old_dir.join(name)).unwrap();
+        }
+        std::fs::remove_dir(old_dir).unwrap();
+    }
+    std::fs::remove_file(trial.directory.join("ready.json")).unwrap();
+    std::fs::remove_dir(&trial.directory).unwrap();
+    std::fs::remove_file(root.join("registration.json")).unwrap();
+    std::fs::remove_dir(root).unwrap();
+}
+#[test]
 fn checkpoint_rejects_corrupt_trace_without_mutating_live_world() {
     use std::io::{Seek, SeekFrom, Write};
     let (d, q) = gpu();
@@ -762,7 +957,6 @@ fn body(pos: [f32; 2]) -> AgentGpu {
         max_age: 11000.0,
         alive: 1,
         generation: 1,
-        event_actor: MAX_AGENTS,
         target: MAX_AGENTS,
         lineage_id: 1,
         ..Default::default()
@@ -774,6 +968,9 @@ fn fixed(action: usize, motion: [f32; 2]) -> [f32; GENOME_SIZE] {
     g[OUTPUT_BASE + 6 * 17 + 16] = motion[0];
     g[OUTPUT_BASE + 7 * 17 + 16] = motion[1];
     g[OUTPUT_BASE + 8 * 17 + 16] = 3.0;
+    if action == 3 {
+        g[OUTPUT_BASE + 14 * 17 + 16] = 1.0;
+    }
     g
 }
 fn put(s: &Simulation, q: &wgpu::Queue, slot: usize, a: AgentGpu, g: &[f32; GENOME_SIZE]) {
@@ -799,11 +996,11 @@ fn temp(name: &str) -> std::path::PathBuf {
 
 #[test]
 fn layout_and_cli_contract() {
-    assert_eq!(GENOME_SIZE, 1518);
+    assert_eq!(GENOME_SIZE, 1760);
     assert_eq!(std::mem::size_of::<AgentGpu>(), 208);
     assert_eq!(std::mem::size_of::<PerceptionGpu>(), 272);
-    assert_eq!(std::mem::size_of::<DecisionGpu>(), 384);
-    assert_eq!(std::mem::size_of::<SelectionOutput>(), 872);
+    assert_eq!(std::mem::size_of::<DecisionGpu>(), 440);
+    assert_eq!(std::mem::size_of::<SelectionOutput>(), 928);
     assert_eq!(std::mem::size_of::<SimParams>(), 96);
     assert!(MAX_AGENTS as usize * GENOME_SIZE * 4 <= 128 * 1024 * 1024);
     for flag in ["--neural", "--legacy-controller", "--travel-diagnostic"] {
@@ -1042,17 +1239,22 @@ fn transfer_and_signal_are_local_and_payload_is_controller_owned() {
     let mut g = fixed(4, [0.0; 2]);
     g[OUTPUT_BASE + 9 * 17 + 16] = -0.7;
     let mut a = bodies[0];
-    a.last_communication = 0;
+    a.signal_tick = 0;
     s.tick = 10;
     put(&s, &q, 0, a, &g);
     put(&s, &q, 1, bodies[1], &fixed(0, [0.0; 2]));
     step(&mut s, &d, &q, 1);
     let bodies = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
-    near(bodies[1].event_amount, (-0.7f32).tanh());
-    assert_eq!(bodies[1].event_actor, 0);
+    near(bodies[0].signal_payload, (-0.7f32).tanh());
+    assert_eq!(bodies[0].signal_tick, 11);
+    assert_eq!(bodies[1].signal_tick, 0);
+    step(&mut s, &d, &q, 1);
+    let decisions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 2);
+    assert_eq!(decisions[1].inputs[51], 1.0);
+    near(decisions[1].inputs[49], (-0.7f32).tanh());
 }
 #[test]
-fn force_spills_instead_of_directly_stealing_and_costs_energy() {
+fn force_is_paid_displacement_without_recipient_damage_or_food_loss() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let mut a = body([602.0, 902.0]);
@@ -1071,10 +1273,117 @@ fn force_spills_instead_of_directly_stealing_and_costs_energy() {
         4.0,
     );
     assert_eq!(m.events[5], 1);
+    near(m.dropped_food as f32, 0.0);
+    near(agents[1].food + agents[1].ingested, b.food);
+    near(
+        agents[1].energy + s.settings.metabolic_cost,
+        b.energy + 8.0 * agents[1].ingested,
+    );
+    assert!(agents[1].position[0] > b.position[0]);
     near(
         (m.energy + m.force_energy_spent) as f32,
         100.0 + 8.0 * (agents[0].ingested + agents[1].ingested) - 2.0 * s.settings.metabolic_cost,
     );
+}
+
+#[test]
+fn force_direction_effort_and_available_energy_bound_actual_displacement() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    for (effort, energy) in [(0.0f32, 10.0), (0.1, 10.0), (-1.0, 10.0), (1.0, 0.1)] {
+        let mut actor = body([602.0, 902.0]);
+        actor.energy = energy;
+        actor.food = 0.0;
+        let mut target = body([604.0, 902.0]);
+        target.food = 0.0;
+        target.lineage_id = 2;
+        let mut genes = fixed(3, [0.0; 2]);
+        genes[OUTPUT_BASE + 14 * 17 + 16] = effort;
+        put(&s, &q, 0, actor, &genes);
+        put(&s, &q, 1, target, &fixed(0, [0.0; 2]));
+        step(&mut s, &d, &q, 1);
+        let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
+        let displacement = after[1].position[0] - target.position[0];
+        let budget = (energy - s.settings.metabolic_cost).max(0.0);
+        near(
+            displacement,
+            effort.signum() * (3.0 * effort.tanh().abs()).min(budget / 0.2),
+        );
+        near(after[0].energy + after[0].spent, energy);
+        near(after[1].energy + after[1].spent, target.energy);
+        near(
+            after[0].spent,
+            s.settings.metabolic_cost + displacement.abs() * 0.2,
+        );
+        assert!(after.iter().all(|a| a.energy >= 0.0 && a.food == 0.0));
+    }
+}
+
+#[test]
+fn zero_signal_is_present_local_and_does_not_claim_a_physical_pair() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let sender = body([602.0, 902.0]);
+    let mut receiver = body([604.0, 902.0]);
+    receiver.lineage_id = 2;
+    let mut distant = body([1000.0, 1000.0]);
+    distant.lineage_id = 3;
+    put(&s, &q, 0, sender, &fixed(4, [0.0; 2]));
+    put(&s, &q, 1, receiver, &fixed(3, [0.0; 2]));
+    put(&s, &q, 2, distant, &fixed(0, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 3);
+    assert_eq!(after[0].signal_tick, 1);
+    assert_eq!(after[0].signal_payload, 0.0);
+    assert!(
+        after[0].position[0] > sender.position[0],
+        "Emission must not shield a body from contact"
+    );
+    step(&mut s, &d, &q, 1);
+    let decisions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 3);
+    assert_eq!(decisions[1].inputs[50], 1.0, "Visible body presence");
+    assert_eq!(decisions[1].inputs[51], 1.0, "Zero-valued signal presence");
+    assert_eq!(decisions[1].inputs[49], 0.0);
+    assert!(
+        decisions[2].inputs[44..].iter().all(|v| *v == 0.0),
+        "No remote signal leakage"
+    );
+}
+
+#[test]
+fn reproduction_requires_paid_energy_not_an_arbitrary_food_stockpile() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut parent = body([602.0, 902.0]);
+    parent.food = 0.0;
+    put(&s, &q, 0, parent, &fixed(5, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
+    assert_eq!(after[1].alive, 1);
+    assert_eq!(after[0].food + after[1].food, 0.0);
+    near(
+        after[0].energy + after[1].energy + s.settings.metabolic_cost + 10.0,
+        parent.energy,
+    );
+}
+
+#[test]
+fn contrast_preserves_mean_and_invalid_training_settings_are_rejected() {
+    let full = build_habitat_at(42, 3, 1.0);
+    let uniform = build_habitat_at(42, 3, 0.0);
+    let mean = |values: &[f32]| values.iter().map(|v| *v as f64).sum::<f64>() / values.len() as f64;
+    assert!(uniform.iter().all(|v| *v == uniform[0]));
+    assert!((mean(&full) - mean(&uniform)).abs() < 0.00001);
+    for contrast in [-0.1, 1.1, f32::NAN] {
+        let settings = SimSettings {
+            habitat_contrast: contrast,
+            ..Default::default()
+        };
+        assert!(settings.validate().is_err());
+    }
+    assert_eq!(MODEL_ID, "primitive-v3");
+    assert_eq!(crate::founders::bundled().model, MODEL_ID);
+    assert_eq!(crate::founders::bundled().version, 4);
 }
 #[test]
 fn nonfinite_controller_output_is_contained() {
@@ -1198,7 +1507,7 @@ fn dead_selection_after_a_batch_does_not_claim_a_fresh_decision_trace() {
     assert_eq!(terminal.agent.alive, 0);
     assert_eq!(terminal.agent.age, a.max_age);
     assert_eq!(terminal.decision.scores, [0.0; 6]);
-    assert_eq!(terminal.decision.inputs, [0.0; 63]);
+    assert_eq!(terminal.decision.inputs, [0.0; 76]);
     assert!(!view.following);
     assert!(!view.has_decision_trace());
     assert_eq!(view.highlight().0, u32::MAX);
@@ -1262,4 +1571,183 @@ fn batching_checkpoint_and_selection_preserve_state() {
     assert_eq!(s.tick, tick);
     assert!(path.exists());
     std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn headless_extinction_stops_without_waiting_for_the_report_or_tick_limit() {
+    for (label, population, metabolism, limit, expected_tick, reason) in [
+        ("empty", "0", "0.06", "200000", 0, "extinction"),
+        ("dies", "1", "100", "200000", 32, "extinction"),
+        ("alive", "1", "0.06", "7", 7, "tick_limit"),
+    ] {
+        let report = temp(&format!("early-stop-{label}.json"));
+        let journeys = temp(&format!("early-stop-{label}.jsonl"));
+        let args: Vec<String> = [
+            "world",
+            "--headless",
+            "--population",
+            population,
+            "--metabolic-cost",
+            metabolism,
+            "--ticks",
+            limit,
+            "--sample",
+            "100000",
+            "--journeys",
+            journeys.to_str().unwrap(),
+            "--journey-sample",
+            "1000",
+            "--output",
+            report.to_str().unwrap(),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        crate::headless::run(&args).unwrap();
+        let output: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
+        assert_eq!(output["elapsed_ticks"], expected_tick);
+        assert_eq!(output["termination_reason"], reason);
+        let history = output["history"].as_array().unwrap();
+        assert_eq!(history.last().unwrap()["tick"], expected_tick);
+        if reason == "extinction" {
+            assert_eq!(history.last().unwrap()["living"], 0);
+        }
+        assert_eq!(history.len(), if expected_tick == 0 { 1 } else { 2 });
+        let lines = std::fs::read_to_string(&journeys).unwrap();
+        let footer: serde_json::Value =
+            serde_json::from_str(lines.lines().last().unwrap()).unwrap();
+        assert_eq!(footer["type"], "summary");
+        assert_eq!(footer["observer"], output["journey_observer"]);
+        std::fs::remove_file(report).unwrap();
+        std::fs::remove_file(journeys).unwrap();
+    }
+}
+
+#[test]
+fn family_observer_counts_every_tick_and_preserves_dead_family_outcomes() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut parent = body([602.0, 902.0]);
+    parent.food = 0.0;
+    let mut dying = body([1000.0, 1000.0]);
+    dying.food = 0.0;
+    dying.energy = 0.1;
+    dying.founder_family = 1;
+    put(&s, &q, 0, parent, &fixed(5, [0.0; 2]));
+    put(&s, &q, 1, dying, &fixed(0, [0.0; 2]));
+    s.family_observer = Some(crate::family_observer::FamilyObserver::new(&d, &q, &s, 8).unwrap());
+    let mut expected = [[0u32; 7]; 2];
+    for tick in 1..=8 {
+        step(&mut s, &d, &q, 1);
+        for a in s
+            .agent_snapshot(&d, &q)
+            .unwrap()
+            .iter()
+            .filter(|a| a.alive != 0)
+        {
+            let row = &mut expected[a.founder_family as usize];
+            row[5] = row[5].max(a.ancestry_depth);
+            row[6] = tick;
+            if a.ancestry_depth == 0 {
+                row[0] += 1;
+            } else {
+                row[1] += 1;
+                row[2] += u32::from(tick > 4);
+                row[3] += u32::from(a.age >= s.settings.maturity_age);
+                row[4] += u32::from(a.birth_tick + 1 == tick);
+            }
+        }
+    }
+    let report = s.family_observer.as_ref().unwrap().report(&d, &q).unwrap();
+    for (actual, expected) in report.families.iter().zip(expected) {
+        assert_eq!(
+            [
+                actual.founder_body_ticks,
+                actual.descendant_body_ticks,
+                actual.late_descendant_body_ticks,
+                actual.mature_descendant_body_ticks,
+                actual.births,
+                actual.maximum_depth,
+                actual.last_alive_tick
+            ],
+            expected
+        );
+    }
+    assert_eq!(report.families[1].last_alive_tick, 1);
+    assert_eq!(report.families[0].births, 1);
+    let observed = s.agent_snapshot(&d, &q).unwrap();
+    s.reset(&q);
+    assert!(s.family_observer.is_none());
+    put(&s, &q, 0, parent, &fixed(5, [0.0; 2]));
+    put(&s, &q, 1, dying, &fixed(0, [0.0; 2]));
+    step(&mut s, &d, &q, 8);
+    let unobserved = s.agent_snapshot(&d, &q).unwrap();
+    assert_eq!(
+        bytemuck::cast_slice::<AgentGpu, u8>(&observed),
+        bytemuck::cast_slice::<AgentGpu, u8>(&unobserved)
+    );
+}
+
+#[test]
+fn family_diagnostics_record_underfunded_births_and_terminal_juvenile_deaths_once() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut parent = body([602.0, 902.0]);
+    parent.food = 0.0;
+    let mut genes = fixed(5, [0.0; 2]);
+    genes[OUTPUT_BASE + 8 * 17 + 16] = 0.0; // 20 energy, below stationary 24.
+    put(&s, &q, 0, parent, &genes);
+    s.family_observer =
+        Some(crate::family_observer::FamilyObserver::new(&d, &q, &s, 2048).unwrap());
+    for _ in 0..64 {
+        step(&mut s, &d, &q, 32);
+    }
+    let report = s.family_observer.as_ref().unwrap().report(&d, &q).unwrap();
+    let f = &report.families[0];
+    assert!(f.births > 0);
+    assert_eq!(f.births_below_stationary_maturity_energy, f.births);
+    assert_eq!(f.birth_energy_milli, u64::from(f.births) * 20000);
+    assert_eq!(f.juvenile_starvation_deaths, f.births);
+    assert_eq!(f.matured_descendants, 0);
+    assert_eq!(f.births_to_descendant_parents, 0);
+    assert_eq!(f.collected_milli, 0);
+    assert_eq!(f.juvenile_ingested_milli, 0);
+    assert_eq!(f.juvenile_food_present_ticks, 0);
+    assert!(f.juvenile_processed_ticks > 0);
+    assert_eq!(s.metrics(&d, &q).unwrap().living, 0);
+}
+
+#[test]
+fn family_diagnostics_count_juvenile_feeding_maturity_and_terminal_flow() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut juvenile = body([602.0, 902.0]);
+    juvenile.age = 399.0;
+    juvenile.ancestry_depth = 1;
+    juvenile.energy = 0.01;
+    juvenile.food = 0.0;
+    // This injected fixture was born before the measured window, not a new birth.
+    juvenile.birth_tick = u32::MAX;
+    put(&s, &q, 0, juvenile, &fixed(1, [0.0; 2]));
+    let cell = (902 / 4 * 512 + 602 / 4) as u64;
+    q.write_buffer(&s.resource_buffer, cell * 4, bytemuck::bytes_of(&1000u32));
+    s.family_observer = Some(crate::family_observer::FamilyObserver::new(&d, &q, &s, 3).unwrap());
+    step(&mut s, &d, &q, 3);
+    let report = s.family_observer.as_ref().unwrap().report(&d, &q).unwrap();
+    let f = &report.families[0];
+    assert_eq!(f.matured_descendants, 1);
+    assert_eq!(f.juvenile_processed_ticks, 1);
+    assert_eq!(f.juvenile_collect_action_ticks, 1);
+    assert_eq!(f.juvenile_food_present_ticks, 1);
+    assert_eq!(f.juvenile_food_present_collect_ticks, 1);
+    assert!(f.juvenile_collected_milli > 0);
+    assert!(f.juvenile_ingested_milli > 0);
+    assert!(f.energy_at_maturity_milli > 0);
+    let metrics = s.metrics(&d, &q).unwrap();
+    assert_eq!(f.ingested_milli, u64::from(metrics.events[0]));
+    assert_eq!(
+        f.collected_milli,
+        (metrics.harvested * 1000.0).round() as u64
+    );
 }

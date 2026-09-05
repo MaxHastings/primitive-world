@@ -1,176 +1,136 @@
-# Kernel contract — physiology-v2 (experimental)
+# World and body contract — primitive-v3
 
-The world supplies capabilities and consequences. The controller decides how
-to use them. Every numeric choice below is an authored model or engineering
-bound, not a discovered law.
+Simple, local capabilities; consequences independent of intended meaning.
+The numeric constants below are declared modeling choices, not discovered laws.
 
-## Ownership
+## Body and substrate
 
-- World: space, ecology, possession, physical costs, interaction arbitration.
-- Body: finite reserves, sensors, motion and action limits.
-- Controller: recurrent state, movement, action, amount, target, payload.
-- Heredity: actual birth allocation, copied/mutated weights, cleared child state.
-- Observer: counts, traces, lineage, plots, exports. No behavioral feedback loop.
-
-There is no authored destination choice, memory importance ranking, exploration
-bonus, helper/enemy classification, structured food report, automatic surplus
-birth, action lottery, population floor, live reseeding or policy fallback.
-
-## Physical parameters and reasons
-
-| Mechanism | Default and reason |
+| Mechanism | Rule |
 | --- | --- |
-| Space | Bounded square, 2048 units; finite geometry, no wrapping |
-| Vegetation / spatial grids | 512² cells / 256² cells; food and neighbor-compute resolutions |
-| Body slots | 16,384; finite GPU storage budget, not a target population |
-| Energy / inventory capacity | 100 energy / 8 food; finite reserves |
-| Basal metabolism | 0.06 energy/tick; maintaining a living body costs energy |
-| Voluntary movement | Adult maximum 1.2 units/tick, 0.01 energy/actual unit; movement expenditure |
-| Motor response | tanh(4 * motor logit), vector length capped at one; continuous actuator sensitivity, zero stays zero |
-| Development | Speed scales from 60% to 100% through maturity at age 400 |
-| Collection | Up to 0.025 food * amount per tick, subject to stock/capacity; finite throughput |
-| Digestion | Automatic, up to 0.1 carried food per tick, 8 energy/food, inventory/energy headroom bound |
-| Contact radius | 6 units; transfer and force require physical proximity |
-| Signal range | Minimum of sender/receiver sensory radii; 0.02 energy, four-tick recovery |
-| Reproduction | Maturity 400, recovery 240 ticks; finite development/reproductive throughput |
-| Lifespan | 9,000–11,000 ticks; declared age-limited bodies |
-| Sensor budget | Eight food points, up to four bodies, default radius 24 |
-| Memory / genome | 16 float32 state values / 1,518 weights; finite computation |
+| Space | Bounded 2048-unit square; no wrapping |
+| Food / spatial cells | 512² vegetation cells / 256² neighbor cells |
+| Capacity | 16,384 GPU body slots, not a target population |
+| Reserves | Up to 100 energy and 8 carried food |
+| Upkeep / movement | .06 energy/tick; .01 energy per actual voluntary distance |
+| Movement | Adult maximum 1.2 units/tick; juvenile speed .6–1 of adult through age 400 |
+| Collection | Requested, at most .025 food × amount/tick, limited by stock/capacity |
+| Digestion | Automatic, at most .1 carried food/tick; 8 energy/food, energy-headroom limited |
+| Local contact | Transfer and force require a currently valid target within 6 units |
+| Signal | One scalar emission per chosen emit action, .02 energy; no target/cooldown |
+| Reproduction | Chosen, age at least 400; 240-tick recovery; paid energy investment |
+| Aging | Death at a freshly sampled maximum age of 9,000–11,000 ticks |
+| Sensing / state | Radius 24, eight food points, up to four bodies, 16 recurrent values |
 
-These rates set timescales, not a guaranteed ecological equilibrium. Age,
-maturity, recovery and force costs remain modeling assumptions to question.
-They are not justified by wanting fewer fights or a prettier birth curve.
-The low-cost diagnostic (0.005/0.002) is retained as experimental history, not
-the default: it often hit storage capacity. Original costs are restored and
-motor sensitivity is calibrated separately, not as a minimum speed or food
-gradient. Only checkpoint14 is accepted on this branch; motor gain is explicit
-in every saved settings object. Compatible saves retain their own physical settings.
-Numerical settings are validated; safety bounds include regeneration 0..1,
-costs 0..100, conversion 0.000001..1000, sensory range 4..48, maturity 0..11000
-and recovery up to 1,000,000 ticks. Extreme legal settings need not sustain life.
+Digestion does not harvest for the agent. Finite throughput and reserves create
+tradeoffs. Development, recovery, aging, sensory geometry and their exact values
+remain explicit body assumptions; they must not be advertised as inevitable
+first principles. No solid-body packing, collision damage, momentum, mating,
+kin recognition, health meter, or inherited body-shape evolution is simulated.
 
-No solid-body collision/volume packing is simulated. Bodies can overlap.
-Movement is kinematic, not momentum-conserving mechanics.
+## Tick order
 
-## Tick order and conservation
+1. Reserve only slots already dead at tick start for births.
+2. Update ecology, rebuild spatial indexing, sense the same pre-action world.
+3. Evaluate each agent's recurrent controller.
+4. Collect at pre-movement positions.
+5. Digest, move, pay upkeep, update age/state; emit if chosen and affordable;
+   determine death and eligible reproduction requests.
+6. Resolve disjoint local transfer/force pairs at post-movement positions.
+7. Allocate births, rechecking actual parental energy and survival.
+8. Release dead bodies' remaining inventory once; count living bodies.
 
-1. Identify slots already dead at tick start; only these can accept newborns.
-2. Update ecology and rebuild occupancy/spatial indexing.
-3. Sense locally; compute all controller intentions from the same pre-action world.
-4. Collect at pre-movement positions using atomic stock subtraction.
-5. Apply collected food, automatic digestion, voluntary movement, metabolism, age and
-   recurrent state. Record reproduction requests meeting pre-interaction limits.
-6. Propose and resolve disjoint local interaction pairs at post-movement positions.
-7. Allocate births and recheck actual parent reserves after interactions.
-8. Drop inventory of bodies now dead, once. Count alive bodies.
+A tick is a discretization, not simultaneous continuous physics. Collection uses
+atomic stock subtraction with bounded retries: contention may lose an opportunity
+but must not duplicate food. Dropped supplies are picked up before vegetation.
+Boundaries clip motion; motion cost follows actual displacement.
 
-Food on the ground is quantized in thousandths. Atomic collection takes dropped
-food first, then vegetation, with at most sixteen compare/exchange attempts per
-source; contention can leave a request partially/unfilled, never duplicated.
-Inventory uses float32; ingestion converts existing inventory into energy.
-Movement is bounded by available energy and world edges and charges actual
-distance. Basal metabolism then consumes remaining energy up to its cost.
-Deaths occur at zero energy or maximum age.
+## Interactions without prescribed social meaning
 
-No action substitutes for another. Sharing one tick with movement does not make
-collection/digestion/reproduction free; all draw from current reserves in the
-order above. Statistics are observations, not rewards.
+Transfer moves up to the chosen amount of existing inventory into a nearby body,
+limited by sender stock and receiver capacity. There is no obligation, recipient
+utility score, kin preference, or automatic sharing.
 
-## Interaction semantics
+Force is a kinematic contact actuator: a chosen vector displaces a nearby body up
+to three units. The actor pays .2 energy per actual displaced unit. Affordable
+distance is bounded by its remaining energy; world edges can shorten it. No
+success roll, recipient energy tax, automatic food spill, loot or eastward fallback
+exists. There is no recoil or momentum, consistently with kinematic locomotion.
+The explicit contact cost is a drag calibration, not a penalty for aggression.
+Displacing a body can help or hinder it through where it ends up. This model does
+not directly model injuries, and should not call displacement itself damage.
 
-A tick-hashed rotating priority arbitrates pairs. An accepted pair owns both
-body records, so one body cannot participate in multiple resolved pairs in the
-same tick. This can underutilize possible interactions; it is not an optimal
-matching algorithm. Target incarnation and range are revalidated. Disabled,
-stale or out-of-range requests cannot claim a pair.
+Physical pairs use rotating priority and exclusive ownership to avoid concurrent
+writes. This bounded matching can underutilize contact opportunities; it is not
+optimal matching. Disabled, stale and out-of-range requests cannot claim a pair.
+Signals do not participate in this arbitration and cannot provide a contact shield.
 
-- Transfer: subtract up to the controller's amount from the sender's inventory,
-  add it to the receiver, respecting both capacities.
-- Force: sender spends up to 0.6 energy, receiver up to 0.3. Success probability
-  is sender energy / combined energy before this collision cost. On success,
-  spill up to amount from the receiver onto the ground and displace it 3 units
-  away, clipped at boundaries. The sender does not directly receive that food.
-  It can later collect nearby dropped stock like any body.
-- Emit: deliver one bounded scalar to the targeted receiver, charge the sender
-  up to 0.02 energy, and apply a four-tick sending recovery. No map is copied.
+Emit pays a full .02 energy and makes a controller-chosen scalar observable on the
+next tick through local neighbor sensing. It works without a target. Zero is a
+valid payload, distinguishable from silence. There is no broadcast of someone
+else's received events, truth tag, built-in vocabulary, receiver energy penalty
+or enforced response. An emission counter is not a count of recipients or useful
+communications.
 
-Force feedback is -max(0.3, spilled food); transfer feedback is received amount;
-signal feedback is its payload. These channels are coarse physical event
-encodings, not judgments about good or bad partners. Neighbor sensing can
-observe another body's previous-tick event. There is no reputation system.
+## Reproduction and material accounting
 
-Death releases remaining inventory with rounding to thousandths; force spill
-uses the same rounding. Thus matter accounting has a bounded quantization
-residual, not perfect real-number conservation. Collision dissipation, basal/
-motion/signal costs, reproductive construction and unused energy at age death
-are sinks. No conflict penalty is fed into an objective function.
+With reproductive cost B=50 and controller amount a:
+child energy = .8 × B × a; construction dissipation = .2 × B.
+The parent pays both from its current energy. No extra inventory prerequisite or
+mandatory food transfer exists; the child starts with zero inventory. Thus birth
+does not create food, nor require stockpiling while automatic digestion consumes
+the same stock. Parents may exhaust themselves; the world does not prevent it.
 
-## Reproduction and inheritance
+Children spawn two units from the parent in a hashed direction, boundary-clipped,
+with age/state/signals cleared. Only the next tick can act on them. Weights copy
+with ordinary mutation; speed and sensory capacity copy without mutation.
+Free slots are allocated with a tick-rotated parent priority so low storage slots
+do not always win at capacity. Unallocated requests do not spend reserves.
+Resource provision to fresh founders (65 energy, 2 food, age 0–300) is explicit
+initialization, not the rule for later births.
 
-Let B be reproductive cost (default 50) and a the amount output:
-offspring energy = 0.8*B*a; construction dissipation = 0.2*B.
-The parent pays their sum and transfers exactly one existing food unit.
-It must be mature, recovered and possess that inventory and energy.
-Explicit reproduce must win the action logits. Movement does not disqualify it.
+Vegetation/drop stock uses thousandths; body inventory uses float32. Death drops
+rounded remaining inventory. Accounting has quantization residuals; cumulative
+summary rounding is not exact long-run energy closure. Age death discards stored
+energy, not food. Costs and birth construction are sinks. Population accounting
+must balance births against starvation, aging and contact-actor exhaustion.
 
-Offspring spawn two units from the parent in a hashed direction, boundary
-clipped, with fresh age/state/event history and mutated inherited weights.
-They do not act until the next tick. The parent's recovery is then set.
-Exhausting a parent's energy can kill it; that is not silently prevented.
+## Ecology and preparation controls
 
-Free-slot and birth-request scans allocate a bounded number of births in slot
-order. At capacity, requests without slots do not spend resources. A request
-invalidated by an interaction is not reassigned within that tick.
-Slot incarnation advances on reuse; ancestry depth is separate. New lineage
-IDs are bookkeeping, not inputs to controller decisions. Mutation is fixed
-and nonzero as specified in [CONTROLLER.md](CONTROLLER.md).
+Seeded hubs, irregular low-yield regions, barren gaps, weather, seasonal growth,
+soil recovery and harvest depletion create the ecological environment. Resource
+geography interpolates keyframes every 8,192 ticks; hub reseeding occurs every
+third keyframe. First major transition is 16,384–24,576, then repeats every 24,576
+ticks. These are gradual transitions, not instantaneous food teleports.
 
-## Ecology retained across the cutover
+Habitat contrast in [0,1] mixes geography with its spatial mean: zero is uniform
+distribution, one the complete patch/gap field. Total mean habitat is preserved,
+but distribution changes attainable food and therefore difficulty. Mean-preserving
+does not imply equal carrying capacity or guarantee easy founding.
 
-Initial geography includes seeded rich hubs, lower-yield connecting bands,
-multi-scale irregularity and barren gaps. Weather, seasonal variation, fertility
-recovery and harvest depletion modulate growth. Food capacity can contract,
-recorded as weather loss. Fractional regeneration accumulates rather than being
-discarded. Food painted into barren space remains collectible without regrowing.
-Terrain blends normalized-productivity keyframes every 8,192 ticks. Hub-center
-seeding changes every third keyframe. The transition into keyframe3 occurs over
-ticks16,384–24,576; subsequent major-transition intervals repeat every24,576
-ticks. Thus a nominal renewal boundary is the end of a gradual transition, not
-an instantaneous food teleport. Smaller drift and weather continue between them.
+Environment rotation applies quarter-turns to initial positions and the entire
+habitat/weather history. It is never a brain input. These two controls change the
+environment, not the body or weights. Normal play uses contrast 1; no progressive
+difficulty escalator or reseeding occurs inside it. Optional manual interventions
+are user experiments and never used in registered preparation.
 
-The regeneration default is 0.01. `--static-landscape` freezes geography only.
-The existing ecology is authored substrate; its bands cannot be counted as
-emergent roads. V2 retains v1 ecology unchanged; no adaptation gate has passed.
+## Persistence, observation, and limits
 
-## State, accounting and replay limits
+Build .4 / model primitive-v3 / checkpoint 15 / founder-bank format 4.
+Old checkpoints and banks are rejected, not reinterpreted or rewritten.
+Checkpoints preserve settings, bodies, genomes, food, soil, event counters and
+controller traces. Derived indexing/terrain is rebuilt after load. Loading
+validates before mutating the world. Save/export refuses existing destinations.
+Local inspector identity tracking does not modify behavior.
 
-Checkpoint 14 saves settings, bodies/state, cold genomes, food, soil, ground
-accounting, event counters/ring and observation/decision traces. Loading reads
-and validates the entire file before touching live buffers. Derived spatial
-indexing/terrain buffers are rebuilt. Old schemas are rejected, not rewritten.
-Save/export refuse existing destinations. A filesystem failure can leave a
-partial *new* file; it cannot truncate an older save.
-
-Observers record cumulative births/deaths/actions, overlapping request failures,
-current reserves, production/weather loss and resolved force expenditure.
-Some cumulative counters are u32; sufficiently long/high-population runs can
-overflow them. Summary reserve rounding is 0.001 per body. Reported ingestion
-also rounds each event; do not claim exact long-run energy closure from these
-counters. Per-action conservation is tested directly on body values.
-
-Genome storage alone is 99,483,648 bytes (94.875 MiB); body buffers, observations,
-decisions, ecology, staging and rendering add overhead. Checkpoints exceed
-100 MiB. These bounds deliberately replace the old 100,000-body capacity.
-
-Atomic allocation/collection can diverge between population runs even at the
-same seed. Isolated deterministic fixtures verify batching and checkpoint
-continuation; cross-GPU or population-wide bitwise determinism is not promised.
-GUI render pipeline construction is tested headlessly; manual GUI interactions
-were not exercised for this experimental branch.
-
-## Extension rule
-
-Can a mechanism justify itself without naming the desired emergent behavior?
-If not, keep it outside the physical/controller contract or reject it.
-Initial biases, sensing geometry and finite network architecture must remain
-explicit even when their resulting behavior is visually appealing.
+Physics/controller wiring checks are not evidence of learned intelligence.
+Headless worlds check for extinction after each GPU batch (at most32 ticks),
+independent of report frequency. Initially empty worlds run zero ticks. The final
+report/optional journey footer is flushed at the early stop, with an explicit
+extinction or tick-limit termination reason. The reported stop tick is detection
+time, not an exact death tick (at most31 extra ticks inside a submitted batch).
+Observers never feed controller inputs or select desired behavior. The sampled
+journey observer has known between-sample and resource-relocation attribution
+gaps; it is not sufficient for the full release goal. Population-wide replay is
+not guaranteed bitwise deterministic because atomic contention can vary.
+Long/high-population runs can overflow u32 counters; bounded protocols and
+accounting checks must expose this rather than silently accept it.

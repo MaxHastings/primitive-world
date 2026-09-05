@@ -129,6 +129,7 @@ pub struct Simulation {
     pub occupancy_buffer: wgpu::Buffer,
     pub params_buffer: wgpu::Buffer,
     pub alive_count_buffer: wgpu::Buffer,
+    pub family_observer: Option<crate::family_observer::FamilyObserver>,
     decision_buffer: wgpu::Buffer,
     fertility_buffer: wgpu::Buffer,
     terrain_buffer: wgpu::Buffer,
@@ -520,6 +521,7 @@ impl Simulation {
             occupancy_buffer,
             params_buffer,
             alive_count_buffer,
+            family_observer: None,
             decision_buffer,
             fertility_buffer,
             terrain_buffer,
@@ -540,6 +542,7 @@ impl Simulation {
         sim
     }
     pub fn reset(&mut self, queue: &wgpu::Queue) {
+        self.family_observer = None;
         self.settings.validate().expect("valid reset settings");
         queue.write_buffer(
             &self.genome_buffer,
@@ -550,7 +553,7 @@ impl Simulation {
         for b in &self.agent_buffers {
             queue.write_buffer(b, 0, bytemuck::cast_slice(&data));
         }
-        let habitat = build_habitat(self.seed);
+        let habitat = build_habitat(self.seed, self.settings.habitat_contrast);
         let food = crate::environment::rotate_grid(
             build_resources(&habitat),
             RESOURCE_GRID as usize,
@@ -581,7 +584,7 @@ impl Simulation {
             &self.terrain_buffer,
             0,
             bytemuck::cast_slice(&crate::environment::rotate_grid(
-                build_terrain_pair(self.seed, 0),
+                build_terrain_pair(self.seed, 0, self.settings.habitat_contrast),
                 RESOURCE_GRID as usize,
                 self.settings.environment_rotation,
             )),
@@ -631,7 +634,7 @@ impl Simulation {
                 let staging = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("terrain update"),
                     contents: bytemuck::cast_slice(&crate::environment::rotate_grid(
-                        build_terrain_pair(self.seed, epoch),
+                        build_terrain_pair(self.seed, epoch, self.settings.habitat_contrast),
                         RESOURCE_GRID as usize,
                         self.settings.environment_rotation,
                     )),
@@ -679,6 +682,9 @@ impl Simulation {
             self.dispatch(e, "birth_compact", 0, groups, 1);
             self.dispatch(e, "birth", d, groups, 1);
             self.dispatch(e, "release", d, groups, 1);
+            if let Some(observer) = &self.family_observer {
+                observer.encode(e, d);
+            }
             self.current_buffer = d;
             self.tick += 1;
         }
@@ -932,36 +938,37 @@ fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
             rng: rng ^ i,
             alive: u32::from(i < s.population),
             generation: 1,
-            event_actor: MAX_AGENTS,
             target: MAX_AGENTS,
             lineage_id: i + 1,
+            founder_family: if s.founder_genomes.is_empty() {
+                i
+            } else {
+                i % s.founder_genomes.len() as u32
+            },
             ..Default::default()
         })
         .collect()
 }
 fn build_genomes(seed: u32, s: &SimSettings) -> Vec<f32> {
     let mut genes = vec![0.0; MAX_AGENTS as usize * GENOME_SIZE];
-    let initial = bootstrap_genome();
     let mut rng = seed ^ 0x184a2321;
     for i in 0..s.population as usize {
         let row = &mut genes[i * GENOME_SIZE..(i + 1) * GENOME_SIZE];
         if s.founder_genomes.is_empty() {
-            for (g, v) in row.iter_mut().zip(initial) {
-                *g = v + (random01(&mut rng) - 0.5) * 0.02;
-            }
+            row.copy_from_slice(&random_genome(&mut rng));
         } else {
             row.copy_from_slice(&s.founder_genomes[i % s.founder_genomes.len()]);
         }
     }
     genes
 }
-fn build_habitat(seed: u32) -> Vec<f32> {
-    build_habitat_at(seed, 0)
+fn build_habitat(seed: u32, contrast: f32) -> Vec<f32> {
+    build_habitat_at(seed, 0, contrast)
 }
 
-fn build_terrain_pair(seed: u32, epoch: u32) -> Vec<[f32; 4]> {
-    let a = build_habitat_at(seed, epoch);
-    let b = build_habitat_at(seed, epoch.wrapping_add(1));
+fn build_terrain_pair(seed: u32, epoch: u32, contrast: f32) -> Vec<[f32; 4]> {
+    let a = build_habitat_at(seed, epoch, contrast);
+    let b = build_habitat_at(seed, epoch.wrapping_add(1), contrast);
     let ma = (a.iter().sum::<f32>() / a.len() as f32).max(0.001);
     let mb = (b.iter().sum::<f32>() / b.len() as f32).max(0.001);
     a.iter()
@@ -970,7 +977,7 @@ fn build_terrain_pair(seed: u32, epoch: u32) -> Vec<[f32; 4]> {
         .collect()
 }
 
-fn build_habitat_at(seed: u32, epoch: u32) -> Vec<f32> {
+fn build_habitat_at(seed: u32, epoch: u32, contrast: f32) -> Vec<f32> {
     let mut rng = seed ^ 0xa341_316c;
     let mut patches: Vec<[f32; 7]> = Vec::new();
     for i in 0..24 {
@@ -1055,6 +1062,11 @@ fn build_habitat_at(seed: u32, epoch: u32) -> Vec<f32> {
             habitat[(y * RESOURCE_GRID + x) as usize] = shoulder * 0.78 + t * 0.22;
         }
     }
+    // Contrast changes food distribution, not its mean or the body's costs.
+    let mean = habitat.iter().sum::<f32>() / habitat.len() as f32;
+    for value in &mut habitat {
+        *value = mean + contrast * (*value - mean);
+    }
     habitat
 }
 
@@ -1099,7 +1111,17 @@ fn random01(state: &mut u32) -> f32 {
 }
 
 pub fn shader_source(source: &str) -> String {
-    format!("{}\n{}", include_str!("../shaders/common.wgsl"), source)
+    format!(
+        "const INPUT_COUNT:u32={}u; const HIDDEN_COUNT:u32={}u; const OUTPUT_COUNT:u32={}u; const GENOME_SIZE:u32={}u; const RECURRENT_ROW:u32={}u; const OUTPUT_BASE:u32={}u;\n{}\n{}",
+        INPUTS,
+        HIDDEN,
+        OUTPUTS,
+        GENOME_SIZE,
+        RECURRENT_ROW,
+        OUTPUT_BASE,
+        include_str!("../shaders/common.wgsl"),
+        source
+    )
 }
 
 #[path = "observability.rs"]

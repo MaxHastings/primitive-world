@@ -1,9 +1,15 @@
 # Experiments
 
-The current whole-model preparation/evaluation runner is
-[`training/prepare.py`](../training/prepare.py). It registers a bounded campaign,
-keeps preparation separate from held-out worlds, and preserves failure reports.
-Use a new output directory for each explicitly planned campaign.
+The current primitive-v3 experiment is
+[`training/founding_ecology.py`](../training/founding_ecology.py), under the
+[founding ecology protocol](../training/FOUNDING_ECOLOGY_PLAN.md). It compares
+24 independent worlds without external genome selection or breeding. Actual
+births carry parent weights with mutation. Output directories must be new.
+
+The older [`training/prepare.py`](../training/prepare.py) adds external family
+ranking and breeding across worlds. Its random-origin and authored-starter
+campaigns were intentionally stopped; preserve them as historical evidence and
+do not automatically resume them.
 
 The older two-patch travel/sensing diagnostics tested candidate-v1 and its
 authored place/destination machinery. Their driver and runtime branches were

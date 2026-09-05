@@ -14,28 +14,19 @@ pub struct FounderBank {
     pub genomes: Vec<Vec<f32>>,
 }
 
-/// Frozen unprepared development bank. No v1 genes are silently reinterpreted.
-/// Mutable starting dispositions plus declared standing noise; not blank brains.
+/// Frozen random development bank. Old genomes are never reinterpreted.
+/// Random weights with no hand-written behavior; no claim of established viability.
 pub fn bundled() -> &'static FounderBank {
     static BANK: std::sync::OnceLock<FounderBank> = std::sync::OnceLock::new();
     BANK.get_or_init(|| {
-        let initial = crate::model::bootstrap_genome();
         let mut rng = 0x184a2321u32;
-        let genomes = (0..128)
-            .map(|_| {
-                initial
-                    .iter()
-                    .map(|&g| {
-                        rng = rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-                        g + ((rng >> 8) as f32 / 16_777_215.0 - 0.5) * 0.02
-                    })
-                    .collect()
-            })
+        let genomes = (0..256)
+            .map(|_| crate::model::random_genome(&mut rng).to_vec())
             .collect();
         FounderBank {
-            version: 3,
+            version: 4,
             model: crate::model::MODEL_ID.into(),
-            name: "physiology-v2-unprepared-frozen-bootstrap-128".into(),
+            name: "primitive-v3-unprepared-random-256".into(),
             source_seed: 0,
             source_tick: 0,
             genomes,
@@ -49,22 +40,22 @@ pub fn validate_genomes(genomes: &[Vec<f32>]) -> Result<(), String> {
             .iter()
             .any(|g| g.len() != GENOME_SIZE || g.iter().any(|v| !v.is_finite() || v.abs() > 4.0))
     {
-        return Err("Invalid physiology-v2 founder genomes".into());
+        return Err("Invalid primitive-v3 founder genomes".into());
     }
     Ok(())
 }
 
 impl Simulation {
-    pub fn use_bootstrap_founders(&mut self) {
+    pub fn use_random_founders(&mut self) {
         self.settings.founder_genomes.clear();
-        self.settings.founder_name = "physiology-v2-unprepared-bootstrap".into();
+        self.settings.founder_name = "primitive-v3-unprepared-random".into();
     }
     pub fn load_founders(&mut self, path: &Path) -> Result<(), String> {
         let bank: FounderBank =
             serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
                 .map_err(|e| e.to_string())?;
-        if bank.version != 3 || bank.model != crate::model::MODEL_ID || bank.genomes.is_empty() {
-            return Err("Expected nonempty physiology-v2 founder bank".into());
+        if bank.version != 4 || bank.model != crate::model::MODEL_ID || bank.genomes.is_empty() {
+            return Err("Expected nonempty primitive-v3 founder bank".into());
         }
         validate_genomes(&bank.genomes)?;
         self.settings.founder_name = bank.name;
@@ -97,17 +88,17 @@ impl Simulation {
             x ^ (x >> 16)
         });
         let bank = FounderBank {
-            version: 3,
+            version: 4,
             model: crate::model::MODEL_ID.into(),
             name: format!(
-                "physiology-v2-descendants-seed{}-tick{}",
+                "primitive-v3-descendants-seed{}-tick{}",
                 self.seed, self.tick
             ),
             source_seed: self.seed,
             source_tick: self.tick,
             genomes: descendants
                 .into_iter()
-                .take(128)
+                .take(256)
                 .map(|(i, _)| genes[i * GENOME_SIZE..(i + 1) * GENOME_SIZE].to_vec())
                 .collect(),
         };

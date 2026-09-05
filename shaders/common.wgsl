@@ -1,4 +1,4 @@
-// physiology-v2 Rust/WGSL storage contract; covered by layout and replay tests.
+// primitive-v3 Rust/WGSL storage contract; covered by layout and replay tests.
 const INVALID:u32=16384u;
 const FOOD_CAPACITY:f32=8.0;
 const INTERACTION_RADIUS:f32=6.0;
@@ -8,20 +8,20 @@ struct Agent {
  position:vec2<f32>, velocity:vec2<f32>, energy:f32, age:f32, max_speed:f32, sensor_radius:f32,
  food:f32, action:u32, target_id:u32, alive:u32,
  body_padding:f32,rng:u32,generation:u32,next_birth:u32,
- max_age:f32,event_amount:f32,event_tick:u32,event_actor:u32,
- event_generation:u32,last_communication:u32,collected:f32,ingested:f32,
+ max_age:f32,signal_payload:f32,signal_tick:u32,signal_padding:array<u32,3>,
+ collected:f32,ingested:f32,
  spent:f32,received:f32,moved:vec2<f32>,
  lineage_id:u32,parent_lineage:u32,birth_tick:u32,birth_parent_slot:u32,
- ancestry_depth:u32,lifetime_births:u32,distance_travelled:f32,observer_padding:u32,
- hidden:array<f32,16>,
+ ancestry_depth:u32,lifetime_births:u32,distance_travelled:f32,founder_family:u32,
+ hidden:array<f32,HIDDEN_COUNT>,
 };
 struct Sample {offset:vec2<f32>,food:f32,padding:f32,};
-struct Body {offset:vec2<f32>,velocity:vec2<f32>,food:f32,event:f32,slot:u32,generation:u32,};
+struct Body {offset:vec2<f32>,velocity:vec2<f32>,food:f32,signal:f32,slot:u32,generation:u32,};
 struct Perception {resource_here:f32,local_count:f32,padding:vec2<f32>,samples:array<Sample,8>,bodies:array<Body,4>,};
 struct Decision {
  scores:array<f32,6>,selected_action:u32,score_padding:u32,movement:vec2<f32>,amount:f32,
  payload:f32,target_id:u32,target_generation:u32,invalid:u32,body_padding:u32,
- hidden:array<f32,16>,inputs:array<f32,63>,input_padding:f32,
+ force:vec2<f32>,hidden:array<f32,HIDDEN_COUNT>,inputs:array<f32,INPUT_COUNT>,
 };
 struct SimParams {
  world_size:f32,resource_grid_size:u32,agent_count:u32,tick:u32,

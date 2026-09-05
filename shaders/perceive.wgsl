@@ -39,8 +39,8 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
    let other=indices[start+(hash_u32(a.rng^ci^params.tick)+j)%available];
    if(other==i||other>=INVALID){continue;}let b=agents[other];
    if(b.alive==0u||length(b.position-a.position)>a.sensor_radius){continue;}
-   let event=select(0.0,b.event_amount,b.event_tick+1u==params.tick);
-   p.bodies[count]=Body(b.position-a.position,b.velocity,b.food,event,other,b.generation);count++;
+   let signal=select(0.0,b.signal_payload,b.signal_tick==params.tick && b.signal_tick>0u);
+   p.bodies[count]=Body(b.position-a.position,b.velocity,b.food,signal,other,b.generation);count++;
   }
  }
  perceptions[i]=p;
