@@ -12,8 +12,10 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  atomicAdd(&stats[24u+d.selected_action],1u);atomicAdd(&stats[31],d.invalid);
  a.collected=f32(requests[i])/1000.0;a.ingested=0.0;a.spent=0.0;a.received=0.0;
  a.food+=a.collected;
- if(d.selected_action==INGEST){
-  let amount=min(min(a.food,0.1*d.amount),max(0.0,100.0-a.energy)/params.resource_and_noise.y);
+ // Digestion is rate-limited physiology, not a brain action or resource gift.
+ // Gathering is still chosen; every absorbed unit is removed from inventory.
+ {
+  let amount=min(min(a.food,0.1),max(0.0,100.0-a.energy)/params.resource_and_noise.y);
   a.food-=amount;a.energy+=amount*params.resource_and_noise.y;a.ingested=amount;
   atomicAdd(&stats[0],u32(round(amount*1000.0)));
  }
@@ -26,7 +28,6 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  a.spent=distance*params.time_and_costs.z;a.energy=max(0.0,a.energy-a.spent);
  let metabolism=min(a.energy,params.time_and_costs.w);a.energy-=metabolism;a.spent+=metabolism;
  a.distance_travelled+=distance;a.age+=1.0;a.action=d.selected_action;a.target_id=d.target_id;
- a.attention=atan2(sin(a.attention+d.attention),cos(a.attention+d.attention));
  a.hidden=d.hidden;a.rng=hash_u32(a.rng+params.tick+1u);
  if(a.energy<=0.0||a.age>=a.max_age){a.alive=0u;if(a.age>=a.max_age){atomicAdd(&stats[2],1u);}else{atomicAdd(&stats[1],1u);}}
  if(a.alive!=0u && d.selected_action==REPRODUCE){

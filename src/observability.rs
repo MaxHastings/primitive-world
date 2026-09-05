@@ -22,7 +22,7 @@ pub struct WorldMetrics {
     pub harvested: f64,
     /// Reproduction attempts: immature, energy, inventory, cooldown, requested, eligible, resolved.
     pub birth_gates: [u32; 7],
-    pub action_ticks: [u32; 7],
+    pub action_ticks: [u32; 6],
     pub invalid_outputs: u32,
     pub force_attempts: u32,
     pub force_energy_spent: f64,
@@ -190,7 +190,7 @@ impl Simulation {
             birth_gates: counters[16..23]
                 .try_into()
                 .map_err(|_| "Invalid birth counters")?,
-            action_ticks: counters[24..31]
+            action_ticks: counters[24..30]
                 .try_into()
                 .map_err(|_| "Invalid action counters")?,
             invalid_outputs: counters[31],
@@ -233,7 +233,7 @@ impl Simulation {
                     path.display()
                 )
             })?;
-        file.write_all(b"PRIMWORLD012").map_err(|e| e.to_string())?;
+        file.write_all(b"PRIMWORLD014").map_err(|e| e.to_string())?;
         for n in [self.seed, self.tick, settings.len() as u32] {
             file.write_all(&n.to_le_bytes())
                 .map_err(|e| e.to_string())?;
@@ -255,8 +255,8 @@ impl Simulation {
         let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
         let mut magic = [0; 12];
         file.read_exact(&mut magic).map_err(|e| e.to_string())?;
-        if &magic != b"PRIMWORLD012" {
-            return Err("Unsupported checkpoint: recurrent-v1 requires schema 12; older files are unchanged".into());
+        if &magic != b"PRIMWORLD014" {
+            return Err("Unsupported checkpoint: physiology-v2 requires schema 14; older files are unchanged".into());
         }
         let mut fields = [0; 12];
         file.read_exact(&mut fields).map_err(|e| e.to_string())?;
@@ -300,7 +300,7 @@ impl Simulation {
             .map(bytemuck::pod_read_unaligned::<AgentGpu>)
         {
             if a.alive > 1
-                || a.action > 6
+                || a.action > 5
                 || a.position
                     .iter()
                     .any(|v| !v.is_finite() || !(0.0..=WORLD_SIZE).contains(v))
@@ -311,7 +311,7 @@ impl Simulation {
                     a.max_speed,
                     a.sensor_radius,
                     a.max_age,
-                    a.attention,
+                    a.body_padding,
                     a.event_amount,
                     a.collected,
                     a.ingested,
@@ -336,7 +336,7 @@ impl Simulation {
                 || a.sensor_radius < 4.0
                 || a.sensor_radius > 48.0
             {
-                return Err("Invalid recurrent-v1 body checkpoint".into());
+                return Err("Invalid physiology-v2 body checkpoint".into());
             }
         }
         if bytemuck::cast_slice::<u8, f32>(&data[8])
@@ -387,10 +387,10 @@ impl Simulation {
             .chunks_exact(std::mem::size_of::<DecisionGpu>())
             .map(bytemuck::pod_read_unaligned::<DecisionGpu>)
         {
-            if d.selected_action > 6
+            if d.selected_action > 5
                 || d.invalid > 1
                 || d.target > MAX_AGENTS
-                || [d.attention, d.amount, d.payload]
+                || [d.amount, d.payload]
                     .iter()
                     .chain(&d.movement)
                     .chain(&d.scores)

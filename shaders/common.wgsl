@@ -1,13 +1,13 @@
-// recurrent-v1 Rust/WGSL storage contract; covered by layout and replay tests.
+// physiology-v2 Rust/WGSL storage contract; covered by layout and replay tests.
 const INVALID:u32=16384u;
 const FOOD_CAPACITY:f32=8.0;
 const INTERACTION_RADIUS:f32=6.0;
-const NONE:u32=0u; const COLLECT:u32=1u; const INGEST:u32=2u;
-const TRANSFER:u32=3u; const APPLY_FORCE:u32=4u; const EMIT:u32=5u; const REPRODUCE:u32=6u;
+const NONE:u32=0u; const COLLECT:u32=1u;
+const TRANSFER:u32=2u; const APPLY_FORCE:u32=3u; const EMIT:u32=4u; const REPRODUCE:u32=5u;
 struct Agent {
  position:vec2<f32>, velocity:vec2<f32>, energy:f32, age:f32, max_speed:f32, sensor_radius:f32,
  food:f32, action:u32, target_id:u32, alive:u32,
- attention:f32,rng:u32,generation:u32,next_birth:u32,
+ body_padding:f32,rng:u32,generation:u32,next_birth:u32,
  max_age:f32,event_amount:f32,event_tick:u32,event_actor:u32,
  event_generation:u32,last_communication:u32,collected:f32,ingested:f32,
  spent:f32,received:f32,moved:vec2<f32>,
@@ -19,8 +19,9 @@ struct Sample {offset:vec2<f32>,food:f32,padding:f32,};
 struct Body {offset:vec2<f32>,velocity:vec2<f32>,food:f32,event:f32,slot:u32,generation:u32,};
 struct Perception {resource_here:f32,local_count:f32,padding:vec2<f32>,samples:array<Sample,8>,bodies:array<Body,4>,};
 struct Decision {
- scores:array<f32,7>,selected_action:u32,movement:vec2<f32>,attention:f32,amount:f32,
- payload:f32,target_id:u32,target_generation:u32,invalid:u32,hidden:array<f32,16>,inputs:array<f32,64>,
+ scores:array<f32,6>,selected_action:u32,score_padding:u32,movement:vec2<f32>,amount:f32,
+ payload:f32,target_id:u32,target_generation:u32,invalid:u32,body_padding:u32,
+ hidden:array<f32,16>,inputs:array<f32,63>,input_padding:f32,
 };
 struct SimParams {
  world_size:f32,resource_grid_size:u32,agent_count:u32,tick:u32,
@@ -33,4 +34,3 @@ fn hash_u32(input:u32)->u32{var v=input;v=(v^61u)^(v>>16u);v=v+(v<<3u);v=v^(v>>4
 fn random01(seed:u32)->f32{return f32(hash_u32(seed)&65535u)/65535.0;}
 fn ground_index(position:vec2<f32>)->u32{let c=vec2<u32>(clamp(position/4.0,vec2<f32>(0),vec2<f32>(511)));return c.y*512u+c.x;}
 fn finite(v:f32)->bool{return v==v && abs(v)<=3.4e38;}
-fn rotate(v:vec2<f32>,a:f32)->vec2<f32>{let c=cos(a);let s=sin(a);return vec2<f32>(c*v.x-s*v.y,s*v.x+c*v.y);}

@@ -14,18 +14,32 @@ pub struct FounderBank {
     pub genomes: Vec<Vec<f32>>,
 }
 
-/// The one released founder bank. Invalid packaged data is a build/release error,
-/// never grounds for silently substituting a different controller.
+/// Frozen unprepared development bank. No v1 genes are silently reinterpreted.
+/// Mutable starting dispositions plus declared standing noise; not blank brains.
 pub fn bundled() -> &'static FounderBank {
     static BANK: std::sync::OnceLock<FounderBank> = std::sync::OnceLock::new();
     BANK.get_or_init(|| {
-        let bank: FounderBank = serde_json::from_str(include_str!("../policies/recurrent-v1.json"))
-            .expect("packaged recurrent bank must parse");
-        assert_eq!(bank.version, 2);
-        assert_eq!(bank.model, crate::model::MODEL_ID);
-        assert!(!bank.genomes.is_empty());
-        validate_genomes(&bank.genomes).expect("packaged recurrent genomes must validate");
-        bank
+        let initial = crate::model::bootstrap_genome();
+        let mut rng = 0x184a2321u32;
+        let genomes = (0..128)
+            .map(|_| {
+                initial
+                    .iter()
+                    .map(|&g| {
+                        rng = rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                        g + ((rng >> 8) as f32 / 16_777_215.0 - 0.5) * 0.02
+                    })
+                    .collect()
+            })
+            .collect();
+        FounderBank {
+            version: 3,
+            model: crate::model::MODEL_ID.into(),
+            name: "physiology-v2-unprepared-frozen-bootstrap-128".into(),
+            source_seed: 0,
+            source_tick: 0,
+            genomes,
+        }
     })
 }
 
@@ -35,7 +49,7 @@ pub fn validate_genomes(genomes: &[Vec<f32>]) -> Result<(), String> {
             .iter()
             .any(|g| g.len() != GENOME_SIZE || g.iter().any(|v| !v.is_finite() || v.abs() > 4.0))
     {
-        return Err("Invalid recurrent-v1 founder genomes".into());
+        return Err("Invalid physiology-v2 founder genomes".into());
     }
     Ok(())
 }
@@ -43,14 +57,14 @@ pub fn validate_genomes(genomes: &[Vec<f32>]) -> Result<(), String> {
 impl Simulation {
     pub fn use_bootstrap_founders(&mut self) {
         self.settings.founder_genomes.clear();
-        self.settings.founder_name = "recurrent-v1-unprepared-bootstrap".into();
+        self.settings.founder_name = "physiology-v2-unprepared-bootstrap".into();
     }
     pub fn load_founders(&mut self, path: &Path) -> Result<(), String> {
         let bank: FounderBank =
             serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
                 .map_err(|e| e.to_string())?;
-        if bank.version != 2 || bank.model != crate::model::MODEL_ID || bank.genomes.is_empty() {
-            return Err("Expected nonempty recurrent-v1 founder bank".into());
+        if bank.version != 3 || bank.model != crate::model::MODEL_ID || bank.genomes.is_empty() {
+            return Err("Expected nonempty physiology-v2 founder bank".into());
         }
         validate_genomes(&bank.genomes)?;
         self.settings.founder_name = bank.name;
@@ -83,10 +97,10 @@ impl Simulation {
             x ^ (x >> 16)
         });
         let bank = FounderBank {
-            version: 2,
+            version: 3,
             model: crate::model::MODEL_ID.into(),
             name: format!(
-                "recurrent-v1-descendants-seed{}-tick{}",
+                "physiology-v2-descendants-seed{}-tick{}",
                 self.seed, self.tick
             ),
             source_seed: self.seed,

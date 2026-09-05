@@ -1,5 +1,12 @@
 # Primitive World
 
+> **Research branch: physiology-v2, 0.3.0-dev, checkpoint14. Not promoted.**
+> This branch changes the body and uses an **unprepared** founder bank. Read
+> [the v2 development contract](experiments/PHYSIOLOGY_V2_PLAN.md) for current
+> changes, authored priors and the registered experiment. The v1 documentation
+> below and historical reports describe main, not this experimental executable.
+> Survival in this alternative model is not proof of improved inherited behavior.
+
 **Playable build 0.2.0:** [quick play guide](PLAY_GUIDE.md) ·
 [calibration and held-out results](reports/PLAYABLE_RELEASE.md).
 

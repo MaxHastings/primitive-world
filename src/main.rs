@@ -339,7 +339,7 @@ impl AppState {
 
     fn update_title(&self) {
         self.window.set_title(&format!(
-            "Primitive World {} / recurrent-v1 / checkpoint 12 | {} / {} living | {:.1} FPS",
+            "Primitive World {} / physiology-v2 / checkpoint 14 | {} / {} living | {:.1} FPS",
             env!("CARGO_PKG_VERSION"),
             self.living_agents,
             MAX_AGENTS,
@@ -535,7 +535,7 @@ impl Lens {
             3 => Self::Energy,
             4 => Self::Movement,
             5 => Self::Age,
-            6 => Self::Attention,
+            6 => Self::Digestion,
             7 => Self::CarriedFood,
             8 => Self::Action,
             9 => Self::Fertility,
@@ -549,7 +549,7 @@ fn action_name(action: u32) -> &'static str {
 }
 fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
     let mut reset = false;
-    egui::Window::new("Primitive World — recurrent-v1")
+    egui::Window::new("Primitive World — physiology-v2")
         .default_pos([16.0, 16.0])
         .default_width(430.0)
         .vscroll(true)
@@ -572,7 +572,7 @@ fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
 }
 fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
     ui.label(format!(
-        "Build {} · recurrent-v1 · checkpoint 12",
+        "Build {} · physiology-v2 · checkpoint 14",
         env!("CARGO_PKG_VERSION")
     ));
     ui.small(format!(
@@ -903,8 +903,8 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
             s.agent.energy, s.agent.food, s.agent.age
         ));
         ui.label(format!(
-            "Position {:.1}, {:.1} · attention {:.2}",
-            s.agent.position[0], s.agent.position[1], s.agent.attention
+            "Position {:.1}, {:.1} · fixed compass sensors",
+            s.agent.position[0], s.agent.position[1]
         ));
         ui.label(format!(
             "Body action: {} · movement {:.2}, {:.2}",
@@ -965,7 +965,7 @@ impl ApplicationHandler for App {
                 .create_window(
                     WindowAttributes::default()
                         .with_title(format!(
-                            "Primitive World {} — recurrent-v1 / checkpoint 12",
+                            "Primitive World {} — physiology-v2 / checkpoint 14",
                             env!("CARGO_PKG_VERSION")
                         ))
                         .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 820.0)),
@@ -1074,7 +1074,7 @@ fn main() {
     }
     if options.iter().any(|x| x == "--version") {
         println!(
-            "Primitive World {} / recurrent-v1 / checkpoint 12",
+            "Primitive World {} / physiology-v2 / checkpoint 14",
             env!("CARGO_PKG_VERSION")
         );
         return;

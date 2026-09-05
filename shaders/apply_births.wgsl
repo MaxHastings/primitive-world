@@ -22,10 +22,10 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  if(p.energy<=0.0){p.alive=0u;atomicAdd(&stats[1],1u);}
  child.max_speed=p.max_speed;child.sensor_radius=p.sensor_radius;
  child.max_age=9000.0+2000.0*random01(p.rng^ci);
- for(var k=0u;k<1568u;k++){
+ for(var k=0u;k<1518u;k++){
   let key=p.rng^ci^(k*0x9e3779b9u)^params.tick;
   let mutation=select(0.0,(random01(key)-0.5)*0.06,random01(key^0xb5297a4du)<0.02);
-  genomes[ci*1568u+k]=clamp(genomes[pi*1568u+k]+mutation,-4.0,4.0);
+  genomes[ci*1518u+k]=clamp(genomes[pi*1518u+k]+mutation,-4.0,4.0);
  }
  child.alive=1u;child.rng=hash_u32(p.rng^ci^params.tick);child.generation=agents[ci].generation+1u;
  child.event_actor=INVALID;child.target_id=INVALID;

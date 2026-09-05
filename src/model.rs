@@ -1,6 +1,6 @@
-//! recurrent-v1 body/controller ABI. No semantic memory or desirability scorer.
+//! physiology-v2: fixed-frame sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
-pub const MODEL_ID: &str = "recurrent-v1";
+pub const MODEL_ID: &str = "physiology-v2";
 pub const MAX_AGENTS: u32 = 16_384;
 pub const RESOURCE_GRID: u32 = 512;
 pub const OCCUPANCY_GRID: u32 = 256;
@@ -8,21 +8,13 @@ pub const SPATIAL_CELL_COUNT: u32 = OCCUPANCY_GRID * OCCUPANCY_GRID;
 pub const WORLD_SIZE: f32 = 2048.0;
 pub const DEATH_STATS_COUNT: u32 = 32;
 pub const EVENT_RING_SIZE: u32 = 65_536;
-pub const INPUTS: usize = 64;
+pub const INPUTS: usize = 63;
 pub const HIDDEN: usize = 16;
-pub const OUTPUTS: usize = 16;
+pub const OUTPUTS: usize = 14;
 pub const RECURRENT_ROW: usize = INPUTS + HIDDEN + 1;
 pub const OUTPUT_BASE: usize = HIDDEN * RECURRENT_ROW;
 pub const GENOME_SIZE: usize = OUTPUT_BASE + OUTPUTS * (HIDDEN + 1);
-pub const ACTION_NAMES: [&str; 7] = [
-    "none",
-    "collect",
-    "ingest",
-    "transfer",
-    "force",
-    "emit",
-    "reproduce",
-];
+pub const ACTION_NAMES: [&str; 6] = ["none", "collect", "transfer", "force", "emit", "reproduce"];
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 pub struct AgentGpu {
@@ -36,7 +28,7 @@ pub struct AgentGpu {
     pub action: u32,
     pub target: u32,
     pub alive: u32,
-    pub attention: f32,
+    pub body_padding: f32,
     pub rng: u32,
     pub generation: u32,
     pub next_birth: u32,
@@ -95,17 +87,19 @@ pub struct PerceptionGpu {
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 pub struct DecisionGpu {
-    pub scores: [f32; 7],
+    pub scores: [f32; 6],
     pub selected_action: u32,
+    pub score_padding: u32,
     pub movement: [f32; 2],
-    pub attention: f32,
     pub amount: f32,
     pub payload: f32,
     pub target: u32,
     pub target_generation: u32,
     pub invalid: u32,
+    pub body_padding: u32,
     pub hidden: [f32; HIDDEN],
     pub inputs: [f32; INPUTS],
+    pub input_padding: f32,
 }
 impl Default for DecisionGpu {
     fn default() -> Self {
@@ -156,8 +150,6 @@ pub struct SimSettings {
     pub movement_energy_cost: f32,
     pub metabolic_cost: f32,
     /// Actuator sensitivity, not minimum effort or maximum body speed.
-    /// Older checkpoint-12 worlds retain the historical response of one.
-    #[serde(default = "legacy_motor_response_gain")]
     pub motor_response_gain: f32,
     pub consume_amount: f32,
     pub conversion_efficiency: f32,
@@ -228,19 +220,15 @@ impl SimSettings {
             || self.heterogeneity > 1.0
             || self.maturity_age > 11000.0
         {
-            return Err("Invalid recurrent-v1 physical settings".into());
+            return Err("Invalid physiology-v2 physical settings".into());
         }
         crate::founders::validate_genomes(&self.founder_genomes)
     }
 }
-fn legacy_motor_response_gain() -> f32 {
-    1.0
-}
-
 /// Declared mutable starting dispositions, NOT a runtime policy fallback.
 pub fn bootstrap_genome() -> [f32; GENOME_SIZE] {
     let mut g = [0.0; GENOME_SIZE];
-    for (h, input) in [0, 1, 2, 16, 19, 22, 25, 3].into_iter().enumerate() {
+    for (h, input) in [0, 1, 2, 15, 18, 21, 24, 3].into_iter().enumerate() {
         g[h * RECURRENT_ROW + input] = 1.0;
     }
     let row = |o: usize| OUTPUT_BASE + o * (HIDDEN + 1);
@@ -248,20 +236,17 @@ pub fn bootstrap_genome() -> [f32; GENOME_SIZE] {
     g[row(1) + 2] = 3.0;
     g[row(1) + 1] = -1.0;
     g[row(1) + HIDDEN] = 0.2;
-    g[row(2)] = -3.0;
-    g[row(2) + 1] = 1.0;
-    g[row(2) + HIDDEN] = 1.7;
-    for o in 3..6 {
+    for o in 2..5 {
         g[row(o) + HIDDEN] = -0.3;
     }
-    g[row(6)] = 3.0;
-    g[row(6) + 1] = 2.0;
-    g[row(6) + HIDDEN] = -2.1;
+    g[row(5)] = 3.0;
+    g[row(5) + 1] = 2.0;
+    g[row(5) + HIDDEN] = -2.1;
     // Mutable local steering disposition; no runtime random destinations.
-    g[row(7) + 4] = 0.5;
-    g[row(7) + 6] = -0.5;
-    g[row(8) + 5] = 0.5;
-    g[row(8) + 3] = -0.5;
-    g[row(10) + HIDDEN] = 3.0;
+    g[row(6) + 4] = 0.5;
+    g[row(6) + 6] = -0.5;
+    g[row(7) + 5] = 0.5;
+    g[row(7) + 3] = -0.5;
+    g[row(8) + HIDDEN] = 3.0;
     g
 }

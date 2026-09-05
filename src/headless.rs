@@ -1,6 +1,6 @@
 use crate::simulation::{MAX_AGENTS, MODEL_ID, Simulation};
 use std::{collections::HashMap, io::Write, path::Path};
-pub const HELP: &str = "Primitive World recurrent-v1 (checkpoint 12)\nRun: primitive_world [--seed N] [--founders PATH] [--bootstrap]\nHeadless: --headless --ticks N --sample N --output PATH\nOptions: --population N --regeneration X --no-force --no-signals --static-landscape\n         --metabolic-cost X --movement-cost X --motor-gain X\n         --checkpoint PATH --save-checkpoint PATH --export-founders PATH\n         --journeys PATH [--journey-sample N] (read-only sampled JSONL evidence)\n         --famine-at T --restore-at T --help --version\nFresh runs use the bundled recurrent-v1 descendants. --bootstrap explicitly uses UNPREPARED mutable seed weights.\nMotor gain calibrates continuous effort, not minimum movement or maximum speed.\nCheckpoint settings take precedence; physical overrides cannot accompany --checkpoint.\nLegacy controllers, neural bridges and old diagnostic flags are not supported.";
+pub const HELP: &str = "Primitive World physiology-v2 (checkpoint 14)\nRun: primitive_world [--seed N] [--founders PATH] [--bootstrap]\nHeadless: --headless --ticks N --sample N --output PATH\nOptions: --population N --regeneration X --no-force --no-signals --static-landscape\n         --metabolic-cost X --movement-cost X --motor-gain X\n         --checkpoint PATH --save-checkpoint PATH --export-founders PATH\n         --journeys PATH [--journey-sample N] (read-only sampled JSONL evidence)\n         --famine-at T --restore-at T --help --version\nFresh runs use a frozen UNPREPARED physiology-v2 bootstrap bank. --bootstrap explicitly uses UNPREPARED mutable seed weights.\nMotor gain calibrates continuous effort, not minimum movement or maximum speed.\nCheckpoint settings take precedence; physical overrides cannot accompany --checkpoint.\nLegacy controllers, neural bridges and old diagnostic flags are not supported.";
 pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
     let flags = [
         "--headless",
@@ -263,7 +263,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     if let Some(path) = a.get("--save-checkpoint") {
         sim.save_checkpoint(&device, &queue, Path::new(path))?;
     }
-    let report = serde_json::json!({"schema":2,"build_version":env!("CARGO_PKG_VERSION"),"model":MODEL_ID,"checkpoint_version":12,"capacity":MAX_AGENTS,"seed":sim.seed,
+    let report = serde_json::json!({"schema":2,"build_version":env!("CARGO_PKG_VERSION"),"model":MODEL_ID,"checkpoint_version":14,"capacity":MAX_AGENTS,"seed":sim.seed,
   "initial_tick":initial_tick,"requested_ticks":ticks,"elapsed_ticks":sim.tick-initial_tick,"adapter":format!("{info:?}"),
   "initial_settings":settings,"final_settings":sim.settings,"history":history,"evolution":evolution,
   "travel_observer":travel.report(sample),

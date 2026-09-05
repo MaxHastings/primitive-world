@@ -33,11 +33,11 @@ fn vs(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: u32) -
   if (camera.lens == 3u) { color = heat(agent.energy / 100.0, vec3<f32>(0.9, 0.12, 0.08), vec3<f32>(0.10, 0.95, 0.45)); }
   if (camera.lens == 4u) { color = heat(length(agent.velocity), vec3<f32>(0.15, 0.25, 0.85), vec3<f32>(0.95, 0.78, 0.16)); }
   if (camera.lens == 5u) { color = heat(fract(agent.age / 5000.0), vec3<f32>(0.15, 0.75, 0.95), vec3<f32>(0.94, 0.28, 0.72)); }
-  if (camera.lens == 6u) { color = heat((agent.attention + 3.14159265) / 6.2831853, vec3<f32>(0.18, 0.18, 0.85), vec3<f32>(1.0, 0.5, 0.08)); }
+  if (camera.lens == 6u) { color = heat(agent.ingested/0.1, vec3<f32>(0.18, 0.18, 0.85), vec3<f32>(1.0, 0.5, 0.08)); }
   if (camera.lens == 7u) { color=heat(agent.food/8.0,vec3<f32>(0.7,0.15,0.1),vec3<f32>(0.2,0.95,0.9)); }
   if (camera.lens == 8u) {
-    var colors=array<vec3<f32>,7>(vec3<f32>(0.5),vec3<f32>(0.3,0.65,1.0),vec3<f32>(0.2,0.9,0.3),vec3<f32>(1.0,0.75,0.1),vec3<f32>(0.95,0.4,0.9),vec3<f32>(1.0,0.12,0.1),vec3<f32>(0.4,1.0,1.0));
-    color=colors[min(agent.action,6u)];
+    var colors=array<vec3<f32>,6>(vec3<f32>(0.5),vec3<f32>(0.3,0.65,1.0),vec3<f32>(1.0,0.75,0.1),vec3<f32>(0.95,0.4,0.9),vec3<f32>(1.0,0.12,0.1),vec3<f32>(0.4,1.0,1.0));
+    color=colors[min(agent.action,5u)];
   }
   if (index == camera.selected_id) { color = vec3<f32>(1.0, 1.0, 1.0); }
   var corners = array<vec2<f32>, 6>(

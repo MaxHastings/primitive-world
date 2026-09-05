@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn released_bank_empty_inventory_feeding_diagnostic() {
+fn unprepared_bank_can_gather_when_hungry_empty() {
     let (d, q) = gpu();
     let s = scene(&d, &q);
     let bank = crate::founders::bundled();
@@ -28,14 +28,14 @@ fn released_bank_empty_inventory_feeding_diagnostic() {
         s.dispatch(&mut e, "decide", s.current_buffer, 2, 1);
         q.submit(Some(e.finish()));
         let decisions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, bank.genomes.len());
-        let mut counts = [0u32; 7];
+        let mut counts = [0u32; 6];
         for decision in decisions {
             assert_eq!(decision.invalid, 0);
             counts[decision.selected_action as usize] += 1;
         }
         println!("energy={energy} empty_inventory underfoot_food=0.2 action_counts={counts:?}");
         if energy == 10.0 {
-            assert_eq!(counts[2], 128, "Frozen bank's hungry-empty-ingest prior");
+            assert_eq!(counts[1], 128, "Gathering is still the controller choice");
         }
     }
 }
@@ -69,10 +69,10 @@ fn journey_observation_does_not_modify_physical_state() {
     );
 }
 
-/// Diagnostic of the released bank, not a required behavior for future models.
+/// Diagnostic of the unprepared v2 bank, not a required evolved behavior.
 /// Paired gradients cancel unconditional drift; only the food field changes.
 #[test]
-fn released_bank_sensor_frame_diagnostic() {
+fn fixed_compass_sensors_ignore_reserved_body_padding() {
     let (d, q) = gpu();
     let s = scene(&d, &q);
     let bank = crate::founders::bundled();
@@ -87,7 +87,7 @@ fn released_bank_sensor_frame_diagnostic() {
             let mut a = body([1026.0, 1026.0]);
             a.energy = 50.0;
             a.food = 1.0;
-            a.attention = angle;
+            a.body_padding = angle;
             a.lineage_id = slot as u32 + 1;
             put(&s, &q, slot, a, genome.as_slice().try_into().unwrap());
         }
@@ -106,14 +106,14 @@ fn released_bank_sensor_frame_diagnostic() {
             q.submit(Some(e.finish()));
             let decisions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, bank.genomes.len());
             assert!(decisions.iter().all(|v| v.invalid == 0));
-            // The sensory offsets really rotate; the cue is not a fixed slot.
+            // Food probes remain world-aligned regardless of reserved padding.
             let east_slot = [0usize, 1, 2, 3]
                 .into_iter()
                 .max_by(|&a, &b| {
-                    decisions[0].inputs[17 + 3 * a].total_cmp(&decisions[0].inputs[17 + 3 * b])
+                    decisions[0].inputs[16 + 3 * a].total_cmp(&decisions[0].inputs[16 + 3 * b])
                 })
                 .unwrap();
-            assert!(decisions[0].inputs[17 + 3 * east_slot] > 0.16);
+            assert!(decisions[0].inputs[16 + 3 * east_slot] > 0.16);
             paired.push(decisions);
         }
         let deltas: Vec<[f32; 2]> = paired[0]
@@ -129,16 +129,23 @@ fn released_bank_sensor_frame_diagnostic() {
         let mean = |axis: usize| deltas.iter().map(|v| v[axis]).sum::<f32>() / deltas.len() as f32;
         let toward = deltas.iter().filter(|v| v[0] > 0.0).count();
         println!(
-            "attention={angle:.6} paired_food_response=({:.6},{:.6}) toward_east={toward}/{}",
+            "reserved_padding={angle:.6} paired_food_response=({:.6},{:.6}) toward_east={toward}/{}",
             mean(0),
             mean(1),
             deltas.len()
         );
         summary.push((mean(0), toward));
     }
-    // Reproduce the suspected failure in the frozen historical bank on GPU.
+    // Every tested padding value leaves the food response unchanged.
+    for response in &summary[1..] {
+        near(response.0, summary[0].0);
+    }
     assert!(summary[0].0 > 0.02 && summary[0].1 == bank.genomes.len());
-    assert!(summary[2].0 < -0.02 && summary[2].1 == 0);
+    assert!(
+        summary
+            .iter()
+            .all(|s| s.0 > 0.02 && s.1 == bank.genomes.len())
+    );
 }
 
 #[test]
@@ -147,9 +154,10 @@ fn reproduction_rechecks_reserves_after_force() {
     let mut s = scene(&d, &q);
     let mut parent = body([602.0, 902.0]);
     let amount = 1.0 / (1.0 + (-3.0f32).exp());
-    parent.energy = 50.0 * (0.2 + 0.8 * amount) + 0.2;
-    put(&s, &q, 0, parent, &fixed(6, [0.0; 2]));
-    put(&s, &q, 1, body([604.0, 902.0]), &fixed(4, [0.0; 2]));
+    // Digestion adds0.8 before eligibility; force subsequently makes it inadequate.
+    parent.energy = 50.0 * (0.2 + 0.8 * amount) - 0.5;
+    put(&s, &q, 0, parent, &fixed(5, [0.0; 2]));
+    put(&s, &q, 1, body([604.0, 902.0]), &fixed(3, [0.0; 2]));
     step(&mut s, &d, &q, 1);
     let m = s.metrics(&d, &q).unwrap();
     assert_eq!(m.birth_gates[5], 1);
@@ -165,7 +173,7 @@ fn dead_slot_reuse_resets_experience_and_advances_incarnation() {
     dead.hidden = [0.9; 16];
     put(&s, &q, 0, dead, &fixed(0, [0.0; 2]));
     s.kill_agents_in_region(&d, &q, [500.0, 500.0], 2.0);
-    put(&s, &q, 1, body([602.0, 902.0]), &fixed(6, [0.0; 2]));
+    put(&s, &q, 1, body([602.0, 902.0]), &fixed(5, [0.0; 2]));
     step(&mut s, &d, &q, 1);
     let bodies = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
     assert_eq!(bodies[0].generation, 9);
@@ -187,11 +195,11 @@ fn fresh_world_defaults_keep_original_energy_costs() {
 }
 
 #[test]
-fn legacy_settings_keep_historical_motor_response_and_reject_bad_gains() {
+fn v2_settings_require_explicit_motor_response_and_reject_bad_gains() {
     let mut value = serde_json::to_value(SimSettings::default()).unwrap();
     value.as_object_mut().unwrap().remove("motor_response_gain");
-    let settings: SimSettings = serde_json::from_value(value).unwrap();
-    assert_eq!(settings.motor_response_gain, 1.0);
+    assert!(serde_json::from_value::<SimSettings>(value).is_err());
+    let settings = SimSettings::default();
     for gain in [0.0, -1.0, 33.0, f32::NAN, f32::INFINITY] {
         let settings = SimSettings {
             motor_response_gain: gain,
@@ -208,7 +216,7 @@ fn motor_response_is_continuous_optional_reversible_and_bounded() {
     s.settings.motor_response_gain = 8.0;
     for effort in [0.0f32, 0.01, -0.01, 4.0] {
         let mut g = fixed(0, [0.0; 2]);
-        g[1296 + 7 * 17 + 16] = effort;
+        g[OUTPUT_BASE + 6 * 17 + 16] = effort;
         put(&s, &q, 0, body([602.0, 902.0]), &g);
         step(&mut s, &d, &q, 1);
         let a = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
@@ -258,13 +266,13 @@ fn physical_cli_overrides_validate_and_cannot_override_checkpoints() {
 }
 
 #[test]
-fn prepared_default_is_the_declared_bank_not_a_silent_fallback() {
+fn unprepared_default_is_the_declared_bank_not_a_silent_fallback() {
     let settings = SimSettings::default();
     let bank = crate::founders::bundled();
     assert_eq!(bank.genomes.len(), 128);
     assert_eq!(settings.founder_genomes, bank.genomes);
     assert_eq!(settings.founder_name, bank.name);
-    assert!(bank.name.contains("descendants"));
+    assert!(bank.name.contains("unprepared"));
 }
 
 #[test]
@@ -282,7 +290,10 @@ fn concurrent_collection_and_pair_resolution_do_not_double_spend() {
     }
     step(&mut s, &d, &q, 1);
     let m = s.metrics(&d, &q).unwrap();
-    near((m.carried_food + m.vegetation) as f32, 0.017);
+    near(
+        (m.carried_food + m.vegetation) as f32 + m.events[0] as f32 / 1000.0,
+        0.017,
+    );
     assert_eq!(m.living, 8);
     // Every body requests transfer to the same target; accepted pairs must be disjoint.
     for i in 0..8 {
@@ -293,7 +304,7 @@ fn concurrent_collection_and_pair_resolution_do_not_double_spend() {
     }
     let mut decisions = vec![DecisionGpu::default(); 8];
     for item in &mut decisions[..7] {
-        item.selected_action = 3;
+        item.selected_action = 2;
         item.target = 7;
         item.target_generation = 1;
         item.amount = 1.0;
@@ -329,7 +340,7 @@ fn stale_targets_out_of_range_and_disabled_actions_cannot_claim() {
         read::<AgentGpu>(&d, &q, &s.agent_buffers[0], 2)
     };
     let mut intent = DecisionGpu {
-        selected_action: 3,
+        selected_action: 2,
         target: 1,
         target_generation: 2,
         amount: 1.0,
@@ -344,7 +355,7 @@ fn stale_targets_out_of_range_and_disabled_actions_cannot_claim() {
     put(&s, &q, 1, b, &fixed(0, [0.0; 2]));
     // Disabled force from receiver must not defeat a valid transfer in arbitration.
     let force = DecisionGpu {
-        selected_action: 4,
+        selected_action: 3,
         target: 0,
         target_generation: 1,
         amount: 1.0,
@@ -353,21 +364,19 @@ fn stale_targets_out_of_range_and_disabled_actions_cannot_claim() {
     near(run(&s, &[intent, force])[1].food, 1.0);
 }
 #[test]
-fn attention_amount_and_failed_actions_remain_controller_owned() {
+fn amount_and_failed_actions_remain_controller_owned() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let a = body([602.0, 902.0]);
-    let mut g = fixed(3, [0.2, 0.0]); // no target exists
-    g[OUTPUT_BASE + 9 * 17 + 16] = 1.0;
-    g[OUTPUT_BASE + 10 * 17 + 16] = -2.0;
+    let mut g = fixed(2, [0.2, 0.0]); // no target exists
+    g[OUTPUT_BASE + 8 * 17 + 16] = -2.0;
     put(&s, &q, 0, a, &g);
     step(&mut s, &d, &q, 1);
     let b = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
     let intent = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 1)[0];
-    assert_eq!(b.action, 3);
-    near(b.food, a.food);
+    assert_eq!(b.action, 2);
+    near(b.food + b.ingested, a.food);
     assert!(b.position[0] > a.position[0]);
-    near(b.attention, 1.0f32.tanh() * 0.25);
     near(intent.amount, 1.0 / (1.0 + 2.0f32.exp()));
 }
 #[test]
@@ -378,7 +387,7 @@ fn founder_export_requires_descendants_and_preserves_existing_files() {
     let path = temp("founders.json");
     assert!(s.export_founders(&d, &q, &path).is_err());
     assert!(!path.exists());
-    put(&s, &q, 0, body([602.0, 902.0]), &fixed(6, [0.0; 2]));
+    put(&s, &q, 0, body([602.0, 902.0]), &fixed(5, [0.0; 2]));
     step(&mut s, &d, &q, 1);
     s.export_founders(&d, &q, &path).unwrap();
     let before = std::fs::read(&path).unwrap();
@@ -498,9 +507,9 @@ fn body(pos: [f32; 2]) -> AgentGpu {
 fn fixed(action: usize, motion: [f32; 2]) -> [f32; GENOME_SIZE] {
     let mut g = [0.0; GENOME_SIZE];
     g[OUTPUT_BASE + action * 17 + 16] = 2.0;
-    g[OUTPUT_BASE + 7 * 17 + 16] = motion[0];
-    g[OUTPUT_BASE + 8 * 17 + 16] = motion[1];
-    g[OUTPUT_BASE + 10 * 17 + 16] = 3.0;
+    g[OUTPUT_BASE + 6 * 17 + 16] = motion[0];
+    g[OUTPUT_BASE + 7 * 17 + 16] = motion[1];
+    g[OUTPUT_BASE + 8 * 17 + 16] = 3.0;
     g
 }
 fn put(s: &Simulation, q: &wgpu::Queue, slot: usize, a: AgentGpu, g: &[f32; GENOME_SIZE]) {
@@ -526,7 +535,7 @@ fn temp(name: &str) -> std::path::PathBuf {
 
 #[test]
 fn layout_and_cli_contract() {
-    assert_eq!(GENOME_SIZE, 1568);
+    assert_eq!(GENOME_SIZE, 1518);
     assert_eq!(std::mem::size_of::<AgentGpu>(), 208);
     assert_eq!(std::mem::size_of::<PerceptionGpu>(), 272);
     assert_eq!(std::mem::size_of::<DecisionGpu>(), 384);
@@ -561,19 +570,19 @@ fn recurrent_cpu_gpu_parity_and_observer_isolation() {
     let expected = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 1)[0];
     let mut hidden = [0.0; 16];
     for (h, value) in hidden.iter_mut().enumerate() {
-        let row = h * 81;
-        let mut v = g[row + 80];
-        for k in 0..64 {
+        let row = h * RECURRENT_ROW;
+        let mut v = g[row + RECURRENT_ROW - 1];
+        for k in 0..crate::model::INPUTS {
             v += g[row + k] * expected.inputs[k];
         }
         for k in 0..16 {
-            v += g[row + 64 + k] * a.hidden[k];
+            v += g[row + crate::model::INPUTS + k] * a.hidden[k];
         }
         *value = v.tanh();
         near(*value, expected.hidden[h]);
     }
-    for o in 0..7 {
-        let row = 1296 + o * 17;
+    for o in 0..6 {
+        let row = OUTPUT_BASE + o * 17;
         let mut v = g[row + 16];
         for h in 0..16 {
             v += g[row + h] * hidden[h];
@@ -596,11 +605,11 @@ fn recurrent_cpu_gpu_parity_and_observer_isolation() {
     assert_eq!(read::<f32>(&d, &q, &s.genome_buffer, GENOME_SIZE), g);
 }
 #[test]
-fn perception_is_local_and_attention_uses_true_coordinates() {
+fn perception_is_local_and_compass_aligned() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let mut a = body([602.0, 902.0]);
-    a.attention = std::f32::consts::FRAC_PI_2;
+    a.body_padding = std::f32::consts::FRAC_PI_2;
     put(&s, &q, 0, a, &fixed(0, [0.0; 2]));
     let mut food = vec![0u32; 512 * 512];
     food[225 * 512 + 151] = 700;
@@ -610,9 +619,9 @@ fn perception_is_local_and_attention_uses_true_coordinates() {
     put(&s, &q, 1, far, &fixed(0, [0.0; 2]));
     step(&mut s, &d, &q, 1);
     let p = read::<PerceptionGpu>(&d, &q, &s.perception_buffer, 1)[0];
-    near(p.samples[0].offset[0], 4.0);
-    near(p.samples[0].offset[1], 0.0);
-    near(p.samples[0].food, 0.7);
+    near(p.samples[1].offset[0], 4.0);
+    near(p.samples[1].offset[1], 0.0);
+    near(p.samples[1].food, 0.7);
     assert!(
         p.samples
             .iter()
@@ -636,19 +645,73 @@ fn physical_collection_ingestion_and_movement_conserve_reserves() {
     step(&mut s, &d, &q, 1);
     let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
     let food = read::<u32>(&d, &q, &s.resource_buffer, 512 * 512);
-    near(food[idx as usize] as f32 / 1000.0 + after.food, 1.0);
-    near(after.food, after.collected);
-    near(after.energy + after.spent, 50.0);
+    near(
+        food[idx as usize] as f32 / 1000.0 + after.food + after.ingested,
+        1.0,
+    );
+    near(after.food + after.ingested, after.collected);
+    near(after.energy + after.spent, 50.0 + 8.0 * after.ingested);
     assert!(after.velocity[0] > 0.0);
     assert!(after.collected > 0.0);
     let mut a = after;
     a.energy = 50.0;
     a.food = 1.0;
-    put(&s, &q, 0, a, &fixed(2, [0.0; 2]));
+    put(&s, &q, 0, a, &fixed(0, [0.0; 2]));
     step(&mut s, &d, &q, 1);
     let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
     near(after.energy + after.food * 8.0 + after.spent, 58.0);
     assert!(after.ingested > 0.0);
+}
+#[test]
+fn digestion_is_inventory_limited_rate_limited_and_energy_capped() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    // Independent of action amount; no food or energy is granted when empty.
+    for (energy, inventory, expected) in [
+        (50.0, 2.0, 0.1),
+        (50.0, 0.03, 0.03),
+        (50.0, 0.0, 0.0),
+        (99.8, 2.0, 0.025),
+        (100.0, 2.0, 0.0),
+        (0.01, 0.1, 0.1),
+    ] {
+        let mut a = body([602.0, 902.0]);
+        a.energy = energy;
+        a.food = inventory;
+        let mut g = fixed(0, [0.0; 2]);
+        g[OUTPUT_BASE + 8 * 17 + 16] = -4.0;
+        put(&s, &q, 0, a, &g);
+        step(&mut s, &d, &q, 1);
+        let b = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
+        near(b.ingested, expected);
+        near(b.food + b.ingested, inventory);
+        near(b.energy + b.spent, energy + 8.0 * expected);
+        assert!(b.energy <= 100.0 && b.food >= 0.0);
+        assert_eq!(b.action, 0);
+        assert_eq!(b.alive, 1);
+    }
+}
+
+#[test]
+fn automatic_digestion_does_not_gather_unrequested_ground_food() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut a = body([602.0, 902.0]);
+    a.energy = 10.0;
+    a.food = 0.0;
+    put(&s, &q, 0, a, &fixed(0, [0.0; 2]));
+    let idx = 225 * 512 + 150;
+    q.write_buffer(&s.resource_buffer, idx * 4, bytemuck::bytes_of(&1000u32));
+    step(&mut s, &d, &q, 1);
+    let b = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
+    near(b.collected, 0.0);
+    near(b.ingested, 0.0);
+    near(b.food, 0.0);
+    near(b.energy, 9.94);
+    assert_eq!(
+        read::<u32>(&d, &q, &s.resource_buffer, 512 * 512)[idx as usize],
+        1000
+    );
 }
 #[test]
 fn reproduction_is_requested_can_coexist_with_motion_and_conserves() {
@@ -657,7 +720,7 @@ fn reproduction_is_requested_can_coexist_with_motion_and_conserves() {
     let mut a = body([602.0, 902.0]);
     a.energy = 90.0;
     a.hidden = [0.5; 16];
-    let g = fixed(6, [0.5, 0.0]);
+    let g = fixed(5, [0.5, 0.0]);
     put(&s, &q, 0, a, &g);
     step(&mut s, &d, &q, 1);
     let agents = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
@@ -668,14 +731,14 @@ fn reproduction_is_requested_can_coexist_with_motion_and_conserves() {
     assert_eq!(c.parent_lineage, p.lineage_id);
     assert_eq!(c.hidden, [0.0; 16]);
     assert!(p.velocity[0] > 0.0);
-    near(p.food + c.food, a.food);
+    near(p.food + c.food + p.ingested, a.food);
     near(
         p.energy
             + c.energy
             + s.settings.metabolic_cost
             + p.velocity[0].abs() * s.settings.movement_energy_cost
             + 10.0,
-        90.0,
+        90.0 + 8.0 * p.ingested,
     );
     assert_eq!(s.metrics(&d, &q).unwrap().events[3], 1);
     step(&mut s, &d, &q, 1);
@@ -703,14 +766,17 @@ fn transfer_and_signal_are_local_and_payload_is_controller_owned() {
     let mut b = body([604.0, 902.0]);
     b.food = 0.0;
     b.lineage_id = 2;
-    put(&s, &q, 0, a, &fixed(3, [0.0; 2]));
+    put(&s, &q, 0, a, &fixed(2, [0.0; 2]));
     put(&s, &q, 1, b, &fixed(0, [0.0; 2]));
     step(&mut s, &d, &q, 1);
     let bodies = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
-    near(bodies[0].food + bodies[1].food, 2.0);
+    near(
+        bodies[0].food + bodies[1].food + bodies[0].ingested + bodies[1].ingested,
+        2.0,
+    );
     assert!(bodies[1].received > 0.0);
-    let mut g = fixed(5, [0.0; 2]);
-    g[1296 + 11 * 17 + 16] = -0.7;
+    let mut g = fixed(4, [0.0; 2]);
+    g[OUTPUT_BASE + 9 * 17 + 16] = -0.7;
     let mut a = bodies[0];
     a.last_communication = 0;
     s.tick = 10;
@@ -730,17 +796,20 @@ fn force_spills_instead_of_directly_stealing_and_costs_energy() {
     let mut b = body([604.0, 902.0]);
     b.energy = 10.0;
     b.lineage_id = 2;
-    put(&s, &q, 0, a, &fixed(4, [0.0; 2]));
+    put(&s, &q, 0, a, &fixed(3, [0.0; 2]));
     put(&s, &q, 1, b, &fixed(0, [0.0; 2]));
     step(&mut s, &d, &q, 1);
     let agents = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
     let m = s.metrics(&d, &q).unwrap();
-    near(agents[0].food, a.food);
-    near((m.carried_food + m.dropped_food) as f32, 4.0);
+    near(agents[0].food + agents[0].ingested, a.food);
+    near(
+        (m.carried_food + m.dropped_food) as f32 + agents[0].ingested + agents[1].ingested,
+        4.0,
+    );
     assert_eq!(m.events[5], 1);
     near(
         (m.energy + m.force_energy_spent) as f32,
-        100.0 - 2.0 * s.settings.metabolic_cost,
+        100.0 + 8.0 * (agents[0].ingested + agents[1].ingested) - 2.0 * s.settings.metabolic_cost,
     );
 }
 #[test]
