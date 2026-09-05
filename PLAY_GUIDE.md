@@ -6,7 +6,9 @@ broad adaptation goal. See CONTROLLER.md for what is authored and what can evolv
 
 Double-click **Play.cmd**, or run `.\Play.ps1` from this folder.
 The launcher builds the current source in `target/play` before starting it.
-The window/inspector should identify **build0.3.0-dev**, physiology-v2/checkpoint14.
+The window/inspector should identify **build0.3.1-dev**, physiology-v2/checkpoint14.
+This includes live inspection and new-file saves. The frozen training executable
+remains0.3.0-dev; it has the same v2 body and bank format but the older inspector.
 This is a local sandbox: no account, server, Python trainer or external model
 is needed to play. Rust and a supported GPU are needed for the launcher build.
 

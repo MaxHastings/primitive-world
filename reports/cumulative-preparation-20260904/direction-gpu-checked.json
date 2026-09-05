@@ -1,0 +1,1439 @@
+[
+  {
+    "bank_name": "physiology-v2-unprepared-frozen-bootstrap-128",
+    "bank_sha256": "34c32e136ed80d34845ce9a7cf298ccf7f848eb67ee6e67115c002b3f8750b65",
+    "gpu_report_sha256": "e7e5786699af86c796f5494ccc897baaaf3d1dc78aa009dc6e3aef36971c88a1",
+    "maximum_cpu_gpu_motor_error": 1.8113545352527183e-07,
+    "cases": [
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "bare",
+        "inventory": 0.0,
+        "mean_vx": -0.0012518122803157894,
+        "mean_vy": 0.006449537768162372,
+        "left": 62,
+        "right": 66
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "north",
+        "inventory": 0.0,
+        "mean_vx": -0.0011969967981713125,
+        "mean_vy": -0.04162117458099601,
+        "left": 62,
+        "right": 66
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "right",
+        "inventory": 0.0,
+        "mean_vx": 0.04658264885307517,
+        "mean_vy": 0.006433708378249747,
+        "left": 21,
+        "right": 107
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "south",
+        "inventory": 0.0,
+        "mean_vx": -0.0013050694133198704,
+        "mean_vy": 0.05433458539505409,
+        "left": 62,
+        "right": 66
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "left",
+        "inventory": 0.0,
+        "mean_vx": -0.049064802605016666,
+        "mean_vy": 0.0063943847490577355,
+        "left": 109,
+        "right": 19
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "bare",
+        "inventory": 0.0,
+        "mean_vx": -0.0012518122803157894,
+        "mean_vy": 0.006449537768162372,
+        "left": 62,
+        "right": 66
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "north",
+        "inventory": 0.0,
+        "mean_vx": -0.0007076314256906358,
+        "mean_vy": -0.4457914065569639,
+        "left": 63,
+        "right": 65
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "right",
+        "inventory": 0.0,
+        "mean_vx": 0.44842112995684147,
+        "mean_vy": 0.006292101284088858,
+        "left": 0,
+        "right": 128
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "south",
+        "inventory": 0.0,
+        "mean_vx": -0.001774591808043624,
+        "mean_vy": 0.45540419104509056,
+        "left": 63,
+        "right": 65
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "left",
+        "inventory": 0.0,
+        "mean_vx": -0.4503707804251462,
+        "mean_vy": 0.005901535645989497,
+        "left": 128,
+        "right": 0
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "bare",
+        "inventory": 0.0,
+        "mean_vx": -0.001173776761334011,
+        "mean_vy": 0.00684438659703801,
+        "left": 62,
+        "right": 66
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "north",
+        "inventory": 0.0,
+        "mean_vx": -0.001118881818229056,
+        "mean_vy": -0.04121908778552097,
+        "left": 62,
+        "right": 66
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "right",
+        "inventory": 0.0,
+        "mean_vx": 0.046653666791826254,
+        "mean_vy": 0.0068285850818483596,
+        "left": 21,
+        "right": 107
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "south",
+        "inventory": 0.0,
+        "mean_vx": -0.001226772431664358,
+        "mean_vy": 0.054721029386200826,
+        "left": 62,
+        "right": 66
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "left",
+        "inventory": 0.0,
+        "mean_vx": -0.04897974557411544,
+        "mean_vy": 0.006789143707464973,
+        "left": 109,
+        "right": 19
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "bare",
+        "inventory": 0.0,
+        "mean_vx": -0.001173776761334011,
+        "mean_vy": 0.00684438659703801,
+        "left": 62,
+        "right": 66
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "north",
+        "inventory": 0.0,
+        "mean_vx": -0.0006288675788255205,
+        "mean_vy": -0.4453637369442731,
+        "left": 63,
+        "right": 65
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "right",
+        "inventory": 0.0,
+        "mean_vx": 0.44844305934384465,
+        "mean_vy": 0.006687554224299674,
+        "left": 0,
+        "right": 128
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "south",
+        "inventory": 0.0,
+        "mean_vx": -0.0016937415821303148,
+        "mean_vy": 0.4556726315058768,
+        "left": 62,
+        "right": 66
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "left",
+        "inventory": 0.0,
+        "mean_vx": -0.4502391282003373,
+        "mean_vy": 0.006295441951124303,
+        "left": 128,
+        "right": 0
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "bare",
+        "inventory": 2.0,
+        "mean_vx": -0.001372138355691277,
+        "mean_vy": 0.0075269222134011216,
+        "left": 64,
+        "right": 64
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "north",
+        "inventory": 2.0,
+        "mean_vx": -0.0013172642602512497,
+        "mean_vy": -0.04053349250489191,
+        "left": 64,
+        "right": 64
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "right",
+        "inventory": 2.0,
+        "mean_vx": 0.04645465219346079,
+        "mean_vy": 0.0075111961051419485,
+        "left": 20,
+        "right": 108
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "south",
+        "inventory": 2.0,
+        "mean_vx": -0.001425145686880569,
+        "mean_vy": 0.05539768252765498,
+        "left": 64,
+        "right": 64
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "left",
+        "inventory": 2.0,
+        "mean_vx": -0.049176591882314824,
+        "mean_vy": 0.007471719136447064,
+        "left": 108,
+        "right": 20
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "bare",
+        "inventory": 2.0,
+        "mean_vx": -0.001372138355691277,
+        "mean_vy": 0.0075269222134011216,
+        "left": 64,
+        "right": 64
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "north",
+        "inventory": 2.0,
+        "mean_vx": -0.0008275465120277659,
+        "mean_vy": -0.4447547155432403,
+        "left": 62,
+        "right": 66
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "right",
+        "inventory": 2.0,
+        "mean_vx": 0.44826809666119516,
+        "mean_vy": 0.007371150421022321,
+        "left": 0,
+        "right": 128
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "south",
+        "inventory": 2.0,
+        "mean_vx": -0.0018920308675660635,
+        "mean_vy": 0.4562123534269631,
+        "left": 63,
+        "right": 65
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "left",
+        "inventory": 2.0,
+        "mean_vx": -0.4503939081914723,
+        "mean_vy": 0.006978366644034395,
+        "left": 128,
+        "right": 0
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "bare",
+        "inventory": 2.0,
+        "mean_vx": -0.0014794750500186638,
+        "mean_vy": 0.0077492417889288845,
+        "left": 69,
+        "right": 59
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "north",
+        "inventory": 2.0,
+        "mean_vx": -0.0014244767411355497,
+        "mean_vy": -0.040292802173894415,
+        "left": 68,
+        "right": 60
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "right",
+        "inventory": 2.0,
+        "mean_vx": 0.0463286795474005,
+        "mean_vy": 0.00773354331408882,
+        "left": 22,
+        "right": 106
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "south",
+        "inventory": 2.0,
+        "mean_vx": -0.0015320654171517845,
+        "mean_vy": 0.05560105778903335,
+        "left": 69,
+        "right": 59
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "left",
+        "inventory": 2.0,
+        "mean_vx": -0.04926475274623954,
+        "mean_vy": 0.007693977975577582,
+        "left": 105,
+        "right": 23
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "bare",
+        "inventory": 2.0,
+        "mean_vx": -0.0014794750500186638,
+        "mean_vy": 0.0077492417889288845,
+        "left": 69,
+        "right": 59
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "north",
+        "inventory": 2.0,
+        "mean_vx": -0.000933745453494339,
+        "mean_vy": -0.4443842265754938,
+        "left": 65,
+        "right": 63
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "right",
+        "inventory": 2.0,
+        "mean_vx": 0.44803989329375327,
+        "mean_vy": 0.007594193433760665,
+        "left": 0,
+        "right": 128
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "south",
+        "inventory": 2.0,
+        "mean_vx": -0.0019949474262830336,
+        "mean_vy": 0.45624428358860314,
+        "left": 66,
+        "right": 62
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "left",
+        "inventory": 2.0,
+        "mean_vx": -0.4503263619262725,
+        "mean_vy": 0.007200036831415346,
+        "left": 128,
+        "right": 0
+      }
+    ],
+    "reversal_sequences": [
+      {
+        "food_on_probes": 0.019999999552965164,
+        "phases": [
+          {
+            "food_side": "right",
+            "mean_vx": 0.04615726250813168,
+            "left": 22,
+            "right": 106
+          },
+          {
+            "food_side": "left",
+            "mean_vx": -0.04991640200933034,
+            "left": 107,
+            "right": 21
+          }
+        ]
+      },
+      {
+        "food_on_probes": 0.019999999552965164,
+        "phases": [
+          {
+            "food_side": "left",
+            "mean_vx": -0.0499164021020988,
+            "left": 107,
+            "right": 21
+          },
+          {
+            "food_side": "right",
+            "mean_vx": 0.046157262857377646,
+            "left": 22,
+            "right": 106
+          }
+        ]
+      },
+      {
+        "food_on_probes": 0.20000000298023224,
+        "phases": [
+          {
+            "food_side": "right",
+            "mean_vx": 0.449731754953973,
+            "left": 0,
+            "right": 128
+          },
+          {
+            "food_side": "left",
+            "mean_vx": -0.4522316809743643,
+            "left": 128,
+            "right": 0
+          }
+        ]
+      },
+      {
+        "food_on_probes": 0.20000000298023224,
+        "phases": [
+          {
+            "food_side": "left",
+            "mean_vx": -0.4522316809743643,
+            "left": 128,
+            "right": 0
+          },
+          {
+            "food_side": "right",
+            "mean_vx": 0.449731754953973,
+            "left": 0,
+            "right": 128
+          }
+        ]
+      }
+    ],
+    "scope": "Actual GPU decision shader with synthetic mirrored perception, not full-world simulation. First decisions have empty state. Sequences hold adult age500, energy50, inventory2 and position fixed, carry hidden state, last action and motor feedback; cue reverses after64 of128 updates. No births, selection, sensing dispatch or ecological fitness measured."
+  },
+  {
+    "bank_name": "physiology-v2-descendants-seed1-tick65536",
+    "bank_sha256": "47661fda0c639adc62af5e7c28fade7bfa3c16ed9edd1bc9ae55a6d68a444704",
+    "gpu_report_sha256": "ff734da8f77a7918274ff478abffd7214461b40e7dfd9ed589378dd5655f0701",
+    "maximum_cpu_gpu_motor_error": 2.2770225349688644e-07,
+    "cases": [
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "bare",
+        "inventory": 0.0,
+        "mean_vx": -0.02869919239622476,
+        "mean_vy": 0.1218518726154798,
+        "left": 100,
+        "right": 28
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "north",
+        "inventory": 0.0,
+        "mean_vx": -0.029982913397816446,
+        "mean_vy": 0.07029373559453234,
+        "left": 101,
+        "right": 27
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "right",
+        "inventory": 0.0,
+        "mean_vx": 0.01958030685545964,
+        "mean_vy": 0.12014173367106196,
+        "left": 29,
+        "right": 99
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "south",
+        "inventory": 0.0,
+        "mean_vx": -0.02723744687591534,
+        "mean_vy": 0.1720185400918126,
+        "left": 100,
+        "right": 28
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "left",
+        "inventory": 0.0,
+        "mean_vx": -0.0770658187477693,
+        "mean_vy": 0.12314573592448141,
+        "left": 127,
+        "right": 1
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "bare",
+        "inventory": 0.0,
+        "mean_vx": -0.02869919239622476,
+        "mean_vy": 0.1218518726154798,
+        "left": 100,
+        "right": 28
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "north",
+        "inventory": 0.0,
+        "mean_vx": -0.04148289512812653,
+        "mean_vy": -0.3797743202885613,
+        "left": 90,
+        "right": 38
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "right",
+        "inventory": 0.0,
+        "mean_vx": 0.4271641548257321,
+        "mean_vy": 0.10489970397441084,
+        "left": 0,
+        "right": 128
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "south",
+        "inventory": 0.0,
+        "mean_vx": -0.013697151480982939,
+        "mean_vy": 0.5741518787108362,
+        "left": 82,
+        "right": 46
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "left",
+        "inventory": 0.0,
+        "mean_vx": -0.4753805254586041,
+        "mean_vy": 0.1346451353019802,
+        "left": 128,
+        "right": 0
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "bare",
+        "inventory": 0.0,
+        "mean_vx": -0.034810535803899256,
+        "mean_vy": 0.128977158194175,
+        "left": 114,
+        "right": 14
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "north",
+        "inventory": 0.0,
+        "mean_vx": -0.03609974545355499,
+        "mean_vy": 0.07739338169176335,
+        "left": 113,
+        "right": 15
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "right",
+        "inventory": 0.0,
+        "mean_vx": 0.013467367972680222,
+        "mean_vy": 0.12726479112461675,
+        "left": 31,
+        "right": 97
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "south",
+        "inventory": 0.0,
+        "mean_vx": -0.033355893864154496,
+        "mean_vy": 0.1791434238130023,
+        "left": 112,
+        "right": 16
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "left",
+        "inventory": 0.0,
+        "mean_vx": -0.08315692170435796,
+        "mean_vy": 0.13026072359934915,
+        "left": 127,
+        "right": 1
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "bare",
+        "inventory": 0.0,
+        "mean_vx": -0.034810535803899256,
+        "mean_vy": 0.128977158194175,
+        "left": 114,
+        "right": 14
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "north",
+        "inventory": 0.0,
+        "mean_vx": -0.047636469615099486,
+        "mean_vy": -0.37363355117850006,
+        "left": 102,
+        "right": 26
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "right",
+        "inventory": 0.0,
+        "mean_vx": 0.4213326678145677,
+        "mean_vy": 0.11200886705773883,
+        "left": 0,
+        "right": 128
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "south",
+        "inventory": 0.0,
+        "mean_vx": -0.019869444551090965,
+        "mean_vy": 0.5801501390524209,
+        "left": 92,
+        "right": 36
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "left",
+        "inventory": 0.0,
+        "mean_vx": -0.48042700719088316,
+        "mean_vy": 0.14165150033659302,
+        "left": 128,
+        "right": 0
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "bare",
+        "inventory": 2.0,
+        "mean_vx": -0.10579443706956226,
+        "mean_vy": 0.14499682767200284,
+        "left": 126,
+        "right": 2
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "north",
+        "inventory": 2.0,
+        "mean_vx": -0.10706390973791713,
+        "mean_vy": 0.09354911039190483,
+        "left": 126,
+        "right": 2
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "right",
+        "inventory": 2.0,
+        "mean_vx": -0.057749638701352524,
+        "mean_vy": 0.14328716206364334,
+        "left": 119,
+        "right": 9
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "south",
+        "inventory": 2.0,
+        "mean_vx": -0.10434792996238684,
+        "mean_vy": 0.194961826196959,
+        "left": 126,
+        "right": 2
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "left",
+        "inventory": 2.0,
+        "mean_vx": -0.1536502583476249,
+        "mean_vy": 0.14628255112620536,
+        "left": 128,
+        "right": 0
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "bare",
+        "inventory": 2.0,
+        "mean_vx": -0.10579443706956226,
+        "mean_vy": 0.14499682767200284,
+        "left": 126,
+        "right": 2
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "north",
+        "inventory": 2.0,
+        "mean_vx": -0.11832950440293644,
+        "mean_vy": -0.35854166955687106,
+        "left": 126,
+        "right": 2
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "right",
+        "inventory": 2.0,
+        "mean_vx": 0.35792974510695785,
+        "mean_vy": 0.12804181266983505,
+        "left": 0,
+        "right": 128
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "south",
+        "inventory": 2.0,
+        "mean_vx": -0.09090799506157055,
+        "mean_vy": 0.5922086851205677,
+        "left": 123,
+        "right": 5
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "left",
+        "inventory": 2.0,
+        "mean_vx": -0.53827715665102,
+        "mean_vy": 0.15767927482374944,
+        "left": 128,
+        "right": 0
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "bare",
+        "inventory": 2.0,
+        "mean_vx": -0.10344136605635867,
+        "mean_vy": 0.14624287765764166,
+        "left": 125,
+        "right": 3
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "north",
+        "inventory": 2.0,
+        "mean_vx": -0.10472455407580128,
+        "mean_vy": 0.09477554338081973,
+        "left": 125,
+        "right": 3
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "right",
+        "inventory": 2.0,
+        "mean_vx": -0.05540655515233084,
+        "mean_vy": 0.14452366376644932,
+        "left": 114,
+        "right": 14
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "south",
+        "inventory": 2.0,
+        "mean_vx": -0.10200738382081909,
+        "mean_vy": 0.1962360237230314,
+        "left": 125,
+        "right": 3
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "left",
+        "inventory": 2.0,
+        "mean_vx": -0.15128942054616346,
+        "mean_vy": 0.14751676174637396,
+        "left": 128,
+        "right": 0
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "bare",
+        "inventory": 2.0,
+        "mean_vx": -0.10344136605635867,
+        "mean_vy": 0.14624287765764166,
+        "left": 125,
+        "right": 3
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "north",
+        "inventory": 2.0,
+        "mean_vx": -0.1161111489891482,
+        "mean_vy": -0.3572108569787815,
+        "left": 124,
+        "right": 4
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "right",
+        "inventory": 2.0,
+        "mean_vx": 0.3592610063496977,
+        "mean_vy": 0.1292056141246576,
+        "left": 0,
+        "right": 128
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "south",
+        "inventory": 2.0,
+        "mean_vx": -0.08867099691178737,
+        "mean_vy": 0.5933868032880127,
+        "left": 120,
+        "right": 8
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "left",
+        "inventory": 2.0,
+        "mean_vx": -0.5360487825237215,
+        "mean_vy": 0.15879866227624007,
+        "left": 128,
+        "right": 0
+      }
+    ],
+    "reversal_sequences": [
+      {
+        "food_on_probes": 0.019999999552965164,
+        "phases": [
+          {
+            "food_side": "right",
+            "mean_vx": -0.09557670540260688,
+            "left": 120,
+            "right": 8
+          },
+          {
+            "food_side": "left",
+            "mean_vx": -0.21196456618054071,
+            "left": 128,
+            "right": 0
+          }
+        ]
+      },
+      {
+        "food_on_probes": 0.019999999552965164,
+        "phases": [
+          {
+            "food_side": "left",
+            "mean_vx": -0.2119645685015712,
+            "left": 128,
+            "right": 0
+          },
+          {
+            "food_side": "right",
+            "mean_vx": -0.09558182612880728,
+            "left": 120,
+            "right": 8
+          }
+        ]
+      },
+      {
+        "food_on_probes": 0.20000000298023224,
+        "phases": [
+          {
+            "food_side": "right",
+            "mean_vx": 0.42278433388855774,
+            "left": 0,
+            "right": 128
+          },
+          {
+            "food_side": "left",
+            "mean_vx": -0.6270576123497449,
+            "left": 128,
+            "right": 0
+          }
+        ]
+      },
+      {
+        "food_on_probes": 0.20000000298023224,
+        "phases": [
+          {
+            "food_side": "left",
+            "mean_vx": -0.6270643327734433,
+            "left": 128,
+            "right": 0
+          },
+          {
+            "food_side": "right",
+            "mean_vx": 0.42279519312432967,
+            "left": 0,
+            "right": 128
+          }
+        ]
+      }
+    ],
+    "scope": "Actual GPU decision shader with synthetic mirrored perception, not full-world simulation. First decisions have empty state. Sequences hold adult age500, energy50, inventory2 and position fixed, carry hidden state, last action and motor feedback; cue reverses after64 of128 updates. No births, selection, sensing dispatch or ecological fitness measured."
+  },
+  {
+    "bank_name": "physiology-v2-descendants-seed1108-tick65536",
+    "bank_sha256": "89790e952e2e91fc1b5af0c0173e95724ecda7fd767fec840af0fedd1f995fc2",
+    "gpu_report_sha256": "3d7d3c9c418cb3c4437fcef874c1dbfb55d0fb9a11ae812f21d4447956aba188",
+    "maximum_cpu_gpu_motor_error": 2.561615294327524e-07,
+    "cases": [
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "bare",
+        "inventory": 0.0,
+        "mean_vx": -0.023164808787896618,
+        "mean_vy": 0.05753091771748586,
+        "left": 83,
+        "right": 45
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "north",
+        "inventory": 0.0,
+        "mean_vx": -0.019270134531097938,
+        "mean_vy": -0.001630999487133522,
+        "left": 79,
+        "right": 49
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "right",
+        "inventory": 0.0,
+        "mean_vx": 0.02590943388895539,
+        "mean_vy": 0.05798255453987622,
+        "left": 47,
+        "right": 81
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "south",
+        "inventory": 0.0,
+        "mean_vx": -0.02415048687998933,
+        "mean_vy": 0.11423134825963643,
+        "left": 82,
+        "right": 46
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "left",
+        "inventory": 0.0,
+        "mean_vx": -0.07599185251183371,
+        "mean_vy": 0.06404666601179088,
+        "left": 113,
+        "right": 15
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "bare",
+        "inventory": 0.0,
+        "mean_vx": -0.023164808787896618,
+        "mean_vy": 0.05753091771748586,
+        "left": 83,
+        "right": 45
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "north",
+        "inventory": 0.0,
+        "mean_vx": 0.01612344544446387,
+        "mean_vy": -0.4959878702647984,
+        "left": 57,
+        "right": 71
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "right",
+        "inventory": 0.0,
+        "mean_vx": 0.440661990782246,
+        "mean_vy": 0.06193449330726253,
+        "left": 0,
+        "right": 128
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "south",
+        "inventory": 0.0,
+        "mean_vx": -0.032747164784439065,
+        "mean_vy": 0.5710079080890864,
+        "left": 96,
+        "right": 32
+      },
+      {
+        "energy": 10.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "left",
+        "inventory": 0.0,
+        "mean_vx": -0.5093632515054196,
+        "mean_vy": 0.12162423707559356,
+        "left": 128,
+        "right": 0
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "bare",
+        "inventory": 0.0,
+        "mean_vx": -0.013502147163706013,
+        "mean_vy": 0.06800129293515056,
+        "left": 70,
+        "right": 58
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "north",
+        "inventory": 0.0,
+        "mean_vx": -0.00964700999793422,
+        "mean_vy": 0.008893370650184806,
+        "left": 68,
+        "right": 60
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "right",
+        "inventory": 0.0,
+        "mean_vx": 0.03558685651069027,
+        "mean_vy": 0.0684353741871746,
+        "left": 33,
+        "right": 95
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "south",
+        "inventory": 0.0,
+        "mean_vx": -0.01448262078542939,
+        "mean_vy": 0.12463376313098706,
+        "left": 74,
+        "right": 54
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "left",
+        "inventory": 0.0,
+        "mean_vx": -0.0663416834979671,
+        "mean_vy": 0.07448928240955865,
+        "left": 115,
+        "right": 13
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "bare",
+        "inventory": 0.0,
+        "mean_vx": -0.013502147163706013,
+        "mean_vy": 0.06800129293515056,
+        "left": 70,
+        "right": 58
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "north",
+        "inventory": 0.0,
+        "mean_vx": 0.02546081489435892,
+        "mean_vy": -0.4859005769249052,
+        "left": 50,
+        "right": 78
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "right",
+        "inventory": 0.0,
+        "mean_vx": 0.44871155289001763,
+        "mean_vy": 0.07221252562931113,
+        "left": 0,
+        "right": 128
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "south",
+        "inventory": 0.0,
+        "mean_vx": -0.02302486624694211,
+        "mean_vy": 0.5788726792670786,
+        "left": 88,
+        "right": 40
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "left",
+        "inventory": 0.0,
+        "mean_vx": -0.5021087711211294,
+        "mean_vy": 0.13187848550296621,
+        "left": 128,
+        "right": 0
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "bare",
+        "inventory": 2.0,
+        "mean_vx": -0.1240130143269198,
+        "mean_vy": 0.12450263959271979,
+        "left": 127,
+        "right": 1
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "north",
+        "inventory": 2.0,
+        "mean_vx": -0.1201947160589043,
+        "mean_vy": 0.06577501790764018,
+        "left": 127,
+        "right": 1
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "right",
+        "inventory": 2.0,
+        "mean_vx": -0.0752478572619566,
+        "mean_vy": 0.12493682179774623,
+        "left": 119,
+        "right": 9
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "south",
+        "inventory": 2.0,
+        "mean_vx": -0.12497761560371146,
+        "mean_vy": 0.18052647668810096,
+        "left": 127,
+        "right": 1
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "left",
+        "inventory": 2.0,
+        "mean_vx": -0.17612946080043912,
+        "mean_vy": 0.13093742483033566,
+        "left": 128,
+        "right": 0
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "bare",
+        "inventory": 2.0,
+        "mean_vx": -0.1240130143269198,
+        "mean_vy": 0.12450263959271979,
+        "left": 127,
+        "right": 1
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "north",
+        "inventory": 2.0,
+        "mean_vx": -0.08531341274283477,
+        "mean_vy": -0.43758430262096226,
+        "left": 122,
+        "right": 6
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "right",
+        "inventory": 2.0,
+        "mean_vx": 0.35046048287767917,
+        "mean_vy": 0.12871215483755805,
+        "left": 0,
+        "right": 128
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "south",
+        "inventory": 2.0,
+        "mean_vx": -0.1333301297199796,
+        "mean_vy": 0.6211004022043198,
+        "left": 127,
+        "right": 1
+      },
+      {
+        "energy": 50.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "left",
+        "inventory": 2.0,
+        "mean_vx": -0.5912149355281144,
+        "mean_vy": 0.18781854373810347,
+        "left": 128,
+        "right": 0
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "bare",
+        "inventory": 2.0,
+        "mean_vx": -0.09479057767816812,
+        "mean_vy": 0.12256403271021554,
+        "left": 116,
+        "right": 12
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "north",
+        "inventory": 2.0,
+        "mean_vx": -0.09104165010444376,
+        "mean_vy": 0.06388245477955934,
+        "left": 116,
+        "right": 12
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "right",
+        "inventory": 2.0,
+        "mean_vx": -0.04591733143456622,
+        "mean_vy": 0.12296384128421778,
+        "left": 91,
+        "right": 37
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "south",
+        "inventory": 2.0,
+        "mean_vx": -0.09575065918443215,
+        "mean_vy": 0.17861346884455997,
+        "left": 116,
+        "right": 12
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.019999999552965164,
+        "food_side": "left",
+        "inventory": 2.0,
+        "mean_vx": -0.14702059237970388,
+        "mean_vy": 0.12895829817171034,
+        "left": 127,
+        "right": 1
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "bare",
+        "inventory": 2.0,
+        "mean_vx": -0.09479057767816812,
+        "mean_vy": 0.12256403271021554,
+        "left": 116,
+        "right": 12
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "north",
+        "inventory": 2.0,
+        "mean_vx": -0.05674602691397013,
+        "mean_vy": -0.4372864330653101,
+        "left": 105,
+        "right": 23
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "right",
+        "inventory": 2.0,
+        "mean_vx": 0.3762420890852809,
+        "mean_vy": 0.12641431855081464,
+        "left": 0,
+        "right": 128
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "south",
+        "inventory": 2.0,
+        "mean_vx": -0.10406027481440105,
+        "mean_vy": 0.6193492985330522,
+        "left": 117,
+        "right": 11
+      },
+      {
+        "energy": 100.0,
+        "food_on_probes": 0.20000000298023224,
+        "food_side": "left",
+        "inventory": 2.0,
+        "mean_vx": -0.5683151567354798,
+        "mean_vy": 0.1855969517491758,
+        "left": 128,
+        "right": 0
+      }
+    ],
+    "reversal_sequences": [
+      {
+        "food_on_probes": 0.019999999552965164,
+        "phases": [
+          {
+            "food_side": "right",
+            "mean_vx": -0.21894182056507816,
+            "left": 126,
+            "right": 2
+          },
+          {
+            "food_side": "left",
+            "mean_vx": -0.4033558684895979,
+            "left": 128,
+            "right": 0
+          }
+        ]
+      },
+      {
+        "food_on_probes": 0.019999999552965164,
+        "phases": [
+          {
+            "food_side": "left",
+            "mean_vx": -0.40338030910061207,
+            "left": 128,
+            "right": 0
+          },
+          {
+            "food_side": "right",
+            "mean_vx": -0.21958242750838508,
+            "left": 126,
+            "right": 2
+          }
+        ]
+      },
+      {
+        "food_on_probes": 0.20000000298023224,
+        "phases": [
+          {
+            "food_side": "right",
+            "mean_vx": 0.5968745541467797,
+            "left": 0,
+            "right": 128
+          },
+          {
+            "food_side": "left",
+            "mean_vx": -0.8691179282031953,
+            "left": 128,
+            "right": 0
+          }
+        ]
+      },
+      {
+        "food_on_probes": 0.20000000298023224,
+        "phases": [
+          {
+            "food_side": "left",
+            "mean_vx": -0.8690180256962776,
+            "left": 128,
+            "right": 0
+          },
+          {
+            "food_side": "right",
+            "mean_vx": 0.5970299207838252,
+            "left": 0,
+            "right": 128
+          }
+        ]
+      }
+    ],
+    "scope": "Actual GPU decision shader with synthetic mirrored perception, not full-world simulation. First decisions have empty state. Sequences hold adult age500, energy50, inventory2 and position fixed, carry hidden state, last action and motor feedback; cue reverses after64 of128 updates. No births, selection, sensing dispatch or ecological fitness measured."
+  }
+]

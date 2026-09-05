@@ -1,6 +1,6 @@
 # Primitive World — physiology-v2 research branch
 
-**Experimental build0.3.0-dev · checkpoint14 · unprepared default founders.**
+**Experimental build0.3.1-dev · checkpoint14 · unprepared default founders.**
 This branch is not promoted. Main remains recurrent-v1/build0.2.0/checkpoint12.
 The broader [completion contract](GOAL_CONTRACT.md) is active and unachieved.
 
@@ -51,6 +51,22 @@ holds that executable and body fixed. It carries descendant weights through
 training worlds and evaluates separate snapshots. Evaluation descendants never
 feed training. A training extinction stops the chain without restoring an older
 bank. This is a development learning curve, not final eight-seed validation.
+
+The [completed campaign](reports/CUMULATIVE_BUDGET16.md) found survival1/3,1/3,
+2/3,3/3 across preparation budgets0,4,8,16; final baseline repeats again survived
+1/3. The16-world bank has1,048,576 preparation ticks. Its [directional bias and
+signal/memory limitations](reports/DIRECTION_AND_SIGNALS.md) remain visible;
+survival on three development seeds does not establish the broad goal.
+
+To watch that bank with the live-inspector/save fixes from this source:
+
+```powershell
+cargo run --release --target-dir target/play -- --founders .\reports\cumulative-preparation-20260904\bank-after16.json --seed 808
+```
+
+The bank is a locally preserved research artifact, not a promoted default.
+The exact frozen campaign executable remains in that report folder as world.exe
+(build0.3.0-dev); build0.3.1-dev changes inspection/persistence, not its body rules.
 
 The preserved local frozen artifacts are under reports/physiology-development-20260904.
 The cumulative runner requires that exact artifact set and writes a fresh output

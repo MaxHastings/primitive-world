@@ -1,0 +1,76 @@
+{
+  "executable_sha256": "7a2729ddbd68ccdad1a94d67b10e80ae2a93ce779044059bbb27c55aa6ccc4e5",
+  "executable_source_commit": "65e18b290bce58b9326142ef87e2d98723d363f8",
+  "baseline_sha256": "34c32e136ed80d34845ce9a7cf298ccf7f848eb67ee6e67115c002b3f8750b65",
+  "baseline_diagnostic": "C:\\Users\\Maxwell\\Documents\\ChatGPT\\ClownSimulator-physiology\\reports\\physiology-development-20260904",
+  "baseline_summary_sha256": "1b670bf58e9ef81bc158bdf7eae93aaaa378e8b87821aad63fc15962df7003b0",
+  "runner_sha256": "1ab69ff9f1c0dc5e41f3b217a406cedbcf2eda10329ff2710e55dc9704f58f9d",
+  "plan_sha256": "10ebc4b85f7c08868c845b19509640c67e913059ada701f6ab27dabe00263ac4",
+  "runner_source_commit": "a14a67854cc7a35f1410bceaf6256c255ddffd73",
+  "train_seeds": [
+    11,
+    22,
+    303,
+    404,
+    505,
+    606,
+    707,
+    1,
+    1101,
+    1102,
+    1103,
+    1104,
+    1105,
+    1106,
+    1107,
+    1108
+  ],
+  "episode_ticks": 65536,
+  "evaluations": {
+    "4": [
+      909,
+      1001,
+      808
+    ],
+    "8": [
+      1001,
+      808,
+      909
+    ],
+    "16": [
+      808,
+      909,
+      1001
+    ]
+  },
+  "final_baseline_repeats": [
+    808,
+    909,
+    1001
+  ],
+  "physical_settings": {
+    "birth_cooldown": 240,
+    "communication_enabled": true,
+    "consume_amount": 25.0,
+    "conversion_efficiency": 8.0,
+    "evolving_landscape": true,
+    "force_enabled": true,
+    "heterogeneity": 0.8500000238418579,
+    "maturity_age": 400.0,
+    "metabolic_cost": 0.05999999865889549,
+    "motor_response_gain": 4.0,
+    "movement_energy_cost": 0.009999999776482582,
+    "population": 1000,
+    "reproduction_cost": 50.0,
+    "resource_regeneration": 0.009999999776482582,
+    "sensor_radius": 24.0
+  },
+  "baseline_statistics": {
+    "genomes": 128,
+    "unique_genomes": 128,
+    "mean_within_bank_gene_variance": 3.30176478562314e-05,
+    "mean_genome_rms_difference_from_baseline": 0.0,
+    "scope": "Parameter change/diversity, not learned competence or a training loss."
+  },
+  "scope": "Development learning curve. No final holdouts, promotion or goal completion."
+}

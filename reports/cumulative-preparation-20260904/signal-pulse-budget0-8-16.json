@@ -1,0 +1,1160 @@
+[
+  {
+    "bank": "physiology-v2-unprepared-frozen-bootstrap-128",
+    "bank_sha256": "34c32e136ed80d34845ce9a7cf298ccf7f848eb67ee6e67115c002b3f8750b65",
+    "genomes": 128,
+    "cases": [
+      {
+        "energy": 10,
+        "inventory": 0,
+        "pulse": -0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.004725668823346386,
+            "maximum_hidden_delta": 0.004995585242018706,
+            "mean_motor_delta": 0.011881407250021488,
+            "maximum_motor_delta": 0.02654277171027936,
+            "action_changes": 0
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.00013919528198607107,
+            "maximum_hidden_delta": 0.00027678458206727846,
+            "mean_motor_delta": 0.0002737754902506225,
+            "maximum_motor_delta": 0.0007269034149523347,
+            "action_changes": 0
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 7.009632774154412e-08,
+            "maximum_hidden_delta": 1.6763836082310524e-07,
+            "mean_motor_delta": 1.349801900296241e-07,
+            "maximum_motor_delta": 4.209807856030539e-07,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 2.2116402841427455e-14,
+            "maximum_hidden_delta": 1.125974313787026e-13,
+            "mean_motor_delta": 4.732592885387197e-14,
+            "maximum_motor_delta": 2.14304734380126e-13,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 4.912791094074942e-20,
+            "maximum_hidden_delta": 1.734723475976807e-18,
+            "mean_motor_delta": 0.0,
+            "maximum_motor_delta": 0.0,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 4.912791094074942e-20,
+            "maximum_hidden_delta": 1.734723475976807e-18,
+            "mean_motor_delta": 0.0,
+            "maximum_motor_delta": 0.0,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 4.912791094074942e-20,
+            "maximum_hidden_delta": 1.734723475976807e-18,
+            "mean_motor_delta": 0.0,
+            "maximum_motor_delta": 0.0,
+            "action_changes": 0
+          }
+        ]
+      },
+      {
+        "energy": 10,
+        "inventory": 0,
+        "pulse": 0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.004725521348501533,
+            "maximum_hidden_delta": 0.004995221057125151,
+            "mean_motor_delta": 0.01188004491711731,
+            "maximum_motor_delta": 0.026563554097391535,
+            "action_changes": 0
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.00013919517582597623,
+            "maximum_hidden_delta": 0.00027679039059641357,
+            "mean_motor_delta": 0.0002737707332549475,
+            "maximum_motor_delta": 0.0007269242610463928,
+            "action_changes": 0
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 7.009660847801058e-08,
+            "maximum_hidden_delta": 1.6763350623935636e-07,
+            "mean_motor_delta": 1.3497691413532337e-07,
+            "maximum_motor_delta": 4.209426640250714e-07,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 2.2116191400827997e-14,
+            "maximum_hidden_delta": 1.1259396193175064e-13,
+            "mean_motor_delta": 4.7324564079526474e-14,
+            "maximum_motor_delta": 2.143125686087444e-13,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 4.2351647362715017e-20,
+            "maximum_hidden_delta": 3.469446951953614e-18,
+            "mean_motor_delta": 0.0,
+            "maximum_motor_delta": 0.0,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 4.2351647362715017e-20,
+            "maximum_hidden_delta": 3.469446951953614e-18,
+            "mean_motor_delta": 0.0,
+            "maximum_motor_delta": 0.0,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 4.2351647362715017e-20,
+            "maximum_hidden_delta": 3.469446951953614e-18,
+            "mean_motor_delta": 0.0,
+            "maximum_motor_delta": 0.0,
+            "action_changes": 0
+          }
+        ]
+      },
+      {
+        "energy": 50,
+        "inventory": 0,
+        "pulse": -0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.004696823167012991,
+            "maximum_hidden_delta": 0.0049953640602058685,
+            "mean_motor_delta": 0.011879829897119177,
+            "maximum_motor_delta": 0.026537703437996017,
+            "action_changes": 0
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.00013668830770060942,
+            "maximum_hidden_delta": 0.0002748922287374063,
+            "mean_motor_delta": 0.0002693474622471839,
+            "maximum_motor_delta": 0.0007238926255938316,
+            "action_changes": 0
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 6.763515557838434e-08,
+            "maximum_hidden_delta": 1.6039665584437202e-07,
+            "mean_motor_delta": 1.3203025608255151e-07,
+            "maximum_motor_delta": 4.178478171871057e-07,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 2.0841638690479586e-14,
+            "maximum_hidden_delta": 1.0636977409994586e-13,
+            "mean_motor_delta": 4.412101013043299e-14,
+            "maximum_motor_delta": 2.010441953200872e-13,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 1.2536087619363645e-19,
+            "maximum_hidden_delta": 6.938893903907228e-18,
+            "mean_motor_delta": 0.0,
+            "maximum_motor_delta": 0.0,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 1.2536087619363645e-19,
+            "maximum_hidden_delta": 6.938893903907228e-18,
+            "mean_motor_delta": 0.0,
+            "maximum_motor_delta": 0.0,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 1.2536087619363645e-19,
+            "maximum_hidden_delta": 6.938893903907228e-18,
+            "mean_motor_delta": 0.0,
+            "maximum_motor_delta": 0.0,
+            "action_changes": 0
+          }
+        ]
+      },
+      {
+        "energy": 50,
+        "inventory": 0,
+        "pulse": 0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.004696825509585994,
+            "maximum_hidden_delta": 0.004994829969138146,
+            "mean_motor_delta": 0.011878280135336216,
+            "maximum_motor_delta": 0.02654992308722644,
+            "action_changes": 0
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.00013668910832746463,
+            "maximum_hidden_delta": 0.00027490218131570945,
+            "mean_motor_delta": 0.0002693336624126152,
+            "maximum_motor_delta": 0.0007239213051393599,
+            "action_changes": 0
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 6.763556669760299e-08,
+            "maximum_hidden_delta": 1.6038086684926067e-07,
+            "mean_motor_delta": 1.320267687978992e-07,
+            "maximum_motor_delta": 4.1779021069996776e-07,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 2.084229429398076e-14,
+            "maximum_hidden_delta": 1.0635589631213804e-13,
+            "mean_motor_delta": 4.41188180732568e-14,
+            "maximum_motor_delta": 2.010700184408146e-13,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 1.4230153513872246e-19,
+            "maximum_hidden_delta": 1.3877787807814457e-17,
+            "mean_motor_delta": 8.131516293641283e-20,
+            "maximum_motor_delta": 6.938893903907228e-18,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 1.4230153513872246e-19,
+            "maximum_hidden_delta": 1.3877787807814457e-17,
+            "mean_motor_delta": 8.131516293641283e-20,
+            "maximum_motor_delta": 6.938893903907228e-18,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 1.4230153513872246e-19,
+            "maximum_hidden_delta": 1.3877787807814457e-17,
+            "mean_motor_delta": 8.131516293641283e-20,
+            "maximum_motor_delta": 6.938893903907228e-18,
+            "action_changes": 0
+          }
+        ]
+      },
+      {
+        "energy": 50,
+        "inventory": 2,
+        "pulse": -0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.004677001781195118,
+            "maximum_hidden_delta": 0.004995511297343681,
+            "mean_motor_delta": 0.011878078450106067,
+            "maximum_motor_delta": 0.026532735479685658,
+            "action_changes": 3
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.0001355131895731109,
+            "maximum_hidden_delta": 0.0002736087910836793,
+            "mean_motor_delta": 0.0002685525543867936,
+            "maximum_motor_delta": 0.0007203797100609702,
+            "action_changes": 0
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 6.673322610413113e-08,
+            "maximum_hidden_delta": 1.59920519451906e-07,
+            "mean_motor_delta": 1.30160508387897e-07,
+            "maximum_motor_delta": 4.1540226401593177e-07,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 2.0218357119539034e-14,
+            "maximum_hidden_delta": 1.0680172024546408e-13,
+            "mean_motor_delta": 4.297197453680656e-14,
+            "maximum_motor_delta": 1.9776765888296974e-13,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 1.0164395367051604e-19,
+            "maximum_hidden_delta": 6.938893903907228e-18,
+            "mean_motor_delta": 0.0,
+            "maximum_motor_delta": 0.0,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 1.0164395367051604e-19,
+            "maximum_hidden_delta": 6.938893903907228e-18,
+            "mean_motor_delta": 0.0,
+            "maximum_motor_delta": 0.0,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 1.0164395367051604e-19,
+            "maximum_hidden_delta": 6.938893903907228e-18,
+            "mean_motor_delta": 0.0,
+            "maximum_motor_delta": 0.0,
+            "action_changes": 0
+          }
+        ]
+      },
+      {
+        "energy": 50,
+        "inventory": 2,
+        "pulse": 0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.004677245020105324,
+            "maximum_hidden_delta": 0.004995079654936384,
+            "mean_motor_delta": 0.011876709540972806,
+            "maximum_motor_delta": 0.026545908297759647,
+            "action_changes": 6
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.00013551670565318762,
+            "maximum_hidden_delta": 0.0002735681501766316,
+            "mean_motor_delta": 0.00026854100520243334,
+            "maximum_motor_delta": 0.0007205148278995017,
+            "action_changes": 0
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 6.673510351498968e-08,
+            "maximum_hidden_delta": 1.598953530863867e-07,
+            "mean_motor_delta": 1.3016082764986586e-07,
+            "maximum_motor_delta": 4.1534338755449325e-07,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 2.022094057002816e-14,
+            "maximum_hidden_delta": 1.0680345496894006e-13,
+            "mean_motor_delta": 4.297018508880212e-14,
+            "maximum_motor_delta": 1.9782400925160045e-13,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 1.3552527156068805e-19,
+            "maximum_hidden_delta": 6.938893903907228e-18,
+            "mean_motor_delta": 0.0,
+            "maximum_motor_delta": 0.0,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 1.3552527156068805e-19,
+            "maximum_hidden_delta": 6.938893903907228e-18,
+            "mean_motor_delta": 0.0,
+            "maximum_motor_delta": 0.0,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 1.3552527156068805e-19,
+            "maximum_hidden_delta": 6.938893903907228e-18,
+            "mean_motor_delta": 0.0,
+            "maximum_motor_delta": 0.0,
+            "action_changes": 0
+          }
+        ]
+      }
+    ],
+    "scope": "Float64 direct recurrent-state diagnostic: adult age500, bare field, empty initial state, no neighbors, identical fixed sensory inputs except one +/-0.5 pulse on event input12 at update1. Afterward event is zero; movement/action feedback and body physiology are deliberately held fixed to isolate private recurrence. This shared event channel also carries transfer/force feedback. A response is not proof of a learned message convention, useful memory, truth, deception, or live-world communication benefit. No genes or simulation state are modified."
+  },
+  {
+    "bank": "physiology-v2-descendants-seed1-tick65536",
+    "bank_sha256": "47661fda0c639adc62af5e7c28fade7bfa3c16ed9edd1bc9ae55a6d68a444704",
+    "genomes": 128,
+    "cases": [
+      {
+        "energy": 10,
+        "inventory": 0,
+        "pulse": -0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.024058716973315953,
+            "maximum_hidden_delta": 0.04876384904291089,
+            "mean_motor_delta": 0.03414412529586046,
+            "maximum_motor_delta": 0.09441189978047383,
+            "action_changes": 0
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.0022708894844653237,
+            "maximum_hidden_delta": 0.004522416096952059,
+            "mean_motor_delta": 0.003953707230239965,
+            "maximum_motor_delta": 0.012123767929850326,
+            "action_changes": 0
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 2.5863744495647924e-05,
+            "maximum_hidden_delta": 7.861274828808648e-05,
+            "mean_motor_delta": 5.409509235081458e-05,
+            "maximum_motor_delta": 0.00016915957709368634,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 4.2197734226329566e-09,
+            "maximum_hidden_delta": 2.9053934681722016e-08,
+            "mean_motor_delta": 9.4932753531023e-09,
+            "maximum_motor_delta": 6.868262637147233e-08,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 2.1089087507558668e-16,
+            "maximum_hidden_delta": 7.244205235679146e-15,
+            "mean_motor_delta": 4.943735828205913e-16,
+            "maximum_motor_delta": 1.9342171735719344e-14,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 1.111307226797642e-18,
+            "maximum_hidden_delta": 1.3877787807814457e-17,
+            "mean_motor_delta": 1.075869601837688e-18,
+            "maximum_motor_delta": 2.7755575615628914e-17,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 1.111307226797642e-18,
+            "maximum_hidden_delta": 1.3877787807814457e-17,
+            "mean_motor_delta": 5.87978624219211e-19,
+            "maximum_motor_delta": 2.7755575615628914e-17,
+            "action_changes": 0
+          }
+        ]
+      },
+      {
+        "energy": 10,
+        "inventory": 0,
+        "pulse": 0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.024092382467495767,
+            "maximum_hidden_delta": 0.04846536720949521,
+            "mean_motor_delta": 0.03409552022748227,
+            "maximum_motor_delta": 0.09336340834420848,
+            "action_changes": 0
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.002273005163987871,
+            "maximum_hidden_delta": 0.004497600992835027,
+            "mean_motor_delta": 0.00396406431946208,
+            "maximum_motor_delta": 0.012097298204543121,
+            "action_changes": 0
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 2.58825601491332e-05,
+            "maximum_hidden_delta": 7.769111926133124e-05,
+            "mean_motor_delta": 5.4264810762576264e-05,
+            "maximum_motor_delta": 0.0001674406948321766,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 4.221813554829589e-09,
+            "maximum_hidden_delta": 2.9048470281956007e-08,
+            "mean_motor_delta": 9.509814248462945e-09,
+            "maximum_motor_delta": 6.860229397648359e-08,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 2.115075150611878e-16,
+            "maximum_hidden_delta": 7.244205235679146e-15,
+            "mean_motor_delta": 4.929919465175201e-16,
+            "maximum_motor_delta": 1.9300538383035235e-14,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 1.2874900798265365e-18,
+            "maximum_hidden_delta": 2.7755575615628914e-17,
+            "mean_motor_delta": 8.944667923005412e-19,
+            "maximum_motor_delta": 2.7755575615628914e-17,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 1.328147661294743e-18,
+            "maximum_hidden_delta": 2.7755575615628914e-17,
+            "mean_motor_delta": 1.111307226797642e-18,
+            "maximum_motor_delta": 2.7755575615628914e-17,
+            "action_changes": 0
+          }
+        ]
+      },
+      {
+        "energy": 50,
+        "inventory": 0,
+        "pulse": -0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.023181724983172787,
+            "maximum_hidden_delta": 0.04875883299079295,
+            "mean_motor_delta": 0.03429700018647774,
+            "maximum_motor_delta": 0.09460806600932109,
+            "action_changes": 0
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.0022107444479503835,
+            "maximum_hidden_delta": 0.004423400068741784,
+            "mean_motor_delta": 0.003717703506413989,
+            "maximum_motor_delta": 0.01220840616606835,
+            "action_changes": 0
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 2.539827319280192e-05,
+            "maximum_hidden_delta": 8.140130949538596e-05,
+            "mean_motor_delta": 4.915915758770995e-05,
+            "maximum_motor_delta": 0.00017353709495784275,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 3.951089800264035e-09,
+            "maximum_hidden_delta": 2.8854461465999126e-08,
+            "mean_motor_delta": 8.758063151265594e-09,
+            "maximum_motor_delta": 6.950184570604379e-08,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 1.9008774589102106e-16,
+            "maximum_hidden_delta": 7.022160630754115e-15,
+            "mean_motor_delta": 4.4057335703255393e-16,
+            "maximum_motor_delta": 1.8825838101484764e-14,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 9.486769009248164e-19,
+            "maximum_hidden_delta": 2.7755575615628914e-17,
+            "mean_motor_delta": 8.179276782676068e-19,
+            "maximum_motor_delta": 3.122502256758253e-17,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 8.131516293641283e-19,
+            "maximum_hidden_delta": 2.7755575615628914e-17,
+            "mean_motor_delta": 1.022865564562347e-18,
+            "maximum_motor_delta": 3.122502256758253e-17,
+            "action_changes": 0
+          }
+        ]
+      },
+      {
+        "energy": 50,
+        "inventory": 0,
+        "pulse": 0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.02329534620039404,
+            "maximum_hidden_delta": 0.04845419587291089,
+            "mean_motor_delta": 0.03421923606713704,
+            "maximum_motor_delta": 0.09352253825563202,
+            "action_changes": 0
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.002214659231376447,
+            "maximum_hidden_delta": 0.0044013387048450064,
+            "mean_motor_delta": 0.0037411765239042088,
+            "maximum_motor_delta": 0.012169337082099208,
+            "action_changes": 0
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 2.5439311431449204e-05,
+            "maximum_hidden_delta": 8.036486881233401e-05,
+            "mean_motor_delta": 4.948837809827767e-05,
+            "maximum_motor_delta": 0.00017125401588404795,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 3.953393802687707e-09,
+            "maximum_hidden_delta": 2.8850041099148793e-08,
+            "mean_motor_delta": 8.780619189574777e-09,
+            "maximum_motor_delta": 6.942127589608528e-08,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 1.9123971069928691e-16,
+            "maximum_hidden_delta": 7.008282842946301e-15,
+            "mean_motor_delta": 4.4255688264546157e-16,
+            "maximum_motor_delta": 1.882363918903825e-14,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 6.776263578034403e-19,
+            "maximum_hidden_delta": 1.3877787807814457e-17,
+            "mean_motor_delta": 9.952160234704414e-19,
+            "maximum_motor_delta": 3.122502256758253e-17,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 6.776263578034403e-19,
+            "maximum_hidden_delta": 1.3877787807814457e-17,
+            "mean_motor_delta": 9.961107459710572e-19,
+            "maximum_motor_delta": 3.122502256758253e-17,
+            "action_changes": 0
+          }
+        ]
+      },
+      {
+        "energy": 50,
+        "inventory": 2,
+        "pulse": -0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.0231476267527974,
+            "maximum_hidden_delta": 0.04877253513551725,
+            "mean_motor_delta": 0.03411119831236648,
+            "maximum_motor_delta": 0.09367738752324486,
+            "action_changes": 4
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.0022082915476323087,
+            "maximum_hidden_delta": 0.004421076754958897,
+            "mean_motor_delta": 0.0036720775648318156,
+            "maximum_motor_delta": 0.011933680248042275,
+            "action_changes": 1
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 2.54019903301435e-05,
+            "maximum_hidden_delta": 8.14061667592271e-05,
+            "mean_motor_delta": 4.847727822032603e-05,
+            "maximum_motor_delta": 0.00017176959342495553,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 3.961663364287947e-09,
+            "maximum_hidden_delta": 2.9637848356078855e-08,
+            "mean_motor_delta": 8.706093755278386e-09,
+            "maximum_motor_delta": 7.100623299027071e-08,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 1.939366636033446e-16,
+            "maximum_hidden_delta": 7.445433158892456e-15,
+            "mean_motor_delta": 4.453231237486608e-16,
+            "maximum_motor_delta": 1.9817558736116948e-14,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 8.775261333554552e-19,
+            "maximum_hidden_delta": 5.551115123125783e-17,
+            "mean_motor_delta": 2.168404344971009e-19,
+            "maximum_motor_delta": 1.3877787807814457e-17,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 8.775261333554552e-19,
+            "maximum_hidden_delta": 5.551115123125783e-17,
+            "mean_motor_delta": 2.168404344971009e-19,
+            "maximum_motor_delta": 1.3877787807814457e-17,
+            "action_changes": 0
+          }
+        ]
+      },
+      {
+        "energy": 50,
+        "inventory": 2,
+        "pulse": 0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.02326067514393732,
+            "maximum_hidden_delta": 0.04848524804745645,
+            "mean_motor_delta": 0.03398391645448743,
+            "maximum_motor_delta": 0.09162173779762647,
+            "action_changes": 3
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.0022122299893803043,
+            "maximum_hidden_delta": 0.004398930112052099,
+            "mean_motor_delta": 0.0036967056178136516,
+            "maximum_motor_delta": 0.011913880281770844,
+            "action_changes": 2
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 2.5440850698782966e-05,
+            "maximum_hidden_delta": 8.039170285773292e-05,
+            "mean_motor_delta": 4.879983759586028e-05,
+            "maximum_motor_delta": 0.00016953801495096525,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 3.963522066994703e-09,
+            "maximum_hidden_delta": 2.96435082661195e-08,
+            "mean_motor_delta": 8.729153965307892e-09,
+            "maximum_motor_delta": 7.095688244962018e-08,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 1.9397054492123478e-16,
+            "maximum_hidden_delta": 7.455841499748317e-15,
+            "mean_motor_delta": 4.506151310166371e-16,
+            "maximum_motor_delta": 1.9762047803274038e-14,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 3.2526065174565133e-19,
+            "maximum_hidden_delta": 6.938893903907228e-18,
+            "mean_motor_delta": 6.761158448972558e-19,
+            "maximum_motor_delta": 3.1031676915590914e-17,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 3.2526065174565133e-19,
+            "maximum_hidden_delta": 6.938893903907228e-18,
+            "mean_motor_delta": 6.761158448972558e-19,
+            "maximum_motor_delta": 3.1031676915590914e-17,
+            "action_changes": 0
+          }
+        ]
+      }
+    ],
+    "scope": "Float64 direct recurrent-state diagnostic: adult age500, bare field, empty initial state, no neighbors, identical fixed sensory inputs except one +/-0.5 pulse on event input12 at update1. Afterward event is zero; movement/action feedback and body physiology are deliberately held fixed to isolate private recurrence. This shared event channel also carries transfer/force feedback. A response is not proof of a learned message convention, useful memory, truth, deception, or live-world communication benefit. No genes or simulation state are modified."
+  },
+  {
+    "bank": "physiology-v2-descendants-seed1108-tick65536",
+    "bank_sha256": "89790e952e2e91fc1b5af0c0173e95724ecda7fd767fec840af0fedd1f995fc2",
+    "genomes": 128,
+    "cases": [
+      {
+        "energy": 10,
+        "inventory": 0,
+        "pulse": -0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.038671547636397165,
+            "maximum_hidden_delta": 0.055965861405031646,
+            "mean_motor_delta": 0.07322277869932459,
+            "maximum_motor_delta": 0.13204823477993735,
+            "action_changes": 0
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.0049538220316284265,
+            "maximum_hidden_delta": 0.007361066716599326,
+            "mean_motor_delta": 0.017726152073129938,
+            "maximum_motor_delta": 0.028020597209525124,
+            "action_changes": 1
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 0.0001497613096067338,
+            "maximum_hidden_delta": 0.00026982480932211117,
+            "mean_motor_delta": 0.00025642768945317407,
+            "maximum_motor_delta": 0.000661222251393716,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 9.712070854086996e-08,
+            "maximum_hidden_delta": 3.7118884432460475e-07,
+            "mean_motor_delta": 1.5498658289485323e-07,
+            "maximum_motor_delta": 4.902839803467922e-07,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 7.281746413527815e-14,
+            "maximum_hidden_delta": 3.2320153497966686e-13,
+            "mean_motor_delta": 9.215083744117923e-14,
+            "maximum_motor_delta": 5.618261684358622e-13,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 2.2632720350634905e-18,
+            "maximum_hidden_delta": 2.7755575615628914e-17,
+            "mean_motor_delta": 1.6629600660147883e-18,
+            "maximum_motor_delta": 5.003707553108401e-17,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 2.2632720350634905e-18,
+            "maximum_hidden_delta": 2.7755575615628914e-17,
+            "mean_motor_delta": 1.6629600660147883e-18,
+            "maximum_motor_delta": 5.003707553108401e-17,
+            "action_changes": 0
+          }
+        ]
+      },
+      {
+        "energy": 10,
+        "inventory": 0,
+        "pulse": 0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.038748002783679646,
+            "maximum_hidden_delta": 0.05592370234490064,
+            "mean_motor_delta": 0.07365348865993143,
+            "maximum_motor_delta": 0.13368752558009325,
+            "action_changes": 0
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.004965371152507116,
+            "maximum_hidden_delta": 0.007368372729362981,
+            "mean_motor_delta": 0.01777005957531424,
+            "maximum_motor_delta": 0.0279722190795413,
+            "action_changes": 0
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 0.00015012188590451204,
+            "maximum_hidden_delta": 0.000270284623718621,
+            "mean_motor_delta": 0.00025723451032904623,
+            "maximum_motor_delta": 0.0006617432415668811,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 9.74015830905271e-08,
+            "maximum_hidden_delta": 3.72495408025586e-07,
+            "mean_motor_delta": 1.5522401100523437e-07,
+            "maximum_motor_delta": 4.908193033582515e-07,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 7.300497351287773e-14,
+            "maximum_hidden_delta": 3.2449043452231763e-13,
+            "mean_motor_delta": 9.223099763562016e-14,
+            "maximum_motor_delta": 5.627300427158474e-13,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 2.120970499924768e-18,
+            "maximum_hidden_delta": 2.7755575615628914e-17,
+            "mean_motor_delta": 2.13933817161908e-18,
+            "maximum_motor_delta": 4.3885418357208765e-17,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 2.120970499924768e-18,
+            "maximum_hidden_delta": 2.7755575615628914e-17,
+            "mean_motor_delta": 2.13933817161908e-18,
+            "maximum_motor_delta": 4.3885418357208765e-17,
+            "action_changes": 0
+          }
+        ]
+      },
+      {
+        "energy": 50,
+        "inventory": 0,
+        "pulse": -0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.03764996437434906,
+            "maximum_hidden_delta": 0.05597059800209186,
+            "mean_motor_delta": 0.07273639604954905,
+            "maximum_motor_delta": 0.13129255442345533,
+            "action_changes": 0
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.0048835370610409295,
+            "maximum_hidden_delta": 0.007256649028906409,
+            "mean_motor_delta": 0.0181439369121832,
+            "maximum_motor_delta": 0.02802058511699634,
+            "action_changes": 0
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 0.00014319198459855477,
+            "maximum_hidden_delta": 0.0002550711245252607,
+            "mean_motor_delta": 0.0002448846520962655,
+            "maximum_motor_delta": 0.0006586456764820198,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 9.169663729270228e-08,
+            "maximum_hidden_delta": 3.4544390001972625e-07,
+            "mean_motor_delta": 1.5033456031376617e-07,
+            "maximum_motor_delta": 4.783794980062792e-07,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 6.59075116531127e-14,
+            "maximum_hidden_delta": 3.3335834093151107e-13,
+            "mean_motor_delta": 8.742340906321841e-14,
+            "maximum_motor_delta": 5.294576782854767e-13,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 2.4665599424045226e-18,
+            "maximum_hidden_delta": 5.551115123125783e-17,
+            "mean_motor_delta": 2.5743662677619223e-18,
+            "maximum_motor_delta": 3.469446951953614e-17,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 2.358139725155972e-18,
+            "maximum_hidden_delta": 5.551115123125783e-17,
+            "mean_motor_delta": 2.498634644496775e-18,
+            "maximum_motor_delta": 3.469446951953614e-17,
+            "action_changes": 0
+          }
+        ]
+      },
+      {
+        "energy": 50,
+        "inventory": 0,
+        "pulse": 0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.03772889809193351,
+            "maximum_hidden_delta": 0.05591532961810121,
+            "mean_motor_delta": 0.07323901419180709,
+            "maximum_motor_delta": 0.13323983817120036,
+            "action_changes": 0
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.004893828297813656,
+            "maximum_hidden_delta": 0.007278460156237931,
+            "mean_motor_delta": 0.018127016738763282,
+            "maximum_motor_delta": 0.027979962989067825,
+            "action_changes": 0
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 0.00014370039929043524,
+            "maximum_hidden_delta": 0.0002558358422839052,
+            "mean_motor_delta": 0.0002461913373976155,
+            "maximum_motor_delta": 0.000658596222065088,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 9.23033189782497e-08,
+            "maximum_hidden_delta": 3.483648037122533e-07,
+            "mean_motor_delta": 1.5063723655528855e-07,
+            "maximum_motor_delta": 4.792654574785098e-07,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 6.625662814078483e-14,
+            "maximum_hidden_delta": 3.3463509740983e-13,
+            "mean_motor_delta": 8.751503237300878e-14,
+            "maximum_motor_delta": 5.304778082157052e-13,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 3.3068166260807885e-18,
+            "maximum_hidden_delta": 5.551115123125783e-17,
+            "mean_motor_delta": 2.4801443759910147e-18,
+            "maximum_motor_delta": 3.469446951953614e-17,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 3.713392440762853e-18,
+            "maximum_hidden_delta": 5.551115123125783e-17,
+            "mean_motor_delta": 2.3717241587424643e-18,
+            "maximum_motor_delta": 3.469446951953614e-17,
+            "action_changes": 0
+          }
+        ]
+      },
+      {
+        "energy": 50,
+        "inventory": 2,
+        "pulse": -0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.03763362987673247,
+            "maximum_hidden_delta": 0.055963202433283024,
+            "mean_motor_delta": 0.07191750597210103,
+            "maximum_motor_delta": 0.13082304212735832,
+            "action_changes": 30
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.004885811855509728,
+            "maximum_hidden_delta": 0.007237465356612731,
+            "mean_motor_delta": 0.017869090080082802,
+            "maximum_motor_delta": 0.027592270548046728,
+            "action_changes": 6
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 0.00014254351539773073,
+            "maximum_hidden_delta": 0.00025290038383603275,
+            "mean_motor_delta": 0.00024097134478907593,
+            "maximum_motor_delta": 0.0006467748193387555,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 9.168044153722261e-08,
+            "maximum_hidden_delta": 3.475017306756034e-07,
+            "mean_motor_delta": 1.4831896043480746e-07,
+            "maximum_motor_delta": 4.7104524151487096e-07,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 6.641978870928263e-14,
+            "maximum_hidden_delta": 3.534533776772264e-13,
+            "mean_motor_delta": 8.682418169939434e-14,
+            "maximum_motor_delta": 5.166857881333911e-13,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 2.2768245622195593e-18,
+            "maximum_hidden_delta": 2.7755575615628914e-17,
+            "mean_motor_delta": 1.7332129630706226e-18,
+            "maximum_motor_delta": 8.326672684688674e-17,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 2.2497195079074217e-18,
+            "maximum_hidden_delta": 2.7755575615628914e-17,
+            "mean_motor_delta": 1.787423071694898e-18,
+            "maximum_motor_delta": 8.326672684688674e-17,
+            "action_changes": 0
+          }
+        ]
+      },
+      {
+        "energy": 50,
+        "inventory": 2,
+        "pulse": 0.5,
+        "measurements": [
+          {
+            "update": 1,
+            "mean_max_hidden_delta": 0.037694321856091235,
+            "maximum_hidden_delta": 0.05592786652375935,
+            "mean_motor_delta": 0.07275055524548249,
+            "maximum_motor_delta": 0.13312110428273263,
+            "action_changes": 27
+          },
+          {
+            "update": 2,
+            "mean_max_hidden_delta": 0.0048963830138240485,
+            "maximum_hidden_delta": 0.0072643153017140985,
+            "mean_motor_delta": 0.017910690304534998,
+            "maximum_motor_delta": 0.02769685294121704,
+            "action_changes": 4
+          },
+          {
+            "update": 4,
+            "mean_max_hidden_delta": 0.00014299520469823306,
+            "maximum_hidden_delta": 0.00025329045506872205,
+            "mean_motor_delta": 0.00024225541647780057,
+            "maximum_motor_delta": 0.0006466173734579365,
+            "action_changes": 0
+          },
+          {
+            "update": 8,
+            "mean_max_hidden_delta": 9.223277549337637e-08,
+            "maximum_hidden_delta": 3.502910371142032e-07,
+            "mean_motor_delta": 1.4854503104532766e-07,
+            "maximum_motor_delta": 4.7166710612127497e-07,
+            "action_changes": 0
+          },
+          {
+            "update": 16,
+            "mean_max_hidden_delta": 6.670839951595001e-14,
+            "maximum_hidden_delta": 3.541195114920015e-13,
+            "mean_motor_delta": 8.685474456013403e-14,
+            "maximum_motor_delta": 5.176902776803144e-13,
+            "action_changes": 0
+          },
+          {
+            "update": 32,
+            "mean_max_hidden_delta": 1.8431436932253575e-18,
+            "maximum_hidden_delta": 2.7755575615628914e-17,
+            "mean_motor_delta": 1.6790028544463474e-18,
+            "maximum_motor_delta": 4.163336342344337e-17,
+            "action_changes": 0
+          },
+          {
+            "update": 64,
+            "mean_max_hidden_delta": 1.951563910473908e-18,
+            "maximum_hidden_delta": 2.7755575615628914e-17,
+            "mean_motor_delta": 1.841633180319173e-18,
+            "maximum_motor_delta": 4.163336342344337e-17,
+            "action_changes": 0
+          }
+        ]
+      }
+    ],
+    "scope": "Float64 direct recurrent-state diagnostic: adult age500, bare field, empty initial state, no neighbors, identical fixed sensory inputs except one +/-0.5 pulse on event input12 at update1. Afterward event is zero; movement/action feedback and body physiology are deliberately held fixed to isolate private recurrence. This shared event channel also carries transfer/force feedback. A response is not proof of a learned message convention, useful memory, truth, deception, or live-world communication benefit. No genes or simulation state are modified."
+  }
+]

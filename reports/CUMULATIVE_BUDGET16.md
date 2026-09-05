@@ -16,8 +16,16 @@ not fresh holdouts, significance, proven anticipation or general intelligence.
 Per-sample accounting checks passed with zero invalid outputs and zero sampled
 time at95%-capacity in all three budget16 runs.
 
-The registered final baseline repeats are still in progress. Its808 repeat
-has gone extinct at73,728, versus98,304 in both original baseline808 runs.
+The registered campaign is complete, including all final baseline repeats:
+
+| Repeated baseline seed | End tick | Living | Complete sampled journeys |
+| --- | --- | --- | --- |
+|808|73,728|0|0|
+|909|200,000|1,179|0|
+|1001|73,728|0|0|
+
+The repeated baseline again survived1/3 seeds, versus3/3 for budget16. Its808
+repeat went extinct at73,728, versus98,304 in both original baseline808 runs.
 Preserve this variability; do not replace earlier outcomes or infer identical
 world histories solely from matching seeds. The prepared bank has one evaluated
 run per seed here. User-observed directional bias/collapse remains relevant;
@@ -27,6 +35,7 @@ three surviving200k worlds do not establish reliable long-term adaptation.
 
 - Executable SHA256: `7a2729ddbd68ccdad1a94d67b10e80ae2a93ce779044059bbb27c55aa6ccc4e5`
 - Bank16 SHA256: `89790e952e2e91fc1b5af0c0173e95724ecda7fd767fec840af0fedd1f995fc2`
+- Completed campaign summary SHA256: `9e5f4480bcfb3e689fc6658b2c7b29217331683423da8254104c6f7ae3c7cb47`
 - 808 report: `c04ac0a3393958b04c1f2542ad254eb93e57b379333b9b64d021da5296fbe0bc`
 - 909 report: `9bd632a832a4b78bb1ef7ab48432ed2734ba54ab46a03f654416cdc9a3d01434`
 - 1001 report: `07d40f8d00fb13f337ec63a7c451e31bab54cbb880a2062c978e8deea43c7367`
@@ -54,7 +63,8 @@ registration. The broad contract remains unchanged and no final seeds are drawn.
 A read-only CPU directional probe also found a condition-dependent left bias in
 bank16: energy50/inventory2/empty state gives127 of128 leftward intentions in
 bare space, and119 of128 remain leftward with weak0.02 food cues on the right.
-Empty inventory weakens that bias. This is a first-decision float64 surrogate,
-not GPU confirmation or the causal explanation of a live extinction. GPU and
-cue-reversal diagnostics are being prepared; no weights or physics are changed
-to make this assay look better.
+Empty inventory weakens that bias. GPU checks subsequently confirmed these
+first-decision results; repeated weak right cues still produce leftward drift
+in126/128 bank16 brains, while strong right cues reverse all128. This is not a
+causal explanation of a live extinction. See `DIRECTION_AND_SIGNALS.md`. No
+weights or physics were changed to make these assays look better.
