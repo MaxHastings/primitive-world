@@ -31,7 +31,7 @@ fn experiment_preserves_memory_archive_and_world_number_across_resume() {
     let experiment = experiments::Experiment {
         directory,
         name: "A continuing line".into(),
-        origin: "Random V5 fixture".into(),
+        origin: "Random V6 fixture".into(),
         total_ticks: 8000,
     };
     let started = std::time::Instant::now();
@@ -105,7 +105,7 @@ fn paused_food_brush_changes_food_inside_the_visible_circle() {
 }
 
 #[test]
-fn rolling_survivors_retain_diversity_refresh_controls_and_follow_recovery() {
+fn rolling_survivors_retain_diversity_refresh_metadata_and_follow_recovery() {
     let (d, q) = gpu();
     let mut sim = scene(&d, &q);
     sim.settings.population = 64;
@@ -113,8 +113,6 @@ fn rolling_survivors_retain_diversity_refresh_controls_and_follow_recovery() {
     for slot in 0..64 {
         let mut a = body([602.0, 902.0]);
         a.lineage_id = slot + 1;
-        a.mutation_probability = 0.25;
-        a.mutation_magnitude = 0.1;
         put(&sim, &q, slot as usize, a, &genes);
     }
     let root = super::temp("rolling-archive");
@@ -125,8 +123,7 @@ fn rolling_survivors_retain_diversity_refresh_controls_and_follow_recovery() {
     for a in agents.iter_mut().skip(1) {
         a.alive = 0;
     }
-    agents[0].mutation_probability = 1.0;
-    agents[0].mutation_magnitude = 8.0;
+    agents[0].node_change = 1;
     q.write_buffer(
         &sim.agent_buffers[sim.current_buffer],
         0,
@@ -137,7 +134,7 @@ fn rolling_survivors_retain_diversity_refresh_controls_and_follow_recovery() {
     let saved = trial.snapshot().unwrap();
     assert_eq!(saved.latest.bodies.len(), 64);
     assert_eq!(saved.latest.bodies[0].lineage_id, 1);
-    assert_eq!(saved.latest.bodies[0].mutation_magnitude, 8.0);
+    assert_eq!(saved.latest.bodies[0].node_change, 1);
     assert_eq!(saved.latest.bodies[0].observed_tick, Some(128));
     assert_eq!(
         saved

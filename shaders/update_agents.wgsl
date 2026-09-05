@@ -26,6 +26,9 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  let old=a.position;a.position=clamp(old+movement,vec2<f32>(0),vec2<f32>(params.world_size));
  a.velocity=a.position-old;a.moved=a.velocity;let distance=length(a.velocity);
  a.spent=distance*params.time_and_costs.z;a.energy=max(0.0,a.energy-a.spent);
+ // Brain work is an embodied cost. The decision pass counts expressed units and
+ // encoded connections, even at zero weight; unused allocation is not charged.
+ let brain_cost=min(a.energy,f32(d.brain_nodes)*params.physical.w+f32(d.brain_edges)*params.time_and_costs.x);a.energy-=brain_cost;a.spent+=brain_cost;
  let metabolism=min(a.energy,params.time_and_costs.w);a.energy-=metabolism;a.spent+=metabolism;
  a.distance_travelled+=distance;a.age+=1.0;a.action=d.selected_action;a.target_id=d.target_id;
  // A local emission is body output, not an exclusive claim on a recipient.
@@ -34,7 +37,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
   a.energy-=0.02;a.spent+=0.02;a.signal_payload=d.payload;a.signal_tick=params.tick+1u;
   atomicAdd(&stats[9],1u);
  }
- a.mutation_probability=d.mutation_probability;a.mutation_magnitude=d.mutation_magnitude;
+ a.brain_nodes=d.brain_nodes;a.brain_edges=d.brain_edges;
  a.hidden=d.hidden;a.rng=hash_u32(a.rng+params.tick+1u);
  if(a.energy<=0.0||a.age>=a.max_age){a.alive=0u;if(a.age>=a.max_age){atomicAdd(&stats[2],1u);}else{atomicAdd(&stats[1],1u);}}
  if(a.alive!=0u && d.selected_action==REPRODUCE){

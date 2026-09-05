@@ -7,13 +7,24 @@ and no authored starter policy.
 ## Within a world
 
 Brains choose actions and continuous outputs from local senses and private state.
-Their weights do not learn by gradient descent during life. A birth copies the
-parent’s current weights using two of that parent’s current outputs: mutation
-probability per weight [0,1] and mutation magnitude [0,8]. Selected weights get a
-uniform additive change in [-magnitude, magnitude], then clip to [-4,4]. Both
-requests may be zero, so exact copying and a permanently frozen lineage are
-allowed outcomes. The child’s private state starts empty. Useful behavior can
-spread when its carriers leave descendants.
+Structure and weights stay fixed during life. A birth can duplicate or delete
+one generic recurrent unit, insert or delete a connection, and perturb encoded
+parameters. Default probabilities per birth are 4% for duplication, 4% for
+deletion, 8% for connection insertion, and 8% for removal; these are mutually
+exclusive structural proposals. A blocked proposal at the capacity or minimum
+is a no-op, not a retry. Equal proposal rates do not guarantee equal accepted
+changes or a flat distribution of architecture sizes.
+
+After the structural proposal, each actual bias/weight has a 2% chance of a
+uniform ±0.03 perturbation, clipped to [-4,4]. New edge weights use that same
+magnitude and bounds. Mutation settings are visible world rules, with no neural
+outputs controlling them. Parent state is unchanged; child memory starts empty.
+Useful behavior can spread when its carriers leave descendants.
+
+Each unit and encoded connection costs upkeep, and copying the child's actual
+genome adds to the reproduction bill. Four units is the fresh starting size,
+one is the minimum, and 64 units / 512 connections is the allocation ceiling.
+There is no reward for growing and no success-triggered growth rule.
 
 There is no loss function, survival reward buffer, action-use bonus, or requirement
 to communicate, fight, cooperate, or migrate. In-world reproduction is chosen and
@@ -30,17 +41,16 @@ replace older entries. Playback keeps its chosen batch size.
 
 At extinction the archive seeds the next world automatically. It represents the
 latest observed survivors plus retained earlier bodies, not an exact ranking of
-the final 64 deaths. Every entry records its own observation tick and mutation
-requests. An abrupt collapse retains the preceding archive. If fewer than 64
+the final 64 deaths. Every entry records its own observation tick, architecture size, and birth changes. An abrupt collapse retains the preceding archive. If fewer than 64
 distinct bodies have been observed, all available entries are used.
 
 Each sampled genome is copied unchanged once. Balanced replicas fill a 256-genome
-bank using that sampled survivor’s most recent mutation requests, with an explicit
-versioned PRNG. The bank seeds fresh bodies in a new seeded world.
+bank using the same world mutation law as ordinary births. The receipt records
+each replica's mutation seed and changes (`sparse-lcg32-v1`). The bank seeds fresh bodies in a new seeded world.
 With 64 entries each contributes four bank genomes: one exact copy and three
 offspring replicas. Brains are never averaged or merged. Equal representation
 prevents one archive entry dominating transfer; related or identical brains can
-still occur. The number 64 is an experimental choice, not a proven optimum.
+still occur. The archive limit of 64 is a design choice.
 Energy, age, inventory, signals, and private state reset. Genes retain inherited
 changes. The user’s final physical settings carry forward.
 

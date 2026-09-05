@@ -157,7 +157,7 @@ impl Simulation {
             MAX_AGENTS as u64 * GENOME_SIZE as u64 * 4
                 <= u64::from(device.limits().max_storage_buffer_binding_size)
                     .min(device.limits().max_buffer_size),
-            "GPU storage limit below V5 genome budget (166 MiB required)"
+            "GPU storage limit below V6 variable-brain genome budget"
         );
         let genome_buffer = buffer(
             device,
@@ -897,7 +897,7 @@ fn params_for(tick: u32, s: &SimSettings, seed: u32) -> SimParams {
         agent_count: MAX_AGENTS,
         tick,
         time_and_costs: [
-            1.0,
+            s.brain_edge_cost,
             s.resource_regeneration,
             s.movement_energy_cost,
             s.metabolic_cost,
@@ -906,20 +906,26 @@ fn params_for(tick: u32, s: &SimSettings, seed: u32) -> SimParams {
             s.consume_amount,
             s.conversion_efficiency,
             s.heterogeneity,
-            0.0,
+            s.genome_copy_cost,
         ],
         sensor_and_padding: [s.sensor_radius, s.maturity_age, 0.0, s.reproduction_cost],
         physical: [
             f32::from(s.force_enabled),
             f32::from(s.communication_enabled),
             s.motor_response_gain,
-            0.0,
+            s.brain_node_cost,
         ],
         lifecycle: [
             seed,
             s.birth_cooldown,
             s.environment_rotation,
             u32::from(s.evolving_landscape),
+        ],
+        mutation: [
+            s.mutation_probability,
+            s.mutation_magnitude,
+            s.node_mutation_rate,
+            s.edge_mutation_rate,
         ],
     }
 }
@@ -950,6 +956,21 @@ fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
                 i
             } else {
                 i % s.founder_genomes.len() as u32
+            },
+            brain_nodes: if i >= s.population {
+                0
+            } else if s.founder_genomes.is_empty() {
+                DEFAULT_NODES as u32
+            } else {
+                s.founder_genomes[i as usize % s.founder_genomes.len()][0] as u32
+            },
+            brain_edges: if i >= s.population {
+                0
+            } else if s.founder_genomes.is_empty() {
+                (DEFAULT_NODES * 8 + 2 * DEFAULT_NODES * DEFAULT_NODES + OUTPUTS * DEFAULT_NODES)
+                    as u32
+            } else {
+                s.founder_genomes[i as usize % s.founder_genomes.len()][1] as u32
             },
             ..Default::default()
         })
@@ -1115,19 +1136,27 @@ fn random01(state: &mut u32) -> f32 {
 }
 
 pub fn shader_source(source: &str) -> String {
+    let constants = [
+        ("INPUT_COUNT", INPUTS),
+        ("HIDDEN_COUNT", HIDDEN),
+        ("OUTPUT_COUNT", OUTPUTS),
+        ("GENOME_SIZE", GENOME_SIZE),
+        ("NODE_BIAS", NODE_BIAS),
+        ("GATE_BIAS", GATE_BIAS),
+        ("OUTPUT_BIAS", OUTPUT_BIAS),
+        ("EDGE_BASE", EDGE_BASE),
+        ("MAX_EDGES", MAX_EDGES),
+        ("FORCE_OUTPUT", FORCE_OUTPUT),
+    ]
+    .map(|(name, value)| format!("const {name}:u32={value}u;"))
+    .join("\n");
+    let source = source.replace(
+        "// BRAIN_MUTATION",
+        include_str!("../shaders/brain_mutation.wgsl"),
+    );
     format!(
-        "const INPUT_COUNT:u32={}u; const HIDDEN_COUNT:u32={}u; const OUTPUT_COUNT:u32={}u; const GENOME_SIZE:u32={}u; const RECURRENT_ROW:u32={}u; const OUTPUT_BASE:u32={}u; const GATE_BASE:u32={}u; const FORCE_OUTPUT:u32={}u; const MUTATION_OUTPUT:u32={}u;\n{}\n{}",
-        INPUTS,
-        HIDDEN,
-        OUTPUTS,
-        GENOME_SIZE,
-        RECURRENT_ROW,
-        OUTPUT_BASE,
-        GATE_BASE,
-        FORCE_OUTPUT,
-        MUTATION_OUTPUT,
-        include_str!("../shaders/common.wgsl"),
-        source
+        "{constants}\n{}\n{source}",
+        include_str!("../shaders/common.wgsl")
     )
 }
 

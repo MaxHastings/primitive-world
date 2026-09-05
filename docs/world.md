@@ -11,7 +11,9 @@ The numeric constants below are declared modeling choices, not discovered laws.
 | Food / spatial cells | 512² vegetation cells / 256² neighbor cells |
 | Capacity | 16,384 GPU body slots, not a target population |
 | Reserves | Up to 100 energy and 8 carried food |
-| Upkeep / movement | .06 energy/tick; .01 energy per actual voluntary distance |
+| Body upkeep / movement | .06 energy/tick; .01 energy per actual voluntary distance |
+| Brain upkeep | .001 per unit + .00002 per encoded connection/tick |
+| Genome construction | .001 per logical encoded value at birth; allocation padding is free |
 | Movement | Adult maximum 1.2 units/tick; juvenile speed .6–1 of adult through age 400 |
 | Collection | Requested, at most .025 food × amount/tick, limited by stock/capacity |
 | Digestion | Automatic, at most .1 carried food/tick; 8 energy/food, energy-headroom limited |
@@ -19,7 +21,7 @@ The numeric constants below are declared modeling choices, not discovered laws.
 | Signal | One scalar emission per chosen emit action, .02 energy; no target/cooldown |
 | Reproduction | Chosen, age at least 400; 240-tick recovery; paid energy investment |
 | Aging | Death at a freshly sampled maximum age of 9,000–11,000 ticks |
-| Sensing / state | Radius 24, eight sectors × two distance bands, nearest body per sector, 16 gated recurrent values |
+| Sensing / state | Radius 24, eight sectors × two distance bands, nearest body per sector, 4 initial gated recurrent values; 1–64 inherited units |
 
 Digestion does not harvest for the agent. Finite throughput and reserves create
 tradeoffs. Development, recovery, aging, sensory geometry and their exact values
@@ -75,14 +77,15 @@ communications.
 
 With reproductive cost B=50 and controller amount a:
 child energy = .8 × B × a; construction dissipation = .2 × B.
-The parent pays both from its current energy. No extra inventory prerequisite or
+The parent also pays .001 × (2 + 2 × child units + 20 + 3 × child connections).
+The actual mutated child must be affordable before reserves or its slot change. No extra inventory prerequisite or
 mandatory food transfer exists; the child starts with zero inventory. Thus birth
 does not create food, nor require stockpiling while automatic digestion consumes
 the same stock. Parents may exhaust themselves; the world does not prevent it.
 
 Children spawn two units from the parent in a hashed direction, boundary-clipped,
-with age/state/signals cleared. Only the next tick can act on them. Weights copy
-with ordinary mutation; speed and sensory capacity copy without mutation.
+with age/state/signals cleared. Only the next tick can act on them. Sparse structure and weights copy
+with ordinary world-level mutation; speed and sensory capacity copy without mutation.
 Free slots are allocated with a tick-rotated parent priority so low storage slots
 do not always win at capacity. Unallocated requests do not spend reserves.
 Resource provision to fresh founders (65 energy, 2 food, age 0–300) is explicit
@@ -115,9 +118,8 @@ interventions are user experiments; record them when comparing outcomes.
 
 ## Persistence, observation, and limits
 
-Checkpoints use format 17; founder banks use format 6. The primitive-v5 model
-does not load V4 or earlier files because sensing, targeting, and memory layouts changed.
-Unsupported formats are rejected without rewriting the file.
+Checkpoints use format 18; founder banks use format 7. The sparse
+primitive-v6-variable-brain model rejects older layouts without rewriting them.
 Checkpoints preserve settings, bodies, genomes, food, soil, event counters and
 controller traces. Derived indexing/terrain is rebuilt after load. Loading
 validates before mutating the world. Save/export refuses existing destinations.

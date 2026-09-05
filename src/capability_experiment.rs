@@ -84,8 +84,8 @@ fn diagnostic_memory_removal_matches_zero_state_without_changing_genes() {
     let mut sim = scene(&d, &q);
     let mut a = body([602.0, 902.0]);
     let mut genes = fixed(1, [0.0; 2]);
-    genes[INPUTS] = 2.0;
-    genes[OUTPUT_BASE + 6 * 17] = 1.0;
+    crate::brain::add_edge(&mut genes, INPUTS, 0, 2.0);
+    crate::brain::add_edge(&mut genes, INPUTS, 2 * HIDDEN + 6, 1.0);
     put(&sim, &q, 0, a, &genes);
     let zero = decide(&sim, &d, &q);
     a.hidden[0] = 0.7;
@@ -110,10 +110,10 @@ fn diagnostic_signal_mask_matches_absent_signal_and_retains_other_senses() {
     let a = body([602.0, 902.0]);
     let mut neighbor = body([604.0, 902.0]);
     let mut genes = fixed(1, [0.0; 2]);
-    genes[NEIGHBOR_BASE + 4] = 1.0;
-    genes[NEIGHBOR_BASE + 6] = 1.0;
-    genes[GATE_BASE + HIDDEN] = 1.0;
-    genes[OUTPUT_BASE + 6 * 17] = 1.0;
+    crate::brain::add_edge(&mut genes, NEIGHBOR_BASE + 4, 0, 1.0);
+    crate::brain::add_edge(&mut genes, NEIGHBOR_BASE + 6, 0, 1.0);
+    genes[GATE_BIAS] = 1.0;
+    crate::brain::add_edge(&mut genes, INPUTS, 2 * HIDDEN + 6, 1.0);
     put(&sim, &q, 0, a, &genes);
     put(&sim, &q, 1, neighbor, &genes);
     let mut perception = PerceptionGpu::zeroed();
@@ -245,13 +245,19 @@ fn run_registered_comparison() {
         let start = std::time::Instant::now();
         sim.settings = plan.settings.clone();
         sim.settings.environment_rotation = trial.rotation;
-        let expected_bodies = build_agents(trial.seed, &sim.settings);
+        let mut expected_bodies = build_agents(trial.seed, &sim.settings);
         if matches!(trial.condition, Condition::Random) {
             sim.settings.founder_genomes = crate::founders::bundled().genomes.clone();
             sim.settings.founder_name = "diagnostic-random-founders".into();
         }
+        let mut actual_bodies = build_agents(trial.seed, &sim.settings);
+        // Brain metadata follows the chosen bank; all other initial body state matches.
+        for a in expected_bodies.iter_mut().chain(&mut actual_bodies) {
+            a.brain_nodes = 0;
+            a.brain_edges = 0;
+        }
         assert_eq!(
-            bytemuck::cast_slice::<AgentGpu, u8>(&build_agents(trial.seed, &sim.settings)),
+            bytemuck::cast_slice::<AgentGpu, u8>(&actual_bodies),
             bytemuck::cast_slice::<AgentGpu, u8>(&expected_bodies),
             "All conditions must start with identical bodies",
         );

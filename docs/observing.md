@@ -10,7 +10,7 @@ cargo run --release -- --headless --random-founders --seed 42 --ticks 200000 --s
 The run ends at its horizon or extinction; extinction is detected within a GPU
 batch of at most 32 ticks. A bounded diagnostic is not the unlimited visible loop.
 Choose new output files. Reports include the build/model, settings, sampled
-history, ancestry observations, and an explicit termination reason.
+history, ancestry and architecture distributions, and an explicit termination reason.
 
 Optional `--families` adds read-only founder-family accounting for fresh worlds
 of at most 200,000 ticks. It does not rank founders or train the brains.
@@ -45,7 +45,8 @@ Optional Python 3.11+ tools:
 python tools/analyze_departures.py reports/journeys.jsonl --metabolic-cost 0.06 --movement-cost 0.01 --output reports/departures.json
 ```
 
-Supply the actual checkpoint costs, not those example values if you changed them.
+Supply the actual checkpoint costs. These range estimates omit brain upkeep,
+which varies by individual, and remain optimistic bounds rather than full budgets.
 The tool uses only the standard library. `tools/audit_checkpoint_communication.py`
 additionally requires NumPy (`python -m pip install -r tools/requirements.txt`).
 It audits checkpoint counters and provable action suppression; it does not
@@ -71,7 +72,8 @@ Settings must contain 256 founder genomes. Each trial specifies a unique file-sa
   128 ticks, collects amount 1, and invests amount 0.5 in reproduction. This
   diagnostic policy does not use food cues or evolve its behavior.
 
-All conditions start with byte-identical bodies for a given seed/orientation.
+All conditions start with identical physical bodies for a given seed/orientation;
+brain metadata and its structural costs follow the chosen genome bank.
 The experiment changes decisions only in the test executable; ordinary play has
 no diagnostic controller switch. Save the plan before inspecting outcomes and
 use multiple seeds and repeats. Keep the full plan, source provenance, and reports

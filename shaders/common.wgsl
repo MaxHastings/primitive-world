@@ -14,7 +14,7 @@ struct Agent {
  lineage_id:u32,parent_lineage:u32,birth_tick:u32,birth_parent_slot:u32,
  ancestry_depth:u32,lifetime_births:u32,distance_travelled:f32,founder_family:u32,
  hidden:array<f32,HIDDEN_COUNT>,
- mutation_probability:f32,mutation_magnitude:f32,
+ brain_nodes:u32,brain_edges:u32,node_change:i32,edge_change:i32,
 };
 struct Region {food:f32,bodies:f32,};
 struct Body {offset:vec2<f32>,velocity:vec2<f32>,signal_present:f32,signal:f32,slot:u32,generation:u32,};
@@ -22,11 +22,12 @@ struct Perception {resource_here:f32,nearby_count:f32,padding:vec2<f32>,regions:
 struct Decision {
  scores:array<f32,6>,selected_action:u32,score_padding:u32,movement:vec2<f32>,amount:f32,
  payload:f32,target_id:u32,target_generation:u32,invalid:u32,body_padding:u32,
- force:vec2<f32>,mutation_probability:f32,mutation_magnitude:f32,hidden:array<f32,HIDDEN_COUNT>,update_gates:array<f32,HIDDEN_COUNT>,inputs:array<f32,INPUT_COUNT>,
+ force:vec2<f32>,brain_nodes:u32,brain_edges:u32,
+ hidden:array<f32,HIDDEN_COUNT>,update_gates:array<f32,HIDDEN_COUNT>,inputs:array<f32,INPUT_COUNT>,
 };
 struct SimParams {
  world_size:f32,resource_grid_size:u32,agent_count:u32,tick:u32,
- time_and_costs:vec4<f32>,resource_and_noise:vec4<f32>,sensor_and_padding:vec4<f32>,physical:vec4<f32>,lifecycle:vec4<u32>,
+ time_and_costs:vec4<f32>,resource_and_noise:vec4<f32>,sensor_and_padding:vec4<f32>,physical:vec4<f32>,lifecycle:vec4<u32>,mutation:vec4<f32>,
 };
 struct Ground {dropped:atomic<u32>,extracted:atomic<u32>,remainder:f32,produced:u32,
  weather_loss:u32,collected:atomic<u32>,habitat:f32,productivity:f32,};

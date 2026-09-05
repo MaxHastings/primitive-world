@@ -13,7 +13,8 @@ from pathlib import Path
 import numpy as np
 
 
-N, H, G = 16384, 16, 2646
+N, H, G = 16384, 64, 1686
+OUTPUT_BIAS, EDGE_BASE = 130, 150
 ACTIONS = ["none", "collect", "transfer", "force", "emit", "reproduce"]
 
 
@@ -32,21 +33,45 @@ AGENT = dtype([
     ('moved','f4',2),('lineage_id','u4',()),('parent_lineage','u4',()),
     ('birth_tick','u4',()),('birth_parent_slot','u4',()),('ancestry_depth','u4',()),
     ('lifetime_births','u4',()),('distance_travelled','f4',()),('founder_family','u4',()),
-    ('hidden','f4',16),('mutation_probability','f4',()),('mutation_magnitude','f4',())])
+    ('hidden','f4',H),('brain_nodes','u4',()),('brain_edges','u4',()),('node_change','i4',()),('edge_change','i4',())])
 DECISION = dtype([
     ('scores','f4',6),('selected_action','u4',()),('score_padding','u4',()),
     ('movement','f4',2),('amount','f4',()),('payload','f4',()),('target','u4',()),
     ('target_generation','u4',()),('invalid','u4',()),('body_padding','u4',()),
-    ('force','f4',2),('mutation_probability','f4',()),('mutation_magnitude','f4',()),('hidden','f4',16),('update_gates','f4',16),('inputs','f4',108)])
+    ('force','f4',2),('brain_nodes','u4',()),('brain_edges','u4',()),('hidden','f4',H),('update_gates','f4',H),('inputs','f4',108)])
+
+
+def action_readout(genomes):
+    out = np.zeros((len(genomes), 6, H+1), dtype=np.float64)
+    for i, g in enumerate(genomes):
+        n, count = int(g[0]), int(g[1])
+        assert 1 <= n <= H and 0 <= count <= 512 and g[0] == n and g[1] == count
+        assert np.isfinite(g).all()
+        assert (np.abs(g[2:EDGE_BASE]) <= 4).all()
+        assert (g[2+n:66] == 0).all() and (g[66+n:130] == 0).all()
+        out[i,:,H] = g[OUTPUT_BIAS:OUTPUT_BIAS+6]
+        seen = set()
+        for src, dst, weight in g[EDGE_BASE:EDGE_BASE+count*3].reshape(-1,3):
+            s, d = int(src), int(dst)
+            assert src == s and dst == d and 0 <= s < 108+n and abs(weight) <= 4
+            assert 0 <= d < n or (s >= 108 and (H <= d < H+n or 2*H <= d < 2*H+20))
+            assert (s,d) not in seen
+            seen.add((s,d))
+            if 2*H <= d < 2*H+6:
+                out[i,d-2*H,s-108] = weight
+        assert (g[EDGE_BASE+count*3:] == 0).all()
+    return out
 
 
 def suppression(genomes):
-    out = genomes[:,2272:].reshape(-1,22,17).astype(np.float64)
+    if len(genomes) == 0:
+        return {}
+    out = action_readout(genomes)
     result = {}
     for action in [2,3,4]:
-        # For h in [-1,1]^16, min(score_rival-score_action) = db - sum(abs(dw)).
+        # For h in [-1,1]^64, min(score_rival-score_action) = db - sum(abs(dw)).
         delta = out[:,:6,:] - out[:,action:action+1,:]
-        lower = delta[:,:,16] - np.abs(delta[:,:,:16]).sum(axis=2)
+        lower = delta[:,:,H] - np.abs(delta[:,:,:H]).sum(axis=2)
         lower[:,action] = -np.inf
         best = lower.max(axis=1)
         result[ACTIONS[action]] = {
@@ -61,38 +86,37 @@ def suppression(genomes):
 
 def audit(path):
     raw = path.read_bytes()
-    assert raw[:12] == b'PRIMWORLD017', 'Expected primitive-world checkpoint 17'
+    assert raw[:12] == b'PRIMWORLD018', 'Expected primitive-world checkpoint 18'
     seed,tick,size = struct.unpack_from('<III',raw,12)
     settings = json.loads(raw[24:24+size]); pos=24+size; buffers=[]
-    expected=[N*216,512*512*4,512*512*4,512*512*32,128,65536*40,N*400,N*640,N*G*4]
+    expected=[N*416,512*512*4,512*512*4,512*512*32,128,65536*40,N*400,N*1024,N*G*4]
     for length in expected:
         actual=struct.unpack_from('<Q',raw,pos)[0]; pos+=8
         assert actual == length, (actual,length)
         buffers.append(memoryview(raw)[pos:pos+actual]); pos+=actual
     assert pos == len(raw), 'Truncated or trailing checkpoint data'
-    assert AGENT.itemsize==216 and DECISION.itemsize==640
+    assert AGENT.itemsize==416 and DECISION.itemsize==1024
     agents=np.frombuffer(buffers[0],dtype=AGENT)
     stats=np.frombuffer(buffers[4],dtype='<u4').astype(np.uint64)
     decisions=np.frombuffer(buffers[7],dtype=DECISION)
     genomes=np.frombuffer(buffers[8],dtype='<f4').reshape(N,G)
-    assert np.isfinite(genomes).all() and (np.abs(genomes)<=4).all()
+    assert np.isfinite(genomes).all()
     alive=agents['alive']==1; slots=np.flatnonzero(alive)
-    assert len(slots)>0
     assert int(settings['population']) + int(stats[3])-int(stats[1])-int(stats[2])-int(stats[7]) == len(slots), 'Population accounting mismatch'
     # Saved decisions are from the preceding step. Exclude births which can reuse
     # a slot with a stale decision; verify surviving bodies match decision state.
     valid=alive & (agents['birth_tick'] < tick-1)
     assert np.array_equal(agents['hidden'][valid],decisions['hidden'][valid])
-    out=genomes[valid,2272:].reshape(-1,22,17).astype(np.float64)
-    recomputed=np.einsum('noh,nh->no',out[:,:6,:16],decisions['hidden'][valid].astype(np.float64))+out[:,:6,16]
-    error=float(np.max(np.abs(recomputed-decisions['scores'][valid])))
+    out=action_readout(genomes[valid])
+    recomputed=np.einsum('noh,nh->no',out[:,:6,:H],decisions['hidden'][valid].astype(np.float64))+out[:,:6,H]
+    error=float(np.max(np.abs(recomputed-decisions['scores'][valid]), initial=0.0))
     assert error<1e-4, ('Saved GPU score parity failed',error)
     assert np.array_equal(recomputed.argmax(axis=1),decisions['selected_action'][valid])
     received=decisions['inputs'][valid][:,[58,65,72,79,86,93,100,107]]
     founders=np.asarray(settings.pop('founder_genomes'),dtype=np.float32)
     result={
         'checkpoint':str(path.resolve()),'checkpoint_sha256':hashlib.sha256(raw).hexdigest(),
-        'model':'primitive-v5','checkpoint_schema':17,'seed':seed,'tick':tick,
+        'model':'primitive-v6-variable-brain','checkpoint_schema':18,'seed':seed,'tick':tick,
         'settings_without_genomes':settings,'living':len(slots),
         'births':int(stats[3]),'starvation_deaths':int(stats[1]),'age_deaths':int(stats[2]),
         'emissions':int(stats[9]),'completed_transfers':int(stats[4]),'completed_force':int(stats[5]),
@@ -102,7 +126,7 @@ def audit(path):
         'living_with_nonzero_last_emission_tick':int((agents['signal_tick'][alive]>0).sum()),
         'retained_slots_with_nonzero_last_emission_tick':int((agents['signal_tick']>0).sum()),
         'living_action_counts':dict(zip(ACTIONS,map(int,np.bincount(agents['action'][alive],minlength=6)))),
-        'living_ancestry_depth':{'min':int(agents['ancestry_depth'][alive].min()),'max':int(agents['ancestry_depth'][alive].max())},
+        'living_ancestry_depth':{'min':int(agents['ancestry_depth'][alive].min()) if len(slots) else None,'max':int(agents['ancestry_depth'][alive].max()) if len(slots) else None},
         'saved_decision_validation':{'matched_living_agents':int(valid.sum()),'max_gpu_score_absolute_error':error,
             'all_selected_actions_match':True,'receiver_decisions_with_present_signal':int((received>0).any(axis=1).sum())},
         'current_living_action_suppression':suppression(genomes[alive]),

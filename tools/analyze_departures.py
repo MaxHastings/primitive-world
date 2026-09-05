@@ -76,7 +76,8 @@ def analyze(path, metabolic, movement):
             "nearest_beyond_observed_speed_range": sum(r["nearest_beyond_observed_speed_range"] is True for r in subset),
             "observed_dead_with_zero_energy": sum(r["end_reason"] == "observed_dead" and r["terminal_energy"] == 0 for r in subset)}
     return {"schema": 1, "source": str(path), "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-        "metabolic_cost": metabolic, "movement_cost": movement, "observer": footer["observer"],
+        "metabolic_cost": metabolic, "movement_cost": movement,
+        "range_limit": "Omits individual brain upkeep; ranges are optimistic, not full energy budgets.", "observer": footer["observer"],
         "completed_journeys": completed, "groups": groups, "attempts": rows,
         "limits": "Sampled attempts that meet explicit departure definition, not all agents. Energy+8*inventory assumes all stored food can be converted. Max-speed range is an optimistic no-new-food straight-line bound, clipped by remaining lifespan; it ignores ingestion timing, juvenile slowdown and reproduction. Observed-speed range is illustrative, not a physical impossibility bound. Nearest food is the departure-time landscape and need not persist or be discoverable. Missing identity is not a diagnosed death. No metric enters control or selection."}
 

@@ -39,8 +39,12 @@ pub struct EvolutionSnapshot {
     pub parent_lineages_present: u64,
     pub maximum_ancestry_depth: u32,
     pub mean_ancestry_depth: f64,
-    pub mean_genome: Vec<f64>,
-    pub genome_variance: Vec<f64>,
+    pub mean_nodes: f64,
+    pub mean_connections: f64,
+    pub node_histogram: Vec<u64>,
+    pub connection_histogram: Vec<u64>,
+    pub expanded_descendants: u64,
+    pub contracted_descendants: u64,
 }
 
 pub fn read_buffer(
@@ -105,22 +109,15 @@ impl Simulation {
     ) -> Result<EvolutionSnapshot, String> {
         let bytes = read_buffer(device, queue, &self.agent_buffers[self.current_buffer])?;
         let agents = bytemuck::cast_slice::<u8, AgentGpu>(&bytes);
-        let gene_bytes = read_buffer(device, queue, &self.genome_buffer)?;
-        let genes: &[f32] = bytemuck::cast_slice(&gene_bytes);
         let mut lineages = HashSet::new();
         let mut parent_lineages = HashSet::new();
         let mut snapshot = EvolutionSnapshot {
             tick: self.tick,
-            mean_genome: vec![0.0; GENOME_SIZE],
-            genome_variance: vec![0.0; GENOME_SIZE],
+            node_histogram: vec![0; HIDDEN + 1],
+            connection_histogram: vec![0; MAX_EDGES + 1],
             ..Default::default()
         };
-        let mut genome_squares = [0.0; crate::simulation::GENOME_SIZE];
-        for (slot, agent) in agents
-            .iter()
-            .enumerate()
-            .filter(|(_, agent)| agent.alive != 0)
-        {
+        for agent in agents.iter().filter(|a| a.alive != 0) {
             snapshot.living += 1;
             lineages.insert(agent.lineage_id);
             if agent.parent_lineage != 0 {
@@ -129,24 +126,20 @@ impl Simulation {
             snapshot.maximum_ancestry_depth =
                 snapshot.maximum_ancestry_depth.max(agent.ancestry_depth);
             snapshot.mean_ancestry_depth += agent.ancestry_depth as f64;
-            for (index, gene) in genes[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE]
-                .iter()
-                .enumerate()
-            {
-                snapshot.mean_genome[index] += *gene as f64;
-                genome_squares[index] += (*gene as f64) * (*gene as f64);
-            }
+            snapshot.mean_nodes += agent.brain_nodes as f64;
+            snapshot.mean_connections += agent.brain_edges as f64;
+            snapshot.node_histogram[agent.brain_nodes as usize] += 1;
+            snapshot.connection_histogram[agent.brain_edges as usize] += 1;
+            snapshot.expanded_descendants += u64::from(agent.node_change > 0);
+            snapshot.contracted_descendants += u64::from(agent.node_change < 0);
         }
         snapshot.unique_lineages = lineages.len() as u64;
         snapshot.parent_lineages_present = parent_lineages.len() as u64;
         if snapshot.living > 0 {
             let count = snapshot.living as f64;
             snapshot.mean_ancestry_depth /= count;
-            for (index, square) in genome_squares.iter().enumerate() {
-                snapshot.mean_genome[index] /= count;
-                snapshot.genome_variance[index] =
-                    (square / count - snapshot.mean_genome[index].powi(2)).max(0.0);
-            }
+            snapshot.mean_nodes /= count;
+            snapshot.mean_connections /= count;
         }
         Ok(snapshot)
     }
@@ -238,7 +231,8 @@ impl Simulation {
                     path.display()
                 )
             })?;
-        file.write_all(b"PRIMWORLD017").map_err(|e| e.to_string())?;
+        file.write_all(CHECKPOINT_MAGIC)
+            .map_err(|e| e.to_string())?;
         for n in [self.seed, self.tick, settings.len() as u32] {
             file.write_all(&n.to_le_bytes())
                 .map_err(|e| e.to_string())?;
@@ -277,8 +271,11 @@ impl Simulation {
     ) -> Result<(), String> {
         let mut magic = [0; 12];
         file.read_exact(&mut magic).map_err(|e| e.to_string())?;
-        if &magic != b"PRIMWORLD017" {
-            return Err("Unsupported checkpoint: expected format 17".into());
+        if &magic != CHECKPOINT_MAGIC {
+            return Err(format!(
+                "Unsupported checkpoint: expected {} format {}. Use the matching older engine for earlier worlds.",
+                MODEL_ID, CHECKPOINT_VERSION
+            ));
         }
         let mut fields = [0; 12];
         file.read_exact(&mut fields).map_err(|e| e.to_string())?;
@@ -335,8 +332,6 @@ impl Simulation {
                     a.max_age,
                     a.body_padding,
                     a.signal_payload,
-                    a.mutation_probability,
-                    a.mutation_magnitude,
                     a.collected,
                     a.ingested,
                     a.spent,
@@ -347,8 +342,14 @@ impl Simulation {
                 .chain(&a.velocity)
                 .chain(&a.moved)
                 .any(|v| !v.is_finite())
-                || !(0.0..=1.0).contains(&a.mutation_probability)
-                || !(0.0..=8.0).contains(&a.mutation_magnitude)
+                || a.brain_nodes > HIDDEN as u32
+                || a.brain_edges > MAX_EDGES as u32
+                || a.node_change.unsigned_abs() > 1
+                || a.edge_change.unsigned_abs() > MAX_EDGES as u32
+                || (a.alive != 0 && a.brain_nodes == 0)
+                || a.hidden[a.brain_nodes.min(HIDDEN as u32) as usize..]
+                    .iter()
+                    .any(|v| *v != 0.0)
                 || a.food < 0.0
                 || a.food > 8.001
                 || a.energy < 0.0
@@ -365,11 +366,19 @@ impl Simulation {
                 return Err("Invalid primitive-world body checkpoint".into());
             }
         }
-        if bytemuck::cast_slice::<u8, f32>(&data[8])
-            .iter()
-            .any(|x| !x.is_finite() || x.abs() > 4.0)
+        let genes: &[f32] = bytemuck::cast_slice(&data[8]);
+        for (body, genome) in data[0]
+            .chunks_exact(std::mem::size_of::<AgentGpu>())
+            .map(bytemuck::pod_read_unaligned::<AgentGpu>)
+            .zip(genes.chunks_exact(GENOME_SIZE))
         {
-            return Err("Invalid checkpoint genome".into());
+            if body.brain_nodes == 0 && body.alive == 0 && genome.iter().all(|v| *v == 0.0) {
+                continue;
+            }
+            crate::brain::validate(genome)?;
+            if body.brain_nodes != genome[0] as u32 || body.brain_edges != genome[1] as u32 {
+                return Err("Checkpoint body and brain disagree".into());
+            }
         }
         if data[2]
             .chunks_exact(4)
@@ -416,8 +425,8 @@ impl Simulation {
             if d.selected_action > 5
                 || d.invalid > 1
                 || d.target > MAX_AGENTS
-                || !(0.0..=1.0).contains(&d.mutation_probability)
-                || !(0.0..=8.0).contains(&d.mutation_magnitude)
+                || d.brain_nodes > HIDDEN as u32
+                || d.brain_edges > MAX_EDGES as u32
                 || d.update_gates
                     .iter()
                     .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))

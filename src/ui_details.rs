@@ -16,6 +16,15 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
             s.agent.generation,
             s.agent.ancestry_depth
         ));
+        let settings = &state.simulation.settings;
+        ui.small(format!(
+            "Brain upkeep {:.5}/tick · genome construction {:.4}",
+            s.agent.brain_nodes as f32 * settings.brain_node_cost
+                + s.agent.brain_edges as f32 * settings.brain_edge_cost,
+            crate::brain::encoded_size(s.agent.brain_nodes as usize, s.agent.brain_edges as usize)
+                as f32
+                * settings.genome_copy_cost
+        ));
         ui.label(format!(
             "Energy {:.2} · inventory {:.3} · age {:.0}",
             s.agent.energy, s.agent.food, s.agent.age
@@ -47,9 +56,8 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
                 s.decision.force
             ));
             ui.small(format!(
-                "Offspring variation: {:.2}% of weights · up to ±{:.4}",
-                s.decision.mutation_probability * 100.0,
-                s.decision.mutation_magnitude
+                "Brain: {} units · {} connections · birth change {:+} / {:+}",
+                s.agent.brain_nodes, s.agent.brain_edges, s.agent.node_change, s.agent.edge_change
             ));
             ui.collapsing("Surrounding sensory field", |ui| {
                 ui.label(format!("Underfoot {:.3}", s.perception.resource_here));
@@ -93,7 +101,13 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
                 }
             });
             ui.collapsing("Internal recurrent state", |ui| {
-                for (i, v) in s.agent.hidden.iter().enumerate() {
+                for (i, v) in s
+                    .agent
+                    .hidden
+                    .iter()
+                    .take(s.agent.brain_nodes as usize)
+                    .enumerate()
+                {
                     ui.small(format!(
                         "{i}: {v:.4} · update {:.3}",
                         s.decision.update_gates[i]
@@ -162,6 +176,15 @@ pub fn physics(ui: &mut egui::Ui, state: &mut AppState) {
             s.evolving_landscape,
             s.force_enabled,
             s.communication_enabled,
+            [
+                s.brain_node_cost,
+                s.brain_edge_cost,
+                s.genome_copy_cost,
+                s.mutation_probability,
+                s.mutation_magnitude,
+                s.node_mutation_rate,
+                s.edge_mutation_rate,
+            ],
         )
     };
     let before = physical(&state.simulation.settings);
@@ -209,6 +232,40 @@ pub fn physics(ui: &mut egui::Ui, state: &mut AppState) {
         ui.checkbox(
             &mut state.simulation.settings.communication_enabled,
             "Local signals available",
+        );
+    });
+    ui.collapsing("Brain and inheritance", |ui| {
+        let s = &mut state.simulation.settings;
+        ui.small("Costs and mutation are world rules. Architecture changes at reproduction.");
+        ui.add(egui::Slider::new(&mut s.brain_node_cost, 0.0..=0.01).text("Upkeep per unit"));
+        ui.add(
+            egui::Slider::new(&mut s.brain_edge_cost, 0.0..=0.001).text("Upkeep per connection"),
+        );
+        ui.add(
+            egui::Slider::new(&mut s.genome_copy_cost, 0.0..=0.01)
+                .text("Copy cost per encoded value"),
+        );
+        ui.add(
+            egui::Slider::new(&mut s.mutation_probability, 0.0..=1.0)
+                .text("Parameter mutation probability"),
+        );
+        ui.add(
+            egui::Slider::new(&mut s.mutation_magnitude, 0.0..=4.0)
+                .text("Parameter mutation magnitude"),
+        );
+        ui.add(
+            egui::Slider::new(
+                &mut s.node_mutation_rate,
+                0.0..=(0.5 - s.edge_mutation_rate),
+            )
+            .text("Duplicate / delete probability each"),
+        );
+        ui.add(
+            egui::Slider::new(
+                &mut s.edge_mutation_rate,
+                0.0..=(0.5 - s.node_mutation_rate),
+            )
+            .text("Connect / disconnect probability each"),
         );
     });
     if before != physical(&state.simulation.settings) {

@@ -101,10 +101,15 @@ The automatic evolution loop separately samples late survivors, including founde
 It contains the latest 400 metric samples, not the entire run. Old exports are not
 overwritten. Use headless sampling for a complete bounded diagnostic history.
 
-Checkpoints use format 17; founder banks use format 6. Primitive-v5 intentionally
-rejects V4 and earlier saves and banks because its sensory and memory rewrite has a different genome
-layout. Unsupported formats are
-rejected without modifying the file. See [release status](release.md).
+Checkpoints use format 18; founder banks use format 7. Primitive V6 rejects
+older dense layouts without conversion or modifying the source file. Start a
+fresh V6 world; use the matching older executable for old experiments.
+See [release status](release.md).
+
+The inspector shows each organism's unit count, connection count, structural
+upkeep, construction cost, and birth changes. Brain and inheritance settings
+control shared world costs and mutation rates. Four units is a starting size,
+not a minimum or a target.
 
 ## Reading the behavior
 

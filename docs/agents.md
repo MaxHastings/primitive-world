@@ -5,23 +5,31 @@ same implementation in interactive and headless worlds.
 
 ## Computation and memory
 
-108 local measurements plus 16 previous recurrent state values produce 16 next
-state values and 22 outputs. There are 2,646 inherited weights. First, 16 candidate
-features use tanh(input projection + recurrent projection + bias). A separate
-16-by-17 inherited projection of those candidate features produces update gates,
-clamped to [0,1]. Each next state is `(1-gate)*previous + gate*candidate`:
-zero retains exactly, one replaces, intermediate values blend. Gates have no
-mandatory positive bias or forgetting floor. Outputs are linear projections of
-the next state. The 16 float32 state values occupy 64 bytes. They are not labelled
-memories, a map, or a list of places. Retention is controller-owned.
+Fresh genomes contain four recurrent units and 144 explicit connections.
+Each has eight randomly selected sensory connections, four recurrent inputs,
+four candidate-to-gate inputs, and connections to all 20 outputs. There are no
+semantic node roles. Inheritance can change the graph within 1–64 units and
+0–512 connections; the 108 senses and 20 actuator outputs stay fixed.
 
-Weights do not update during life. Only recurrent state changes during decisions.
-At reproduction, the parent controller requests a per-weight mutation probability
-and magnitude. Each selected weight receives a uniform additive perturbation in
-[-magnitude, magnitude], then clips to [-4,4]. Exact copying is allowed. Child
-state starts empty. No loss function, online reward, gradient optimizer, or
-reward-dependent mutation exists. Useful evolved long-term memory and communication
-are unverified capabilities; synthetic wiring tests do not establish them.
+Candidates use tanh(sensory projection + previous-state projection + bias).
+Gates use a linear projection of candidate values plus bias, clamped to [0,1].
+Each next state is `(1-gate)*previous + gate*candidate`. Zero retains exactly,
+one replaces, intermediate values blend. Outputs are linear projections of the
+next state. Sparse edges explicitly encode each projection; missing edges do
+no work. Gates have no mandatory positive bias or forgetting floor.
+
+Structure and parameters stay fixed during life. Child state starts empty.
+World mutation rules can duplicate/delete a unit, insert/delete a connection,
+and perturb actual parameters at reproduction. Duplication copies incoming
+structure and splits outgoing weights, including self loops and gates, so it
+preserves the old computation before subsequent mutation. Deletion removes
+incident edges. There is no online optimizer or intelligence reward.
+
+Upkeep is 0.001 energy per unit and 0.00002 per connection per tick by default.
+Every encoded connection costs upkeep even at zero weight. A disconnected unit
+still exists and costs energy. Reproduction additionally costs 0.001 per logical
+encoded value: `2 + 2*units + 20 + 3*connections`. Unused GPU allocation is
+zero padding, never inherited dormant material and never charged.
 
 ## Inputs (zero-based)
 
@@ -77,8 +85,6 @@ global population input.
 | 9 | Emitted scalar, tanh [-1,1] |
 | 10–17 | Target logits over the eight sector neighbors |
 | 18–19 | Contact displacement vector |
-| 20 | Per-offspring-weight mutation probability, direct clamp [0,1] |
-| 21 | Mutation magnitude, direct clamp [0,8] |
 
 Largest action logit wins; ties favor the earlier slot. Movement accompanies one
 body action. Target choice applies to transfer and force, not local emissions.
@@ -101,7 +107,7 @@ There is no food-seeking template, reproductive threshold template, favored
 action bias, or suppression of social actions. Input weights start uniform in
 [-.25,.25], recurrent weights/state biases and gate weights/biases in [-.35,.35],
 and output weights/biases in [-.5,.5]. These exchangeable numerical scales are
-authored assumptions. The seed is 0x184a2321 with the documented LCG in src/model.rs.
+authored assumptions. The seed is 0x184a2321 with the LCG in src/brain.rs.
 
 --random-founders instead gives each initial body an independently generated
 genome using the environment seed. --founders loads an explicitly named bank
@@ -111,7 +117,6 @@ Birth inheritance and [between-world evolution](evolution.md) are distinct.
 The native survivor loop carries a rolling archive of up to 64 bodies' genomes,
 including descendant mutations, into the next world. It does not rank original
 founders by family scores. Each sampled genome is retained exactly, with balanced
-replicas filling the next bank using that sampled parent's most recent mutation
-requests at its recorded observation tick. Body state and memories reset; genes do not.
+replicas filling the next bank using the current world mutation settings. Body state and memories reset; genes do not.
 
-The bundled bank contains untrained random weights. Random does not mean competent.
+The bundled bank contains untrained random graphs. Random does not mean competent.

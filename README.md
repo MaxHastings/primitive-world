@@ -12,8 +12,7 @@ A small artificial-life sandbox with no script for how to survive.
 </details>
 
 Watch tiny neural-network agents find food, reproduce, exchange signals, move one
-another, and sometimes go extinct. Food patches shift. Families inherit mutated
-brains. In evolution mode, the last survivors seed another world without closing
+another, and sometimes go extinct. Food patches shift. Families inherit brains whose structure can grow, shrink, and change. In evolution mode, the last survivors seed another world without closing
 the window.
 
 Primitive World is an experimental, local GPU
@@ -59,19 +58,20 @@ the information lens. See the [play guide](docs/play.md) for saving and resuming
 
 ## What evolves?
 
-Each agent has **2,646 inherited weights**, **16 private gated memory values**,
-a coarse surrounding sensory field, six discrete action choices, and independent
-continuous movement. Eight compass sectors cover near/far food and body counts;
-the nearest body per sector can be observed and targeted without exposing its inventory.
-Weights stay fixed during life; the parent brain chooses offspring mutation
-probability and magnitude. Memory state changes during life and resets at birth.
-Survival and reproduction determine
-which lineages remain. There is no migration reward, authored vocabulary, or
-handwritten destination planner.
+Fresh agents start with **four generic recurrent units**. Their sparse brains can
+inherit duplicated or deleted units and connections, within a 1–64 unit and
+512-connection capacity. Every encoded unit and connection costs energy; copying
+a larger genome costs more at birth. Zero activity does not waive the bill.
 
-Interesting-looking movement is not necessarily navigation. Sending signals is
-not proof of language. We distinguish those questions with observations and
-controlled comparisons, not by requiring every ability to be used.
+The sensory field and body remain local: near/far food and body counts, the
+nearest neighbor in each compass sector, six actions, and continuous movement.
+Structure and weights stay fixed during life; private memory changes and resets
+at birth. Mutation follows shared world rules. Survival and paid reproduction
+determine which lineages remain. There is no complexity reward, growth schedule,
+authored vocabulary, or handwritten destination planner.
+
+A tiny successful lineage is as welcome as a larger one. Watch what develops;
+use the inspector and optional diagnostics when something invites a closer look.
 
 ## Learn more
 
@@ -80,6 +80,7 @@ controlled comparisons, not by requiring every ability to be used.
 - [The agent’s inputs, memory, and outputs](docs/agents.md)
 - [Physical and ecological rules](docs/world.md)
 - [Headless observation and evidence limits](docs/observing.md)
+- [Project direction and implementation priorities](docs/direction.md)
 - [Contributing and verification](CONTRIBUTING.md)
 
 The repository contains `src/`, `shaders/`, `docs/`, and optional `tools/`.

@@ -34,12 +34,19 @@ impl LoopSnapshot {
             || self.latest.bank.genomes.len() != self.latest.bodies.len()
             || self.latest.source_population == 0
             || self.latest.source_population > crate::model::MAX_AGENTS as usize
-            || self.latest.bodies.iter().any(|b| {
-                !(0.0..=1.0).contains(&b.mutation_probability)
-                    || !(0.0..=8.0).contains(&b.mutation_magnitude)
-                    || b.observed_tick
-                        .is_some_and(|tick| tick > self.latest.bank.source_tick)
-            })
+            || self
+                .latest
+                .bodies
+                .iter()
+                .zip(&self.latest.bank.genomes)
+                .any(|(b, g)| {
+                    b.brain_nodes != g[0] as u32
+                        || b.brain_edges != g[1] as u32
+                        || !(1..=crate::model::HIDDEN as u32).contains(&b.brain_nodes)
+                        || b.brain_edges > crate::model::MAX_EDGES as u32
+                        || b.observed_tick
+                            .is_some_and(|tick| tick > self.latest.bank.source_tick)
+                })
         {
             return Err("Invalid saved evolution archive".into());
         }
@@ -56,22 +63,14 @@ fn random_u64(state: &mut u64) -> u64 {
     x = (x ^ (x >> 27)).wrapping_mul(0x94d049bb133111eb);
     x ^ (x >> 31)
 }
-fn random_unit(state: &mut u64) -> f32 {
-    (random_u64(state) >> 40) as f32 / 16777216.0
-}
 
 fn replicate(
     sample: &SurvivorSample,
     seed: u64,
+    settings: &SimSettings,
 ) -> Result<(crate::founders::FounderBank, serde_json::Value), String> {
     let parents = &sample.bank.genomes;
     sample.bank.validate()?;
-    if sample.bodies.iter().any(|b| {
-        !(0.0..=1.0).contains(&b.mutation_probability)
-            || !(0.0..=8.0).contains(&b.mutation_magnitude)
-    }) {
-        return Err("Invalid survivor mutation requests".into());
-    }
     if parents.is_empty() || parents.len() > 64 || parents.len() != sample.bodies.len() {
         return Err("Invalid survivor population; refusing a random fallback".into());
     }
@@ -79,7 +78,7 @@ fn replicate(
     let mut provenance: Vec<_> = (0..parents.len())
         .map(|i| {
             serde_json::json!({
-        "parent":i,"kind":"exact","changed_weights":0})
+        "parent":i,"kind":"exact","changed_values":0})
         })
         .collect();
     let mut rng = seed;
@@ -93,32 +92,25 @@ fn replicate(
             if genomes.len() == 256 {
                 break;
             }
-            let probability = sample.bodies[i].mutation_probability;
-            let magnitude = sample.bodies[i].mutation_magnitude;
-            let child: Vec<_> = parents[i]
-                .iter()
-                .map(|&v| {
-                    if random_unit(&mut rng) < probability {
-                        (v + (random_unit(&mut rng) * 2.0 - 1.0) * magnitude).clamp(-4.0, 4.0)
-                    } else {
-                        v
-                    }
-                })
-                .collect();
+            let mutation_seed = random_u64(&mut rng) as u32;
+            let mut child = parents[i].clone();
+            crate::brain::mutate(&mut child, mutation_seed, settings);
             let changes = child
                 .iter()
                 .zip(&parents[i])
                 .filter(|(a, b)| a != b)
                 .count();
+            let node_change = child[0] as i32 - parents[i][0] as i32;
+            let edge_change = child[1] as i32 - parents[i][1] as i32;
             genomes.push(child);
             provenance.push(
-                serde_json::json!({"parent":i,"kind":"offspring_replica","changed_weights":changes,"mutation_probability":probability,"mutation_magnitude":magnitude}),
+                serde_json::json!({"parent":i,"kind":"offspring_replica","changed_values":changes,"mutation_seed":mutation_seed,"node_change":node_change,"edge_change":edge_change}),
             );
         }
     }
     Ok((
         crate::founders::FounderBank {
-            version: 6,
+            version: crate::model::FOUNDER_BANK_VERSION,
             model: crate::model::MODEL_ID.into(),
             name: format!(
                 "native-survivors-seed{}-tick{}",
@@ -128,8 +120,8 @@ fn replicate(
             source_tick: sample.bank.source_tick,
             genomes,
         },
-        serde_json::json!({"algorithm":"splitmix64-f32-v2-parent-controls","seed":seed,
-            "mutation_controls":"Most recent sampled controller requests; zero before first decision","provenance":provenance,"source_bodies":sample.bodies}),
+        serde_json::json!({"algorithm":"sparse-lcg32-v1","seed":seed,
+            "mutation_law":{"probability":settings.mutation_probability,"magnitude":settings.mutation_magnitude,"node_rate_each":settings.node_mutation_rate,"edge_rate_each":settings.edge_mutation_rate},"provenance":provenance,"source_bodies":sample.bodies}),
     ))
 }
 
@@ -196,7 +188,7 @@ impl VisibleTrial {
             "mode":"native_single_window_survivor_loop","model":crate::model::MODEL_ID,
             "build":env!("CARGO_PKG_VERSION"),"initial_seed":sim.seed,"initial_tick":sim.tick,
             "initial_settings":sim.settings,"tick_limit":null,"round_limit":null,
-            "variation":"splitmix64-f32-v2-parent-controls; each sampled parent's latest mutation probability and magnitude",
+            "variation":"sparse-lcg32-v1; same world mutation law as ordinary births; balanced parents with one exact copy each",
             "selection":"rolling archive of up to 64 distinct observed bodies; current survivors first, earlier entries retained to fill vacancies",
             "ending":"extinction advances in place; user close saves and stops"}),
         )?;
@@ -324,7 +316,7 @@ impl VisibleTrial {
             .as_ref()
             .ok_or("Missing actual survivor sample")?;
         let seed = ((sim.seed as u64) << 32) ^ sim.tick as u64 ^ next_number;
-        let (bank, mut transfer) = replicate(sample, seed)?;
+        let (bank, mut transfer) = replicate(sample, seed, &sim.settings)?;
         transfer["source_directory"] = self.directory.to_string_lossy().to_string().into();
         write_new(&self.directory.join("next.bank.json"), &bank)?;
         write_new(&self.directory.join("transfer.json"), &transfer)?;
@@ -399,7 +391,7 @@ impl VisibleTrial {
         write_new(
             &self.directory.join("report.json"),
             &serde_json::json!({
-            "model":crate::model::MODEL_ID,"checkpoint_version":16,"seed":sim.seed,
+            "model":crate::model::MODEL_ID,"checkpoint_version":crate::model::CHECKPOINT_VERSION,"seed":sim.seed,
             "initial_tick":self.initial_tick,"elapsed_ticks":sim.tick-self.initial_tick,
             "tick_limit":null,"termination_reason":if user_closed {"user_closed"} else {"extinction"},
             "initial_settings":self.initial_settings,"final_settings":sim.settings,"end":metrics,
@@ -415,11 +407,11 @@ impl VisibleTrial {
 mod tests {
     use super::*;
 
-    fn sample(probability: f32, magnitude: f32) -> SurvivorSample {
-        let genome = vec![0.0; crate::model::GENOME_SIZE];
+    fn sample() -> SurvivorSample {
+        let genome = crate::brain::blank(crate::model::DEFAULT_NODES).to_vec();
         SurvivorSample {
             bank: crate::founders::FounderBank {
-                version: 6,
+                version: crate::model::FOUNDER_BANK_VERSION,
                 model: crate::model::MODEL_ID.into(),
                 name: "fixture".into(),
                 source_seed: 1,
@@ -436,8 +428,10 @@ mod tests {
                 age: 1.0,
                 energy: 1.0,
                 food: 0.0,
-                mutation_probability: probability,
-                mutation_magnitude: magnitude,
+                brain_nodes: crate::model::DEFAULT_NODES as u32,
+                brain_edges: 0,
+                node_change: 0,
+                edge_change: 0,
                 observed_tick: Some(2),
             }],
             selection: "fixture".into(),
@@ -445,31 +439,35 @@ mod tests {
     }
 
     #[test]
-    fn survivor_transfer_honors_parent_mutation_controls() {
-        let (exact, _) = replicate(&sample(0.0, 8.0), 42).unwrap();
-        assert!(
-            exact
-                .genomes
-                .iter()
-                .all(|genome| genome.iter().all(|&v| v == 0.0))
-        );
-
-        let (varied, transfer) = replicate(&sample(1.0, 0.5), 42).unwrap();
-        assert!(
-            varied
-                .genomes
-                .iter()
-                .skip(1)
-                .flatten()
-                .all(|&v| (-0.5..=0.5).contains(&v))
-        );
-        assert!(
-            varied
-                .genomes
-                .iter()
-                .skip(1)
-                .any(|genome| genome.iter().any(|&v| v != 0.0))
-        );
-        assert_eq!(transfer["algorithm"], "splitmix64-f32-v2-parent-controls");
+    fn survivor_transfer_uses_world_law_and_reproducible_seeds() {
+        let sample = sample();
+        let mut settings = SimSettings {
+            mutation_probability: 0.0,
+            node_mutation_rate: 0.0,
+            edge_mutation_rate: 0.0,
+            ..Default::default()
+        };
+        let (exact, _) = replicate(&sample, 42, &settings).unwrap();
+        assert!(exact.genomes.iter().all(|g| *g == sample.bank.genomes[0]));
+        settings = SimSettings::default();
+        let (varied, receipt) = replicate(&sample, 42, &settings).unwrap();
+        varied.validate().unwrap();
+        assert_eq!(varied.genomes[0], sample.bank.genomes[0]);
+        assert!(varied.genomes.iter().any(|g| *g != sample.bank.genomes[0]));
+        assert_eq!(receipt["algorithm"], "sparse-lcg32-v1");
+        for (g, record) in varied
+            .genomes
+            .iter()
+            .zip(receipt["provenance"].as_array().unwrap())
+            .skip(1)
+        {
+            let mut expected = sample.bank.genomes[0].clone();
+            crate::brain::mutate(
+                &mut expected,
+                record["mutation_seed"].as_u64().unwrap() as u32,
+                &settings,
+            );
+            assert_eq!(*g, expected);
+        }
     }
 }

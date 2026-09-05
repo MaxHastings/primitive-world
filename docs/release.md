@@ -5,21 +5,21 @@ and general adaptation are unverified capabilities.
 
 ## Build and data formats
 
-- Application version: 0.6.1.
-- Model identifier in reports and exported banks: `primitive-v5`.
-- Checkpoint format: 17.
-- Founder-bank format: 6.
-- GPU genome storage: about 166 MiB in one storage binding, plus world/render buffers.
+- Application version: 0.7.0.
+- Model identifier in reports and exported banks: `primitive-v6-variable-brain`.
+- Checkpoint format: 18.
+- Founder-bank format: 7.
+- GPU genome storage: about 105.4 MiB in one storage binding, plus world/render buffers.
 
 Data-format numbers identify storage contracts, independently of the application
-version. V5's sensory field, sector targets, and gated memory change the genome
-and storage layouts, so V4 and earlier
-checkpoints and founder banks are intentionally rejected. Unsupported formats or
-models fail validation.
+version. V6's sparse graph, larger state capacity, world mutation law, and structural
+costs change the genome and storage contracts. V5 and earlier banks/checkpoints
+are rejected explicitly; they are not converted.
 
-Start a fresh experiment for V5. Old experiment files remain untouched and can
+Start a fresh experiment for V6. Old experiment files remain untouched and can
 be used with their matching older executable; there is no genome conversion.
-Food integration and exact nearest-sector selection cost more than sparse probes.
+The prior V5 source is preserved at the `primitive-v5-pre-cutover` branch.
+Food integration and exact nearest-sector selection retain their existing costs.
 Dense coincident populations have quadratic neighbor-scan work; performance
 measurements must state population and spatial arrangement.
 

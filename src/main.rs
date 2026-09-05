@@ -1,3 +1,4 @@
+mod brain;
 mod controls;
 mod environment;
 mod experiments;

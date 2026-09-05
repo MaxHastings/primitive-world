@@ -20,7 +20,7 @@ def checkpoint_header(path):
     size = path.stat().st_size
     with path.open("rb") as stream:
         magic = stream.read(12)
-        if magic not in (b"PRIMWORLD016", b"PRIMWORLD017"):
+        if magic not in (b"PRIMWORLD016", b"PRIMWORLD017", b"PRIMWORLD018"):
             raise ValueError(f"Unexpected checkpoint version: {path}")
         seed, tick, settings_size = struct.unpack("<III", stream.read(12))
         if not 1 <= settings_size <= 32 * 1024 * 1024:

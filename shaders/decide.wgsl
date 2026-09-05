@@ -20,36 +20,45 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
   if(b.slot<INVALID){x[n]=b.offset.x/a.sensor_radius;x[n+1u]=b.offset.y/a.sensor_radius;x[n+2u]=b.velocity.x/1.2;x[n+3u]=b.velocity.y/1.2;x[n+4u]=b.signal;x[n+5u]=1.0;x[n+6u]=b.signal_present;}
  }
  for(var k=0u;k<INPUT_COUNT;k++){if(!finite(x[k])){d.invalid=1u;}x[k]=clamp(x[k],-8.0,8.0);d.inputs[k]=x[k];}
- // Element copies avoid an array-valued temporary that crashes the Windows
- // shader compiler through Naga 24's HLSL path.
+
+ let base=i*GENOME_SIZE;
+ let node_count=u32(genomes[base]);let edge_count=u32(genomes[base+1u]);
+ d.brain_nodes=node_count;d.brain_edges=edge_count;
+ // Counts and endpoints are validated at load and maintained by birth mutations.
  var previous:array<f32,HIDDEN_COUNT>;
- for(var h=0u;h<HIDDEN_COUNT;h++){previous[h]=a.hidden[h];}
  var candidate:array<f32,HIDDEN_COUNT>;
- for(var h=0u;h<HIDDEN_COUNT;h++){
-  let row=h*RECURRENT_ROW;var v=genomes[i*GENOME_SIZE+row+RECURRENT_ROW-1u];
-  for(var k=0u;k<INPUT_COUNT;k++){v+=genomes[i*GENOME_SIZE+row+k]*x[k];}
-  for(var k=0u;k<HIDDEN_COUNT;k++){v+=genomes[i*GENOME_SIZE+row+INPUT_COUNT+k]*previous[k];}
-  if(!finite(v)){d.invalid=1u;v=0.0;}candidate[h]=tanh(v);
+ var gate_sum:array<f32,HIDDEN_COUNT>;
+ for(var h=0u;h<node_count;h++){
+  previous[h]=a.hidden[h];
+  candidate[h]=genomes[base+NODE_BIAS+h];gate_sum[h]=genomes[base+GATE_BIAS+h];
  }
- // Evolved gates read proposed features. Zero retains exactly; one replaces.
- // No forced forgetting, semantic memory slots, or mandatory gate bias.
- for(var h=0u;h<HIDDEN_COUNT;h++){
-  let row=GATE_BASE+h*(HIDDEN_COUNT+1u);var v=genomes[i*GENOME_SIZE+row+HIDDEN_COUNT];
-  for(var k=0u;k<HIDDEN_COUNT;k++){v+=genomes[i*GENOME_SIZE+row+k]*candidate[k];}
-  if(!finite(v)){d.invalid=1u;v=0.0;}
-  let gate=clamp(v,0.0,1.0);d.update_gates[h]=gate;
+ for(var e=0u;e<edge_count;e++){
+  let b=base+EDGE_BASE+e*3u;let src=u32(genomes[b]);let dst=u32(genomes[b+1u]);let w=genomes[b+2u];
+  if(dst<HIDDEN_COUNT){
+   var value=0.0;if(src<INPUT_COUNT){value=x[src];}else{value=previous[src-INPUT_COUNT];}
+   candidate[dst]+=w*value;
+  }
+ }
+ for(var h=0u;h<node_count;h++){
+  if(!finite(candidate[h])){d.invalid=1u;candidate[h]=0.0;}candidate[h]=tanh(candidate[h]);
+ }
+ for(var e=0u;e<edge_count;e++){
+  let b=base+EDGE_BASE+e*3u;let src=u32(genomes[b]);let dst=u32(genomes[b+1u]);
+  if(dst>=HIDDEN_COUNT && dst<2u*HIDDEN_COUNT){gate_sum[dst-HIDDEN_COUNT]+=genomes[b+2u]*candidate[src-INPUT_COUNT];}
+ }
+ for(var h=0u;h<node_count;h++){
+  if(!finite(gate_sum[h])){d.invalid=1u;gate_sum[h]=0.0;}
+  let gate=clamp(gate_sum[h],0.0,1.0);d.update_gates[h]=gate;
   d.hidden[h]=(1.0-gate)*previous[h]+gate*candidate[h];
   if(!finite(d.hidden[h])){d.invalid=1u;}
  }
  var out:array<f32,OUTPUT_COUNT>;
- for(var o=0u;o<OUTPUT_COUNT;o++){
-  let row=OUTPUT_BASE+o*(HIDDEN_COUNT+1u);var v=genomes[i*GENOME_SIZE+row+HIDDEN_COUNT];
-  for(var h=0u;h<HIDDEN_COUNT;h++){v+=genomes[i*GENOME_SIZE+row+h]*d.hidden[h];}
-  if(!finite(v)){d.invalid=1u;v=0.0;}out[o]=v;
+ for(var o=0u;o<OUTPUT_COUNT;o++){out[o]=genomes[base+OUTPUT_BIAS+o];}
+ for(var e=0u;e<edge_count;e++){
+  let b=base+EDGE_BASE+e*3u;let src=u32(genomes[b]);let dst=u32(genomes[b+1u]);
+  if(dst>=2u*HIDDEN_COUNT){out[dst-2u*HIDDEN_COUNT]+=genomes[b+2u]*d.hidden[src-INPUT_COUNT];}
  }
- // Direct bounded requests; eight weight units span the genome interval [-4,4].
- d.mutation_probability=clamp(out[MUTATION_OUTPUT],0.0,1.0);
- d.mutation_magnitude=clamp(out[MUTATION_OUTPUT+1u],0.0,8.0);
+ for(var o=0u;o<OUTPUT_COUNT;o++){if(!finite(out[o])){d.invalid=1u;out[o]=0.0;}}
  var best=-3.4e38;
  for(var k=0u;k<6u;k++){d.scores[k]=out[k];if(out[k]>best){best=out[k];d.selected_action=k;}}
  // Continuous actuator calibration: no minimum motion or preferred heading.
@@ -59,6 +68,6 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  best=-3.4e38;
  for(var k=0u;k<8u;k++){if(p.bodies[k].slot<INVALID && out[10u+k]>best){best=out[10u+k];d.target_id=p.bodies[k].slot;d.target_generation=p.bodies[k].generation;}}
  // Fault containment only: do not replace finite but ineffective intentions.
- if(d.invalid!=0u){d.selected_action=NONE;d.movement=vec2<f32>(0);d.amount=0.0;d.payload=0.0;d.force=vec2<f32>(0);d.mutation_probability=0.0;d.mutation_magnitude=0.0;for(var h=0u;h<HIDDEN_COUNT;h++){d.hidden[h]=0.0;}}
+ if(d.invalid!=0u){d.selected_action=NONE;d.movement=vec2<f32>(0);d.amount=0.0;d.payload=0.0;d.force=vec2<f32>(0);for(var h=0u;h<HIDDEN_COUNT;h++){d.hidden[h]=0.0;}}
  decisions[i]=d;
 }

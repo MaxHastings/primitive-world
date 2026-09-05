@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.0
+
+- Replace the fixed dense brain with inherited sparse gated networks: four initial
+  units, 1–64 units and up to 512 explicit connections. Duplication preserves the
+  existing computation before mutation; deletion and connection edits can shrink it.
+- Charge energy for encoded units/connections and copying the child's actual
+  genome. Unused GPU allocation costs nothing; inactive encoded structure still does.
+- Replace neural mutation-request outputs with shared world mutation settings.
+  Ordinary births and survivor replicas use the same structural and parameter law.
+- Show brain counts, birth changes, and costs in the inspector. Reports describe
+  architecture distributions instead of averages over unrelated gene positions.
+- Use model primitive-v6-variable-brain, checkpoint 18, and founder bank 7.
+  Older worlds require their matching engine and are never silently converted.
+
+
 ## 0.6.1
 
 - Fix slow startup and menu freezes caused by parsing save receipts with

@@ -16,8 +16,10 @@ pub struct SampledBody {
     pub age: f32,
     pub energy: f32,
     pub food: f32,
-    pub mutation_probability: f32,
-    pub mutation_magnitude: f32,
+    pub brain_nodes: u32,
+    pub brain_edges: u32,
+    pub node_change: i32,
+    pub edge_change: i32,
     /// None means the source did not record an individual observation tick.
     pub observed_tick: Option<u32>,
 }
@@ -49,7 +51,7 @@ impl SurvivorSample {
                 self.bank.genomes.push(genome.clone());
             }
         }
-        self.selection = "Rolling archive of up to 64 distinct bodies: current sampled survivors first, then previously observed bodies to fill remaining entries. Each body retains its own genome and mutation requests from its recorded observation tick. Source tick/population describe the latest live observation, not all archived bodies.".into();
+        self.selection = "Rolling archive of up to 64 distinct bodies: current sampled survivors first, then previously observed bodies to fill remaining entries. Each body retains its own genome and structural metadata from its recorded observation tick. Source tick/population describe the latest live observation, not all archived bodies.".into();
     }
 }
 
@@ -109,7 +111,7 @@ pub fn observe(
     crate::founders::validate_genomes(&genomes)?;
     *latest = Some(SurvivorSample {
         bank: FounderBank {
-            version: 6,
+            version: crate::model::FOUNDER_BANK_VERSION,
             model: crate::model::MODEL_ID.into(),
             name: format!("survivors-seed{}-tick{}", sim.seed, sim.tick),
             source_seed: sim.seed,
@@ -130,8 +132,10 @@ pub fn observe(
                     age: a.age,
                     energy: a.energy,
                     food: a.food,
-                    mutation_probability: a.mutation_probability,
-                    mutation_magnitude: a.mutation_magnitude,
+                    brain_nodes: a.brain_nodes,
+                    brain_edges: a.brain_edges,
+                    node_change: a.node_change,
+                    edge_change: a.edge_change,
                     observed_tick: Some(sim.tick),
                 }
             })

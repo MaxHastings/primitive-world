@@ -177,7 +177,7 @@ fn each_sector_logit_targets_the_observed_incarnation_and_contact_uses_it() {
     }
     for k in 0..8 {
         let mut genes = fixed(3, [0.0; 2]);
-        genes[OUTPUT_BASE + (10 + k) * 17 + 16] = 4.0;
+        genes[OUTPUT_BIAS + (10 + k)] = 4.0;
         put(&s, &q, 0, body(origin), &genes);
         let (p, decision) = sense(&s, &d, &q);
         assert_eq!(decision.target, p.bodies[k].slot);
@@ -198,10 +198,10 @@ fn evolved_gates_can_store_a_cue_retain_through_distraction_and_replace_it() {
     let (d, q) = gpu();
     let s = scene(&d, &q);
     let mut genes = fixed(0, [0.0; 2]);
-    genes[20] = 1.0; // candidate 0 reads regional food
-    genes[RECURRENT_ROW + 2] = 1.0; // candidate 1 reads underfoot cue
-    genes[GATE_BASE + 1] = 4.0; // gate 0 opens when cue is present
-    genes[OUTPUT_BASE + 6 * 17] = 1.0; // retained value can influence action
+    crate::brain::add_edge(&mut genes, 20, 0, 1.0); // candidate 0 reads regional food
+    crate::brain::add_edge(&mut genes, 2, 1, 1.0); // candidate 1 reads underfoot cue
+    crate::brain::add_edge(&mut genes, INPUTS + 1, HIDDEN, 4.0); // gate 0 opens when cue is present
+    crate::brain::add_edge(&mut genes, INPUTS, 2 * HIDDEN + 6, 1.0); // retained value can influence action
     put(&s, &q, 0, body([602.0, 902.0]), &genes);
     s.update_params(&q);
     let mut p = PerceptionGpu::default();
@@ -252,7 +252,7 @@ fn previous_model_checkpoint_is_rejected_before_any_world_change() {
     let err = s
         .load_checkpoint_reader(&q, std::io::Cursor::new(b"PRIMWORLD016"))
         .unwrap_err();
-    assert!(err.contains("format 17"));
+    assert!(err.contains("format 18"));
     assert_eq!(s.tick, 0);
     assert_eq!(
         bytemuck::bytes_of(&read::<AgentGpu>(&d, &q, &s.agent_buffers[0], 1)[0]),
@@ -282,7 +282,7 @@ fn sensory_rewrite_throughput_probe() {
         let start = std::time::Instant::now();
         step(&mut s, &d, &q, 32);
         eprintln!(
-            "V5 population={population} coincident={crowded}: {:.3} ms/tick (32 ticks, full simulation, no rendering)",
+            "V6 population={population} coincident={crowded}: {:.3} ms/tick (32 ticks, full simulation, no rendering)",
             start.elapsed().as_secs_f64() * 1000.0 / 32.0
         );
         assert_eq!(s.metrics(&d, &q).unwrap().invalid_outputs, 0);

@@ -1,6 +1,9 @@
 //! primitive-world: fixed-frame sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
-pub const MODEL_ID: &str = "primitive-v5";
+pub const MODEL_ID: &str = "primitive-v6-variable-brain";
+pub const FOUNDER_BANK_VERSION: u32 = 7;
+pub const CHECKPOINT_VERSION: u32 = 18;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD018";
 pub const MAX_AGENTS: u32 = 16_384;
 pub const RESOURCE_GRID: u32 = 512;
 pub const OCCUPANCY_GRID: u32 = 256;
@@ -14,14 +17,17 @@ pub const REGIONS: usize = SECTORS * 2;
 pub const NEIGHBOR_BASE: usize = 52;
 pub const NEIGHBOR_INPUTS: usize = 7;
 pub const INPUTS: usize = NEIGHBOR_BASE + SECTORS * NEIGHBOR_INPUTS;
-pub const HIDDEN: usize = 16;
-pub const OUTPUTS: usize = 22;
+/// GPU capacity, not inherited dormant structure. Only encoded nodes/edges exist.
+pub const HIDDEN: usize = 64;
+pub const DEFAULT_NODES: usize = 4;
+pub const OUTPUTS: usize = 20;
 pub const FORCE_OUTPUT: usize = 18;
-pub const MUTATION_OUTPUT: usize = 20;
-pub const RECURRENT_ROW: usize = INPUTS + HIDDEN + 1;
-pub const GATE_BASE: usize = HIDDEN * RECURRENT_ROW;
-pub const OUTPUT_BASE: usize = GATE_BASE + HIDDEN * (HIDDEN + 1);
-pub const GENOME_SIZE: usize = OUTPUT_BASE + OUTPUTS * (HIDDEN + 1);
+pub const MAX_EDGES: usize = 512;
+pub const NODE_BIAS: usize = 2;
+pub const GATE_BIAS: usize = NODE_BIAS + HIDDEN;
+pub const OUTPUT_BIAS: usize = GATE_BIAS + HIDDEN;
+pub const EDGE_BASE: usize = OUTPUT_BIAS + OUTPUTS;
+pub const GENOME_SIZE: usize = EDGE_BASE + MAX_EDGES * 3;
 pub const ACTION_NAMES: [&str; 6] = ["none", "collect", "transfer", "force", "emit", "reproduce"];
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
@@ -60,9 +66,11 @@ pub struct AgentGpu {
     /// Founder genome slot; observer bookkeeping, never a cognitive input.
     pub founder_family: u32,
     pub hidden: [f32; HIDDEN],
-    /// Most recent controller requests; zero until this body first decides.
-    pub mutation_probability: f32,
-    pub mutation_magnitude: f32,
+    pub brain_nodes: u32,
+    pub brain_edges: u32,
+    /// Birth-time difference from the parent; zero for fresh founders.
+    pub node_change: i32,
+    pub edge_change: i32,
 }
 impl Default for AgentGpu {
     fn default() -> Self {
@@ -108,8 +116,8 @@ pub struct DecisionGpu {
     pub invalid: u32,
     pub body_padding: u32,
     pub force: [f32; 2],
-    pub mutation_probability: f32,
-    pub mutation_magnitude: f32,
+    pub brain_nodes: u32,
+    pub brain_edges: u32,
     pub hidden: [f32; HIDDEN],
     pub update_gates: [f32; HIDDEN],
     pub inputs: [f32; INPUTS],
@@ -131,6 +139,7 @@ pub struct SimParams {
     pub sensor_and_padding: [f32; 4],
     pub physical: [f32; 4],
     pub lifecycle: [u32; 4],
+    pub mutation: [f32; 4],
 }
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
@@ -183,6 +192,18 @@ pub struct SimSettings {
     pub force_enabled: bool,
     pub communication_enabled: bool,
     pub evolving_landscape: bool,
+    /// Energy charged each tick for one expressed computational unit.
+    pub brain_node_cost: f32,
+    /// Every encoded connection costs upkeep, including zero-weight connections.
+    pub brain_edge_cost: f32,
+    /// Energy per logical genome value (counts, biases, edge triples), not padding.
+    pub genome_copy_cost: f32,
+    pub mutation_probability: f32,
+    pub mutation_magnitude: f32,
+    /// Probability for each of duplication and deletion at a birth.
+    pub node_mutation_rate: f32,
+    /// Probability for each of connection insertion and deletion at a birth.
+    pub edge_mutation_rate: f32,
     pub founder_genomes: Vec<Vec<f32>>,
     pub founder_name: String,
 }
@@ -206,6 +227,13 @@ impl Default for SimSettings {
             force_enabled: true,
             communication_enabled: true,
             evolving_landscape: true,
+            brain_node_cost: default_brain_node_cost(),
+            brain_edge_cost: default_brain_edge_cost(),
+            genome_copy_cost: default_genome_copy_cost(),
+            mutation_probability: 0.02,
+            mutation_magnitude: 0.03,
+            node_mutation_rate: 0.04,
+            edge_mutation_rate: 0.08,
             founder_genomes: crate::founders::bundled().genomes.clone(),
             founder_name: crate::founders::bundled().name.clone(),
         }
@@ -228,6 +256,13 @@ impl SimSettings {
                 self.sensor_radius,
                 self.reproduction_cost,
                 self.maturity_age,
+                self.brain_node_cost,
+                self.brain_edge_cost,
+                self.genome_copy_cost,
+                self.mutation_probability,
+                self.mutation_magnitude,
+                self.node_mutation_rate,
+                self.edge_mutation_rate,
             ]
             .iter()
             .any(|x| !x.is_finite() || *x < 0.0)
@@ -246,31 +281,31 @@ impl SimSettings {
             || self.habitat_contrast > 1.0
             || self.heterogeneity > 1.0
             || self.maturity_age > 11000.0
+            || self.brain_node_cost > 10.0
+            || self.brain_edge_cost > 10.0
+            || self.genome_copy_cost > 10.0
+            || self.mutation_probability > 1.0
+            || self.mutation_magnitude > 8.0
+            || 2.0 * (self.node_mutation_rate + self.edge_mutation_rate) > 1.0
         {
             return Err("Invalid primitive-world physical settings".into());
         }
         crate::founders::validate_genomes(&self.founder_genomes)
     }
 }
-/// Exchangeable random weights: no food, heading, action or reproduction template.
-/// Separate input/recurrent/output scales are numerical calibration, not instincts.
+/// Four unlabelled units with sparse, exchangeable random sensory connections.
 pub fn random_genome(rng: &mut u32) -> [f32; GENOME_SIZE] {
-    let mut g = [0.0; GENOME_SIZE];
-    for (i, value) in g.iter_mut().enumerate() {
-        *rng = rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-        let noise = ((*rng >> 8) as f32 / 16_777_215.0) * 2.0 - 1.0;
-        let scale = if i < GATE_BASE {
-            if i % RECURRENT_ROW < INPUTS {
-                0.25
-            } else {
-                0.35
-            }
-        } else if i < OUTPUT_BASE {
-            0.35
-        } else {
-            0.5
-        };
-        *value = noise * scale;
-    }
-    g
+    crate::brain::random_genome(rng)
+}
+
+fn default_brain_node_cost() -> f32 {
+    0.001
+}
+
+fn default_brain_edge_cost() -> f32 {
+    0.00002
+}
+
+fn default_genome_copy_cost() -> f32 {
+    0.001
 }

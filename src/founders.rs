@@ -1,6 +1,8 @@
 //! Random founder initialization, bank loading, and living-descendant export.
 //! Genomes receive no action reward, population target, or observer feedback.
-use crate::simulation::{AgentGpu, GENOME_SIZE, Simulation, observability::read_buffer};
+use crate::simulation::{
+    AgentGpu, FOUNDER_BANK_VERSION, GENOME_SIZE, Simulation, observability::read_buffer,
+};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -17,8 +19,8 @@ pub struct FounderBank {
 impl FounderBank {
     pub fn validate(&self) -> Result<(), String> {
         let compatible_model = self.model == crate::model::MODEL_ID;
-        if self.version != 6 || !compatible_model || self.genomes.is_empty() {
-            return Err("Expected a nonempty Primitive World founder bank in format 6".into());
+        if self.version != FOUNDER_BANK_VERSION || !compatible_model || self.genomes.is_empty() {
+            return Err("Expected a nonempty Primitive World founder bank in format 7".into());
         }
         validate_genomes(&self.genomes)
     }
@@ -34,7 +36,7 @@ pub fn bundled() -> &'static FounderBank {
             .map(|_| crate::model::random_genome(&mut rng).to_vec())
             .collect();
         FounderBank {
-            version: 6,
+            version: FOUNDER_BANK_VERSION,
             model: crate::model::MODEL_ID.into(),
             name: "primitive-world-random-256".into(),
             source_seed: 0,
@@ -45,12 +47,11 @@ pub fn bundled() -> &'static FounderBank {
 }
 
 pub fn validate_genomes(genomes: &[Vec<f32>]) -> Result<(), String> {
-    if genomes.len() > 256
-        || genomes
-            .iter()
-            .any(|g| g.len() != GENOME_SIZE || g.iter().any(|v| !v.is_finite() || v.abs() > 4.0))
-    {
+    if genomes.len() > 256 {
         return Err("Invalid primitive-world founder genomes".into());
+    }
+    for g in genomes {
+        crate::brain::validate(g)?;
     }
     Ok(())
 }
@@ -95,7 +96,7 @@ impl Simulation {
             x ^ (x >> 16)
         });
         let bank = FounderBank {
-            version: 6,
+            version: FOUNDER_BANK_VERSION,
             model: crate::model::MODEL_ID.into(),
             name: format!(
                 "primitive-world-descendants-seed{}-tick{}",
@@ -126,9 +127,9 @@ mod tests {
 
     fn bank(model: &str) -> FounderBank {
         serde_json::from_value(serde_json::json!({
-            "version": 6, "model": model, "name": "test-pool",
+            "version": 7, "model": model, "name": "test-pool",
             "source_seed": 42, "source_tick": 128,
-            "genomes": [vec![0.125; GENOME_SIZE]]
+            "genomes": [crate::brain::blank(crate::model::DEFAULT_NODES).to_vec()]
         }))
         .unwrap()
     }
@@ -139,7 +140,10 @@ mod tests {
         let before = serde_json::to_value(&bank).unwrap();
         bank.validate().unwrap();
         assert_eq!(serde_json::to_value(&bank).unwrap(), before);
-        assert_eq!(bank.genomes, vec![vec![0.125; GENOME_SIZE]]);
+        assert_eq!(
+            bank.genomes,
+            vec![crate::brain::blank(crate::model::DEFAULT_NODES).to_vec()]
+        );
         assert_eq!(bundled().model, crate::model::MODEL_ID);
     }
 
@@ -152,7 +156,7 @@ mod tests {
         let mut bank = bank(crate::model::MODEL_ID);
         bank.version = 0;
         assert!(bank.validate().is_err());
-        bank.version = 6;
+        bank.version = FOUNDER_BANK_VERSION;
         bank.genomes[0].pop();
         assert!(bank.validate().is_err());
         bank.genomes = vec![vec![5.0; GENOME_SIZE]];

@@ -430,14 +430,14 @@ fn dead_slot_reuse_resets_experience_and_advances_incarnation() {
     let mut s = scene(&d, &q);
     let mut dead = body([500.0, 500.0]);
     dead.generation = 8;
-    dead.hidden = [0.9; 16];
+    dead.hidden = [0.9; HIDDEN];
     put(&s, &q, 0, dead, &fixed(0, [0.0; 2]));
     s.kill_agents_in_region(&d, &q, [500.0, 500.0], 2.0);
     put(&s, &q, 1, body([602.0, 902.0]), &fixed(5, [0.0; 2]));
     step(&mut s, &d, &q, 1);
     let bodies = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
     assert_eq!(bodies[0].generation, 9);
-    assert_eq!(bodies[0].hidden, [0.0; 16]);
+    assert_eq!(bodies[0].hidden, [0.0; HIDDEN]);
     assert_eq!(bodies[0].ancestry_depth, 1);
     assert_eq!(bodies[0].signal_tick, 0);
     near(s.metrics(&d, &q).unwrap().dropped_food as f32, 2.0);
@@ -476,7 +476,7 @@ fn motor_response_is_continuous_optional_reversible_and_bounded() {
     s.settings.motor_response_gain = 8.0;
     for effort in [0.0f32, 0.01, -0.01, 4.0] {
         let mut g = fixed(0, [0.0; 2]);
-        g[OUTPUT_BASE + 6 * 17 + 16] = effort;
+        g[OUTPUT_BIAS + 6] = effort;
         put(&s, &q, 0, body([602.0, 902.0]), &g);
         step(&mut s, &d, &q, 1);
         let a = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
@@ -629,7 +629,7 @@ fn amount_and_failed_actions_remain_controller_owned() {
     let mut s = scene(&d, &q);
     let a = body([602.0, 902.0]);
     let mut g = fixed(2, [0.2, 0.0]); // no target exists
-    g[OUTPUT_BASE + 8 * 17 + 16] = -2.0;
+    g[OUTPUT_BIAS + 8] = -2.0;
     put(&s, &q, 0, a, &g);
     step(&mut s, &d, &q, 1);
     let b = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
@@ -662,9 +662,8 @@ fn founder_export_requires_descendants_and_preserves_existing_files() {
 fn survivor_sample_keeps_current_child_genes_after_extinction() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
-    let mut parent = fixed(5, [0.0; 2]);
-    parent[OUTPUT_BASE + MUTATION_OUTPUT * 17 + 16] = 1.0;
-    parent[OUTPUT_BASE + (MUTATION_OUTPUT + 1) * 17 + 16] = 0.03;
+    let parent = fixed(5, [0.0; 2]);
+    s.settings.mutation_probability = 1.0;
     put(&s, &q, 0, body([602.0, 902.0]), &parent);
     step(&mut s, &d, &q, 1);
     let agents = s.agent_snapshot(&d, &q).unwrap();
@@ -705,10 +704,10 @@ fn survivor_sample_keeps_current_child_genes_after_extinction() {
 }
 
 #[test]
-fn parent_can_request_exact_copy_at_birth() {
+fn zero_world_mutation_law_copies_exactly_at_birth() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
-    // A reproduction fixture with both new outputs at their exact-zero endpoint.
+    // Ordinary births honor a zero world mutation law.
     let parent = fixed(5, [0.0; 2]);
     put(&s, &q, 0, body([602.0, 902.0]), &parent);
     step(&mut s, &d, &q, 1);
@@ -861,8 +860,15 @@ fn native_visible_loop_reuses_simulation_and_carries_genomes_across_two_extincti
             .zip(transfer["provenance"].as_array().unwrap())
         {
             let parent = &saved.genomes[p["parent"].as_u64().unwrap() as usize];
-            assert!(child.iter().zip(parent).all(|(a, b)| (a - b).abs()
-                <= p["mutation_magnitude"].as_f64().unwrap_or(0.0) as f32 + 0.000001));
+            let mut expected = parent.clone();
+            if p["kind"] == "offspring_replica" {
+                crate::brain::mutate(
+                    &mut expected,
+                    p["mutation_seed"].as_u64().unwrap() as u32,
+                    &s.settings,
+                );
+            }
+            assert_eq!(*child, expected);
         }
         for name in [
             "ready.json",
@@ -962,6 +968,14 @@ fn step(s: &mut Simulation, d: &wgpu::Device, q: &wgpu::Queue, n: u32) {
 fn scene(d: &wgpu::Device, q: &wgpu::Queue) -> Simulation {
     let mut s = Simulation::new(d, q, 91);
     s.settings.population = 0;
+    // Isolated physics fixtures disable the new brain economy so their expected
+    // reserve deltas remain about the body rule under test.
+    s.settings.brain_node_cost = 0.0;
+    s.settings.brain_edge_cost = 0.0;
+    s.settings.genome_copy_cost = 0.0;
+    s.settings.mutation_probability = 0.0;
+    s.settings.node_mutation_rate = 0.0;
+    s.settings.edge_mutation_rate = 0.0;
     s.settings.resource_regeneration = 0.0;
     s.settings.evolving_landscape = false;
     s.reset(q);
@@ -982,21 +996,24 @@ fn body(pos: [f32; 2]) -> AgentGpu {
         generation: 1,
         target: MAX_AGENTS,
         lineage_id: 1,
+        brain_nodes: DEFAULT_NODES as u32,
         ..Default::default()
     }
 }
 fn fixed(action: usize, motion: [f32; 2]) -> [f32; GENOME_SIZE] {
-    let mut g = [0.0; GENOME_SIZE];
-    g[OUTPUT_BASE + action * 17 + 16] = 2.0;
-    g[OUTPUT_BASE + 6 * 17 + 16] = motion[0];
-    g[OUTPUT_BASE + 7 * 17 + 16] = motion[1];
-    g[OUTPUT_BASE + 8 * 17 + 16] = 3.0;
+    let mut g = crate::brain::blank(DEFAULT_NODES);
+    g[OUTPUT_BIAS + action] = 2.0;
+    g[OUTPUT_BIAS + 6] = motion[0];
+    g[OUTPUT_BIAS + 7] = motion[1];
+    g[OUTPUT_BIAS + 8] = 3.0;
     if action == 3 {
-        g[OUTPUT_BASE + FORCE_OUTPUT * 17 + 16] = 1.0;
+        g[OUTPUT_BIAS + FORCE_OUTPUT] = 1.0;
     }
     g
 }
-fn put(s: &Simulation, q: &wgpu::Queue, slot: usize, a: AgentGpu, g: &[f32; GENOME_SIZE]) {
+fn put(s: &Simulation, q: &wgpu::Queue, slot: usize, mut a: AgentGpu, g: &[f32; GENOME_SIZE]) {
+    a.brain_nodes = g[0] as u32;
+    a.brain_edges = g[1] as u32;
     for b in &s.agent_buffers {
         q.write_buffer(
             b,
@@ -1019,12 +1036,12 @@ fn temp(name: &str) -> std::path::PathBuf {
 
 #[test]
 fn layout_and_cli_contract() {
-    assert_eq!(GENOME_SIZE, 2646);
-    assert_eq!(std::mem::size_of::<AgentGpu>(), 216);
+    assert_eq!(GENOME_SIZE, 1686);
+    assert_eq!(std::mem::size_of::<AgentGpu>(), 416);
     assert_eq!(std::mem::size_of::<PerceptionGpu>(), 400);
-    assert_eq!(std::mem::size_of::<DecisionGpu>(), 640);
-    assert_eq!(std::mem::size_of::<SelectionOutput>(), 1264);
-    assert_eq!(std::mem::size_of::<SimParams>(), 96);
+    assert_eq!(std::mem::size_of::<DecisionGpu>(), 1024);
+    assert_eq!(std::mem::size_of::<SelectionOutput>(), 1848);
+    assert_eq!(std::mem::size_of::<SimParams>(), 112);
     assert!(MAX_AGENTS as usize * GENOME_SIZE * 4 <= 256 * 1024 * 1024);
     for flag in [
         "--unknown-option",
@@ -1046,49 +1063,26 @@ fn recurrent_cpu_gpu_parity_and_observer_isolation() {
     let mut s = scene(&d, &q);
     s.update_params(&q);
     let mut a = body([602.0, 902.0]);
-    a.hidden = [0.1; 16];
-    let mut g = [0.0; GENOME_SIZE];
-    for (i, x) in g.iter_mut().enumerate() {
-        *x = ((i % 17) as f32 - 8.0) * 0.015;
-    }
+    a.hidden = [0.1; HIDDEN];
+    let mut g = crate::brain::random_genome(&mut 7351);
+    g[GATE_BIAS..GATE_BIAS + DEFAULT_NODES].fill(0.5);
+    g[0] = HIDDEN as f32;
+    g[GATE_BIAS + HIDDEN - 1] = 0.8;
+    crate::brain::add_edge(&mut g, INPUTS - 1, HIDDEN - 1, 0.7);
+    crate::brain::add_edge(&mut g, INPUTS + HIDDEN - 1, HIDDEN - 1, 0.4);
+    crate::brain::add_edge(&mut g, INPUTS + HIDDEN - 1, 2 * HIDDEN - 1, 0.2);
+    crate::brain::add_edge(&mut g, INPUTS + HIDDEN - 1, 2 * HIDDEN, 0.6);
     put(&s, &q, 0, a, &g);
     let mut e = d.create_command_encoder(&Default::default());
     s.dispatch(&mut e, "decide", 0, 1, 1);
     q.submit(Some(e.finish()));
     let expected = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 1)[0];
-    let mut candidate = [0.0; HIDDEN];
-    for (h, value) in candidate.iter_mut().enumerate() {
-        let row = h * RECURRENT_ROW;
-        let mut v = g[row + RECURRENT_ROW - 1];
-        for k in 0..crate::model::INPUTS {
-            v += g[row + k] * expected.inputs[k];
-        }
-        for k in 0..16 {
-            v += g[row + crate::model::INPUTS + k] * a.hidden[k];
-        }
-        *value = v.tanh();
+    let (hidden, outputs) = crate::brain::evaluate(&g, &expected.inputs, &a.hidden);
+    for (x, y) in hidden.iter().zip(expected.hidden) {
+        near(*x, y);
     }
-    let mut hidden = [0.0; HIDDEN];
-    for (h, value) in hidden.iter_mut().enumerate() {
-        let row = GATE_BASE + h * (HIDDEN + 1);
-        let gate = (g[row + HIDDEN]
-            + candidate
-                .iter()
-                .enumerate()
-                .map(|(k, v)| g[row + k] * v)
-                .sum::<f32>())
-        .clamp(0.0, 1.0);
-        near(gate, expected.update_gates[h]);
-        *value = (1.0 - gate) * a.hidden[h] + gate * candidate[h];
-        near(*value, expected.hidden[h]);
-    }
-    for o in 0..6 {
-        let row = OUTPUT_BASE + o * 17;
-        let mut v = g[row + 16];
-        for h in 0..16 {
-            v += g[row + h] * hidden[h];
-        }
-        near(v, expected.scores[o]);
+    for (x, y) in outputs.iter().zip(expected.scores) {
+        near(*x, y);
     }
     a.lineage_id = 123456;
     a.ancestry_depth = 100;
@@ -1174,7 +1168,7 @@ fn digestion_is_inventory_limited_rate_limited_and_energy_capped() {
         a.energy = energy;
         a.food = inventory;
         let mut g = fixed(0, [0.0; 2]);
-        g[OUTPUT_BASE + 8 * 17 + 16] = -4.0;
+        g[OUTPUT_BIAS + 8] = -4.0;
         put(&s, &q, 0, a, &g);
         step(&mut s, &d, &q, 1);
         let b = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
@@ -1214,7 +1208,7 @@ fn reproduction_is_requested_can_coexist_with_motion_and_conserves() {
     let mut s = scene(&d, &q);
     let mut a = body([602.0, 902.0]);
     a.energy = 90.0;
-    a.hidden = [0.5; 16];
+    a.hidden = [0.5; HIDDEN];
     let g = fixed(5, [0.5, 0.0]);
     put(&s, &q, 0, a, &g);
     step(&mut s, &d, &q, 1);
@@ -1224,7 +1218,7 @@ fn reproduction_is_requested_can_coexist_with_motion_and_conserves() {
     assert_eq!(c.alive, 1);
     assert_eq!(c.ancestry_depth, 1);
     assert_eq!(c.parent_lineage, p.lineage_id);
-    assert_eq!(c.hidden, [0.0; 16]);
+    assert_eq!(c.hidden, [0.0; HIDDEN]);
     assert!(p.velocity[0] > 0.0);
     near(p.food + c.food + p.ingested, a.food);
     near(
@@ -1271,7 +1265,7 @@ fn transfer_and_signal_are_local_and_payload_is_controller_owned() {
     );
     assert!(bodies[1].received > 0.0);
     let mut g = fixed(4, [0.0; 2]);
-    g[OUTPUT_BASE + 9 * 17 + 16] = -0.7;
+    g[OUTPUT_BIAS + 9] = -0.7;
     let mut a = bodies[0];
     a.signal_tick = 0;
     s.tick = 10;
@@ -1336,7 +1330,7 @@ fn force_direction_effort_and_available_energy_bound_actual_displacement() {
         target.food = 0.0;
         target.lineage_id = 2;
         let mut genes = fixed(3, [0.0; 2]);
-        genes[OUTPUT_BASE + FORCE_OUTPUT * 17 + 16] = effort;
+        genes[OUTPUT_BIAS + FORCE_OUTPUT] = effort;
         put(&s, &q, 0, actor, &genes);
         put(&s, &q, 1, target, &fixed(0, [0.0; 2]));
         step(&mut s, &d, &q, 1);
@@ -1424,9 +1418,9 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v5");
+    assert_eq!(MODEL_ID, "primitive-v6-variable-brain");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
-    assert_eq!(crate::founders::bundled().version, 6);
+    assert_eq!(crate::founders::bundled().version, 7);
 }
 #[test]
 fn nonfinite_controller_output_is_contained() {
@@ -1434,7 +1428,7 @@ fn nonfinite_controller_output_is_contained() {
     let mut s = scene(&d, &q);
     let a = body([602.0, 902.0]);
     let mut g = fixed(1, [1.0, 1.0]);
-    g[0] = f32::NAN;
+    g[NODE_BIAS] = f32::NAN;
     put(&s, &q, 0, a, &g);
     step(&mut s, &d, &q, 1);
     let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
@@ -1739,7 +1733,7 @@ fn family_diagnostics_record_underfunded_births_and_terminal_juvenile_deaths_onc
     let mut parent = body([602.0, 902.0]);
     parent.food = 0.0;
     let mut genes = fixed(5, [0.0; 2]);
-    genes[OUTPUT_BASE + 8 * 17 + 16] = 0.0; // 20 energy, below stationary 24.
+    genes[OUTPUT_BIAS + 8] = 0.0; // 20 energy, below stationary 24.
     put(&s, &q, 0, parent, &genes);
     s.family_observer =
         Some(crate::family_observer::FamilyObserver::new(&d, &q, &s, 2048).unwrap());
@@ -1792,5 +1786,125 @@ fn family_diagnostics_count_juvenile_feeding_maturity_and_terminal_flow() {
     assert_eq!(
         f.collected_milli,
         (metrics.harvested * 1000.0).round() as u64
+    );
+}
+
+#[test]
+fn sparse_mutation_cpu_gpu_parity_and_capacity() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings.mutation_probability = 0.4;
+    s.settings.mutation_magnitude = 8.0;
+    s.settings.node_mutation_rate = 0.25;
+    s.settings.edge_mutation_rate = 0.25;
+    s.update_params(&q);
+    let mut all = Vec::new();
+    for i in 0..256 {
+        let mut g = match i % 4 {
+            0 => crate::brain::blank(1),
+            1 => crate::brain::blank(HIDDEN),
+            _ => crate::brain::random_genome(&mut (i as u32)),
+        };
+        if i % 4 == 1 {
+            for e in 0..MAX_EDGES {
+                crate::brain::add_edge(&mut g, e % INPUTS, e / INPUTS, 0.0);
+            }
+        }
+        all.extend(g);
+    }
+    q.write_buffer(&s.genome_buffer, 0, bytemuck::cast_slice(&all));
+    let pass = Compute::new(
+        &d,
+        "mutation parity",
+        r#"
+@group(0) @binding(0) var<storage,read_write> genomes:array<f32>;
+@group(0) @binding(1) var<uniform> params:SimParams;
+// BRAIN_MUTATION
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) id:vec3<u32>){
+ var g:array<f32,GENOME_SIZE>;
+ for(var k=0u;k<GENOME_SIZE;k++){g[k]=genomes[id.x*GENOME_SIZE+k];}
+ mutate_brain(&g,id.x*7919u,params.mutation);
+ for(var k=0u;k<GENOME_SIZE;k++){genomes[id.x*GENOME_SIZE+k]=g[k];}
+}"#,
+        "main",
+        "wu",
+        vec![vec![&s.genome_buffer, &s.params_buffer]],
+    );
+    let mut e = d.create_command_encoder(&Default::default());
+    pass.dispatch(&mut e, 0, 4, 1);
+    q.submit(Some(e.finish()));
+    let actual = read::<f32>(&d, &q, &s.genome_buffer, 256 * GENOME_SIZE);
+    let mut changes = std::collections::HashSet::new();
+    for (i, (parent, child)) in all
+        .chunks_exact(GENOME_SIZE)
+        .zip(actual.chunks_exact(GENOME_SIZE))
+        .enumerate()
+    {
+        let mut expected = parent.to_vec();
+        crate::brain::mutate(&mut expected, i as u32 * 7919, &s.settings);
+        crate::brain::validate(child).unwrap();
+        assert_eq!(
+            &expected[..EDGE_BASE],
+            &child[..EDGE_BASE],
+            "metadata/bias mismatch at seed {i}"
+        );
+        for (x, y) in expected.iter().zip(child) {
+            near(*x, *y);
+        }
+        changes.insert((
+            (child[0] as i32 - parent[0] as i32).signum(),
+            (child[1] as i32 - parent[1] as i32).signum(),
+        ));
+    }
+    for change in [(1, 1), (-1, -1), (0, 1), (0, -1)] {
+        assert!(changes.contains(&change), "{changes:?}");
+    }
+}
+
+#[test]
+fn brain_upkeep_and_child_copy_cost_charge_actual_structure() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings.metabolic_cost = 0.0;
+    s.settings.brain_node_cost = 0.01;
+    s.settings.brain_edge_cost = 0.005;
+    s.settings.genome_copy_cost = 0.02;
+    let mut g = fixed(5, [0.0; 2]);
+    crate::brain::add_edge(&mut g, 0, 0, 0.0);
+    let mut a = body([602.0, 902.0]);
+    a.food = 0.0;
+    put(&s, &q, 0, a, &g);
+    step(&mut s, &d, &q, 1);
+    let agents = s.agent_snapshot(&d, &q).unwrap();
+    let child = agents
+        .iter()
+        .find(|b| b.alive != 0 && b.ancestry_depth == 1)
+        .unwrap();
+    let upkeep = g[0] * s.settings.brain_node_cost + g[1] * s.settings.brain_edge_cost;
+    let copy = crate::brain::encoded_size(child.brain_nodes as usize, child.brain_edges as usize)
+        as f32
+        * s.settings.genome_copy_cost;
+    near(
+        a.energy - agents[0].energy,
+        upkeep + child.energy + 10.0 + copy,
+    );
+    assert_eq!(child.hidden, [0.0; HIDDEN]);
+    assert_eq!(
+        child.brain_edges, 1,
+        "Zero weight still occupies a paid connection"
+    );
+
+    // Body investment alone fits, but copied structure does not.
+    let mut s = scene(&d, &q);
+    s.settings.genome_copy_cost = 10.0;
+    put(&s, &q, 0, a, &g);
+    step(&mut s, &d, &q, 1);
+    assert_eq!(s.metrics(&d, &q).unwrap().living, 1);
+    let genes = read::<f32>(&d, &q, &s.genome_buffer, 2 * GENOME_SIZE);
+    assert!(genes[GENOME_SIZE..].iter().all(|v| *v == 0.0));
+    near(
+        s.agent_snapshot(&d, &q).unwrap()[0].energy,
+        a.energy - s.settings.metabolic_cost,
     );
 }
