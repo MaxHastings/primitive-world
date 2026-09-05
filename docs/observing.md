@@ -48,7 +48,7 @@ python tools/analyze_departures.py reports/journeys.jsonl --metabolic-cost 0.06 
 Supply the actual checkpoint costs, not those example values if you changed them.
 The tool uses only the standard library. `tools/audit_checkpoint_communication.py`
 additionally requires NumPy (`python -m pip install -r tools/requirements.txt`).
-It audits V3 checkpoint counters and provable action suppression; it does not
+It audits checkpoint counters and provable action suppression; it does not
 establish that communication helps receivers or that unsuppressed actions occur.
 
 ## Back up an evolution run

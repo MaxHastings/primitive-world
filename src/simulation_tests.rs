@@ -118,7 +118,7 @@ fn rotation_cli_and_checkpoint_preserve_explicit_environment_settings() {
     let value = serde_json::to_value(SimSettings::default()).unwrap();
     assert!(
         value.get("environment_rotation").is_none(),
-        "Identity settings retain old serialization"
+        "Identity rotation is omitted from serialized settings"
     );
     assert_eq!(
         serde_json::from_value::<SimSettings>(value)
@@ -135,11 +135,10 @@ fn rotation_cli_and_checkpoint_preserve_explicit_environment_settings() {
 fn directional_bank_gpu_probe() {
     let bank_path = std::env::var("PRIMITIVE_DIRECTION_BANK").expect("bank path");
     let output_path = std::env::var("PRIMITIVE_DIRECTION_OUTPUT").expect("new report path");
-    let bank: serde_json::Value =
+    let bank: crate::founders::FounderBank =
         serde_json::from_slice(&std::fs::read(&bank_path).unwrap()).unwrap();
-    assert_eq!(bank["model"], "primitive-v3");
-    assert_eq!(bank["version"], 4);
-    let genomes: Vec<Vec<f32>> = serde_json::from_value(bank["genomes"].clone()).unwrap();
+    bank.validate().unwrap();
+    let genomes = &bank.genomes;
     assert!(!genomes.is_empty() && genomes.len() <= 128);
     assert!(
         genomes
@@ -259,7 +258,7 @@ fn directional_bank_gpu_probe() {
             );
         }
     }
-    let report = serde_json::json!({"bank_path":bank_path,"bank_name":bank["name"],"cases":cases,"sequences":sequences,
+    let report = serde_json::json!({"bank_path":bank_path,"bank_name":bank.name,"cases":cases,"sequences":sequences,
         "scope":"Actual GPU decision shader with synthetic mirrored perception, not full-world simulation. First decisions have empty state. Sequences hold adult age500, energy50, inventory2 and position fixed, carry hidden state, last action and motor feedback; cue reverses after64 of128 updates. No births, selection, sensing dispatch or ecological fitness measured."});
     std::io::Write::write_all(&mut output, &serde_json::to_vec_pretty(&report).unwrap()).unwrap();
 }
@@ -411,7 +410,7 @@ fn displacement_does_not_impose_a_hidden_reproduction_penalty() {
     let mut s = scene(&d, &q);
     let mut parent = body([602.0, 902.0]);
     let amount = 1.0 / (1.0 + (-3.0f32).exp());
-    // Physical displacement must not impose the old arbitrary energy damage.
+    // Displacement does not directly deduct energy from the recipient.
     parent.energy = 50.0 * (0.2 + 0.8 * amount) - 0.5;
     put(&s, &q, 0, parent, &fixed(5, [0.0; 2]));
     put(&s, &q, 1, body([604.0, 902.0]), &fixed(3, [0.0; 2]));
@@ -440,7 +439,7 @@ fn dead_slot_reuse_resets_experience_and_advances_incarnation() {
     near(s.metrics(&d, &q).unwrap().dropped_food as f32, 2.0);
 }
 #[test]
-fn fresh_world_defaults_keep_original_energy_costs() {
+fn fresh_world_defaults_match_documented_physical_settings() {
     let settings = SimSettings::default();
     assert_eq!(settings.metabolic_cost, 0.06);
     assert_eq!(settings.movement_energy_cost, 0.01);
@@ -523,13 +522,13 @@ fn physical_cli_overrides_validate_and_cannot_override_checkpoints() {
 }
 
 #[test]
-fn unprepared_default_is_the_declared_bank_not_a_silent_fallback() {
+fn default_founders_use_the_declared_random_bank() {
     let settings = SimSettings::default();
     let bank = crate::founders::bundled();
     assert_eq!(bank.genomes.len(), 256);
     assert_eq!(settings.founder_genomes, bank.genomes);
     assert_eq!(settings.founder_name, bank.name);
-    assert!(bank.name.contains("unprepared"));
+    assert_eq!(bank.name, "primitive-world-random-256");
 }
 
 #[test]
@@ -1004,7 +1003,11 @@ fn layout_and_cli_contract() {
     assert_eq!(std::mem::size_of::<SelectionOutput>(), 928);
     assert_eq!(std::mem::size_of::<SimParams>(), 96);
     assert!(MAX_AGENTS as usize * GENOME_SIZE * 4 <= 128 * 1024 * 1024);
-    for flag in ["--neural", "--legacy-controller", "--travel-diagnostic"] {
+    for flag in [
+        "--unknown-option",
+        "--population-typo",
+        "--unsupported-observer",
+    ] {
         assert!(crate::headless::arguments(&["world".into(), flag.into()]).is_err());
     }
     let settings = SimSettings {
@@ -1369,7 +1372,7 @@ fn reproduction_requires_paid_energy_not_an_arbitrary_food_stockpile() {
 }
 
 #[test]
-fn contrast_preserves_mean_and_invalid_training_settings_are_rejected() {
+fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
     let full = build_habitat_at(42, 3, 1.0);
     let uniform = build_habitat_at(42, 3, 0.0);
     let mean = |values: &[f32]| values.iter().map(|v| *v as f64).sum::<f64>() / values.len() as f64;
@@ -1382,7 +1385,7 @@ fn contrast_preserves_mean_and_invalid_training_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v3");
+    assert_eq!(MODEL_ID, "primitive-world");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
     assert_eq!(crate::founders::bundled().version, 4);
 }
@@ -1532,7 +1535,7 @@ fn inspector_render_pipelines_accept_incarnation_aware_camera() {
 fn batching_checkpoint_and_selection_preserve_state() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
-    // A compatible checkpoint retains historical costs, not new defaults.
+    // Loading restores saved physical settings.
     s.settings.metabolic_cost = 0.06;
     s.settings.movement_energy_cost = 0.01;
     let a = body([602.0, 902.0]);
@@ -1565,8 +1568,8 @@ fn batching_checkpoint_and_selection_preserve_state() {
     let actual = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
     assert_eq!(bytemuck::bytes_of(&expected), bytemuck::bytes_of(&actual));
     std::fs::remove_file(path).unwrap();
-    let path = temp("old.checkpoint");
-    std::fs::write(&path, b"PRIMWORLD011").unwrap();
+    let path = temp("unsupported.checkpoint");
+    std::fs::write(&path, b"PRIMWORLD000").unwrap();
     let tick = s.tick;
     assert!(s.load_checkpoint(&q, &path).is_err());
     assert_eq!(s.tick, tick);

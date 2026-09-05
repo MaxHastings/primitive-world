@@ -91,8 +91,8 @@ automatic evolution loop separately samples late survivors, including founders.
 It contains the latest 400 metric samples, not the entire run. Old exports are not
 overwritten. Use headless sampling for a complete bounded diagnostic history.
 
-Only V3 checkpoint format 15 and founder-bank format 4 are accepted. Older files
-are rejected, not converted or modified. Use their archived executable if needed.
+Checkpoints use format 15; founder banks use format 4. Unsupported formats are
+rejected without modifying the file. See [release status](release.md).
 
 ## Reading the behavior
 

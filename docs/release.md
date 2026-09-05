@@ -1,8 +1,19 @@
 # Release status
 
-V3 is the permanent active model. Version 0.4.0 is an experimental artificial-life
-sandbox; it is not a certification of intelligent behavior or general adaptation.
-Checkpoint format 15 and founder-bank format 4 remain unchanged by this cleanup.
+Primitive World is an experimental artificial-life sandbox. Intelligent behavior
+and general adaptation are unverified capabilities.
+
+## Build and data formats
+
+- Application version: 0.4.0.
+- Model identifier in reports and exported banks: `primitive-world`.
+- Checkpoint format: 15.
+- Founder-bank format: 4.
+
+Data-format numbers identify storage contracts, independently of the application
+version. Compatible saves retain their settings and genomes. The bank loader
+accepts the equivalent stored model identifier for existing format-4 banks;
+exports use `primitive-world`. Unsupported formats or models fail validation.
 
 ## Before publishing a GitHub release
 
@@ -15,11 +26,8 @@ Checkpoint format 15 and founder-bank format 4 remain unchanged by this cleanup.
   labeled with relevant settings; do not advertise unverified language/planning.
 - Package only the executable, current docs, notices, and any explicitly curated
   optional assets. Never upload the local `reports/` or `runs/` directories wholesale.
-- Review repository history before first public publication. Removing historical
-  research data from the current tree does not remove it from old commits.
+- Review the complete repository and release assets for data intended to stay private.
 - Publish binaries only for tested platforms. Windows is the locally exercised
   platform; other builds need their own evidence.
 
-The repository stays private until the owner explicitly chooses publication.
-Updating private `main` is not a public release. Old saves and active local
-research checkouts remain intact, and repository history is not rewritten.
+Public distribution and licensing require the owner’s explicit decision.

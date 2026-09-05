@@ -1,4 +1,4 @@
-"""Read-only V3 checkpoint audit; no simulation or checkpoint edits.
+"""Read-only Primitive World checkpoint audit; no simulation or checkpoint edits.
 
 Examines cumulative counters and a sufficient mathematical test for action
 suppression. A failed suppression test does NOT prove the action is reachable.
@@ -61,7 +61,7 @@ def suppression(genomes):
 
 def audit(path):
     raw = path.read_bytes()
-    assert raw[:12] == b'PRIMWORLD015', 'Expected primitive-v3 checkpoint 15'
+    assert raw[:12] == b'PRIMWORLD015', 'Expected primitive-world checkpoint 15'
     seed,tick,size = struct.unpack_from('<III',raw,12)
     settings = json.loads(raw[24:24+size]); pos=24+size; buffers=[]
     expected=[N*208,512*512*4,512*512*4,512*512*32,128,65536*40,N*272,N*440,N*G*4]
@@ -92,7 +92,7 @@ def audit(path):
     founders=np.asarray(settings.pop('founder_genomes'),dtype=np.float32)
     result={
         'checkpoint':str(path.resolve()),'checkpoint_sha256':hashlib.sha256(raw).hexdigest(),
-        'model':'primitive-v3','checkpoint_schema':15,'seed':seed,'tick':tick,
+        'model':'primitive-world','checkpoint_schema':15,'seed':seed,'tick':tick,
         'settings_without_genomes':settings,'living':len(slots),
         'births':int(stats[3]),'starvation_deaths':int(stats[1]),'age_deaths':int(stats[2]),
         'emissions':int(stats[9]),'completed_transfers':int(stats[4]),'completed_force':int(stats[5]),

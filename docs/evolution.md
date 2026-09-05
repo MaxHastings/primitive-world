@@ -1,8 +1,8 @@
 # Evolution, without a behavior checklist
 
-The active workflow is the simulator’s native `--watch-loop`. There is no second
-trainer to install and no authored starter policy. All modes use the same V3
-controller and physics.
+The simulator’s native `--watch-loop` carries survivor genomes between worlds.
+All modes share the same controller and physics, with random founder weights
+and no authored starter policy.
 
 ## Within a world
 

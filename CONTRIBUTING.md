@@ -1,7 +1,7 @@
 # Contributing
 
-Keep the rules simple and the evidence honest. V3 (`primitive-v3`) is the only
-active model. Adding an ability should expose a primitive interaction, not
+Keep the rules simple and the evidence honest. All modes share one agent model.
+Adding an ability should expose a primitive interaction, not
 prescribe a desired social behavior. Keep observers out of agent inputs and
 selection. Extinction and unused abilities are allowed outcomes.
 
@@ -42,12 +42,12 @@ with a bug report. Do not commit personal checkpoints, weight dumps, runtime
 archives, or machine-specific paths. Large evidence belongs in a separately
 curated artifact, not the source tree.
 
+Write documentation, UI text, and code comments around current behavior and
+contracts. Use Primitive World as the project name and describe components by
+their purpose. Keep development chronology out of usage instructions and code
+comments; record release changes in the changelog.
+
 Keep model/checkpoint identity explicit. Layout changes require format validation
-and an intentional version change; do not silently reinterpret old saves. Changes
+and an intentional version change; do not silently reinterpret saved data. Changes
 to brains, physical costs, or selection protocols should be documented separately
 from UI, build, and organization changes.
-
-Historical experiments are available in Git history. The local archival tag
-`archive/v3-research-before-public-cleanup` identifies the preserved research tree;
-the commit is `06d522b3ba6f29ff4a5eb7433e1a9c076eabe6d6`. Do not restore retired
-trainers merely to support an outdated command example.

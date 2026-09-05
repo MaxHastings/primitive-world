@@ -1,7 +1,7 @@
-# Agents — V3
+# Agents
 
 The controller owns intentions. The world owns consequences. All bodies use the
-same implementation in play, headless worlds, preparation, and evaluation.
+same implementation in interactive and headless worlds.
 
 ## Computation and memory
 
@@ -15,7 +15,7 @@ Weights do not update during life. Only recurrent state changes during decisions
 At birth, each weight has approximately 2% mutation probability, adding a hashed
 perturbation in [-.03,.03], then clipping to [-4,4]. Child state starts empty.
 No loss function, online reward, gradient optimizer, or reward-dependent mutation
-exists. Useful long-term memory and communication have not been demonstrated in v3.
+exists. Useful long-term memory and communication are unverified capabilities.
 
 ## Inputs (zero-based)
 
@@ -46,7 +46,7 @@ The brain must infer trends, if useful, using its own state and feedback.
 A neighbor signal is that neighbor's own scalar emission on the preceding tick.
 Presence distinguishes zero from silence. No signal says food, help, harm, lie,
 truth, or direction unless controllers develop such an interpretation.
-Messages no longer contain received transfer/force feedback. They are visible
+Signals contain only the sender's chosen scalar. They are visible
 only through locally sampled bodies; transmission does not guarantee reception.
 No sender identity is fed to cognition, but the currently visible source's offset
 is available. There is no persistent reputation, relationship list, map, patch ID,
@@ -83,7 +83,7 @@ Default founders are 256 reproducible random genomes, cycled across fresh bodies
 There is no food-seeking template, reproductive threshold template, favored
 action bias, or suppression of social actions. Input weights start uniform in
 [-.25,.25], recurrent weights/state biases in [-.35,.35], and output weights/biases
-in [-.5,.5]. These exchangeable numerical scales are still authored assumptions.
+in [-.5,.5]. These exchangeable numerical scales are authored assumptions.
 The seed is 0x184a2321 with the documented LCG in src/model.rs.
 
 --random-founders instead gives each initial body an independently generated
@@ -96,6 +96,4 @@ including descendant mutations, into the next world. It does not rank original
 founders by family scores. Each sampled genome is retained exactly, with balanced
 mutated replicas filling the next bank. Body state and memories reset; genes do not.
 
-No prepared bank or authored survival starter is silently bundled. Random does
-not mean competent. The retired models and trainers remain in Git history, not
-as alternate execution paths in this release.
+The bundled bank contains untrained random weights. Random does not mean competent.

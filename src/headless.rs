@@ -1,6 +1,6 @@
 use crate::simulation::{MAX_AGENTS, MODEL_ID, Simulation};
 use std::{collections::HashMap, io::Write, path::Path};
-pub const HELP: &str = "Primitive World primitive-v3 (checkpoint 15)
+pub const HELP: &str = "Primitive World
 Run: primitive_world [--seed N] [--founders PATH | --random-founders]
 Headless: --headless --ticks N --sample N --output PATH
 Single-window survivor loop: --watch-loop NEW_DIRECTORY [--view-speed 1x|2x|4x|8x|16x|MAX]
@@ -15,10 +15,9 @@ Headless observers:
          --survivors PATH [--survivor-sample N] (latest nonempty living sample;
            up to 64 current genomes, founders included; period 1..1024, default 128)
          --famine-at T --restore-at T --help --version
-Fresh runs use a frozen UNPREPARED primitive-v3 random bank. --random-founders explicitly uses UNPREPARED seed-specific random weights.
+Fresh runs use 256 reproducible random founder genomes. --random-founders uses seed-specific random weights for each body. All random founders are untrained.
 Motor gain calibrates continuous effort, not minimum movement or maximum speed.
-Checkpoint settings take precedence; physical overrides cannot accompany --checkpoint.
-Legacy controllers, neural bridges and old diagnostic flags are not supported.";
+Checkpoint settings take precedence; physical overrides cannot accompany --checkpoint.";
 fn new_report(path: &str) -> Result<std::fs::File, String> {
     if let Some(parent) = Path::new(path)
         .parent()

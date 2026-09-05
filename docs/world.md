@@ -1,4 +1,4 @@
-# World and body rules — V3
+# World and body rules
 
 Simple, local capabilities; consequences independent of intended meaning.
 The numeric constants below are declared modeling choices, not discovered laws.
@@ -94,7 +94,7 @@ summary rounding is not exact long-run energy closure. Age death discards stored
 energy, not food. Costs and birth construction are sinks. Population accounting
 must balance births against starvation, aging and contact-actor exhaustion.
 
-## Ecology and preparation controls
+## Ecology and environment controls
 
 Seeded hubs, irregular low-yield regions, barren gaps, weather, seasonal growth,
 soil recovery and harvest depletion create the ecological environment. Resource
@@ -110,24 +110,24 @@ does not imply equal carrying capacity or guarantee easy founding.
 Environment rotation applies quarter-turns to initial positions and the entire
 habitat/weather history. It is never a brain input. These two controls change the
 environment, not the body or weights. Normal play uses contrast 1; no progressive
-difficulty escalator or population rescue occurs inside it. Optional manual interventions
-are user experiments and never used in registered preparation.
+difficulty escalator or population rescue occurs inside it. Optional manual
+interventions are user experiments; record them when comparing outcomes.
 
 ## Persistence, observation, and limits
 
-Build .4 / model primitive-v3 / checkpoint 15 / founder-bank format 4.
-Old checkpoints and banks are rejected, not reinterpreted or rewritten.
+Checkpoints use format 15; founder banks use format 4.
+Unsupported formats are rejected without rewriting the file.
 Checkpoints preserve settings, bodies, genomes, food, soil, event counters and
 controller traces. Derived indexing/terrain is rebuilt after load. Loading
 validates before mutating the world. Save/export refuses existing destinations.
 Local inspector identity tracking does not modify behavior.
 
 Physics/controller wiring checks are not evidence of learned intelligence.
-Headless worlds check for extinction after each GPU batch (at most32 ticks),
+Headless worlds check for extinction after each GPU batch (at most 32 ticks),
 independent of report frequency. Initially empty worlds run zero ticks. The final
 report/optional journey footer is flushed at the early stop, with an explicit
 extinction or tick-limit termination reason. The reported stop tick is detection
-time, not an exact death tick (at most31 extra ticks inside a submitted batch).
+time, not an exact death tick (at most 31 extra ticks inside a submitted batch).
 Observers never feed controller inputs or select desired behavior. The sampled
 journey observer has known between-sample and resource-relocation attribution
 gaps; it is not proof of general adaptation. Population-wide replay is

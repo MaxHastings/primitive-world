@@ -1,4 +1,4 @@
-// primitive-v3 Rust/WGSL storage contract; covered by layout and replay tests.
+// primitive-world Rust/WGSL storage contract; covered by layout and replay tests.
 const INVALID:u32=16384u;
 const FOOD_CAPACITY:f32=8.0;
 const INTERACTION_RADIUS:f32=6.0;

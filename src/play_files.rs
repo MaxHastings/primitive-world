@@ -35,7 +35,7 @@ pub fn new_checkpoint_path(seed: u32, tick: u32) -> Result<PathBuf, String> {
 }
 
 fn checkpoint_path(seed: u32, tick: u32, stamp: u128) -> PathBuf {
-    // The writer still uses create_new: even a clock/name collision cannot overwrite.
+    // The writer uses create_new: even a clock/name collision cannot overwrite.
     PathBuf::from("reports")
         .join("checkpoints")
         .join(format!("world-{seed}-tick{tick}-{stamp}.checkpoint"))

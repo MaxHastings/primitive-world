@@ -369,12 +369,14 @@ impl AppState {
 
     fn update_title(&self) {
         self.window.set_title(&format!(
-            "Primitive World {} / primitive-v3 / checkpoint 15 | {} / {} living | {:.1} FPS | World {} | {}{}",
+            "Primitive World {} | {} / {} living | {:.1} FPS | World {} | {}{}",
             env!("CARGO_PKG_VERSION"),
             self.living_agents,
             MAX_AGENTS,
             self.render_fps,
-            self.visible_trial.as_ref().map_or(1, |trial| trial.world_number),
+            self.visible_trial
+                .as_ref()
+                .map_or(1, |trial| trial.world_number),
             ["1x", "2x", "4x", "8x", "16x", "MAX"][self.speed_index],
             if self.paused { " | PAUSED" } else { "" }
         ));
@@ -688,7 +690,7 @@ fn action_name(action: u32) -> &'static str {
 }
 fn draw_ui(ctx: &egui::Context, state: &mut AppState) {
     let mut reset = false;
-    egui::Window::new("Primitive World — primitive-v3")
+    egui::Window::new("Primitive World")
         .default_pos([16.0, 16.0])
         .default_width(430.0)
         .vscroll(true)
@@ -733,10 +735,7 @@ fn draw_inspector(ui: &mut egui::Ui, state: &mut AppState, reset: &mut bool) {
         "Environment orientation: {}°",
         state.simulation.settings.environment_rotation * 90
     ));
-    ui.label(format!(
-        "Build {} · primitive-v3 · checkpoint 15",
-        env!("CARGO_PKG_VERSION")
-    ));
+    ui.label(format!("Build {}", env!("CARGO_PKG_VERSION")));
     ui.small(format!(
         "Loaded founder bank: {}",
         state.simulation.settings.founder_name
@@ -1161,10 +1160,7 @@ impl ApplicationHandler for App {
             event_loop
                 .create_window(
                     WindowAttributes::default()
-                        .with_title(format!(
-                            "Primitive World {} — primitive-v3 / checkpoint 15",
-                            env!("CARGO_PKG_VERSION")
-                        ))
+                        .with_title(format!("Primitive World {}", env!("CARGO_PKG_VERSION")))
                         .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 820.0)),
                 )
                 .expect("window creation failed"),
@@ -1288,10 +1284,7 @@ fn main() {
         return;
     }
     if options.iter().any(|x| x == "--version") {
-        println!(
-            "Primitive World {} / primitive-v3 / checkpoint 15",
-            env!("CARGO_PKG_VERSION")
-        );
+        println!("Primitive World {}", env!("CARGO_PKG_VERSION"));
         return;
     }
     if let Err(e) = headless::arguments(&options) {

@@ -1,6 +1,6 @@
-//! primitive-v3: fixed-frame sensing, chosen gathering, automatic digestion.
+//! primitive-world: fixed-frame sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
-pub const MODEL_ID: &str = "primitive-v3";
+pub const MODEL_ID: &str = "primitive-world";
 pub const MAX_AGENTS: u32 = 16_384;
 pub const RESOURCE_GRID: u32 = 512;
 pub const OCCUPANCY_GRID: u32 = 256;
@@ -234,7 +234,7 @@ impl SimSettings {
             || self.heterogeneity > 1.0
             || self.maturity_age > 11000.0
         {
-            return Err("Invalid primitive-v3 physical settings".into());
+            return Err("Invalid primitive-world physical settings".into());
         }
         crate::founders::validate_genomes(&self.founder_genomes)
     }

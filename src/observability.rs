@@ -261,7 +261,7 @@ impl Simulation {
         let mut magic = [0; 12];
         file.read_exact(&mut magic).map_err(|e| e.to_string())?;
         if &magic != b"PRIMWORLD015" {
-            return Err("Unsupported checkpoint: primitive-v3 requires schema 15; older files are unchanged".into());
+            return Err("Unsupported checkpoint: expected format 15".into());
         }
         let mut fields = [0; 12];
         file.read_exact(&mut fields).map_err(|e| e.to_string())?;
@@ -341,7 +341,7 @@ impl Simulation {
                 || a.sensor_radius < 4.0
                 || a.sensor_radius > 48.0
             {
-                return Err("Invalid primitive-v3 body checkpoint".into());
+                return Err("Invalid primitive-world body checkpoint".into());
             }
         }
         if bytemuck::cast_slice::<u8, f32>(&data[8])

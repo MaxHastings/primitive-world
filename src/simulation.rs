@@ -151,7 +151,7 @@ impl Simulation {
         let agent_size = MAX_AGENTS as u64 * std::mem::size_of::<AgentGpu>() as u64;
         assert!(
             agent_size <= device.limits().max_storage_buffer_binding_size as u64,
-            "GPU storage limit below primitive-v3 body budget"
+            "GPU storage limit below primitive-world body budget"
         );
         let genome_buffer = buffer(
             device,
@@ -1053,10 +1053,8 @@ fn build_habitat_at(seed: u32, epoch: u32, contrast: f32) -> Vec<f32> {
             let broad = terrain_noise(xf * 3.3 + shift, yf * 3.3 + shift, seed ^ 991) * 0.55
                 + terrain_noise(xf * 7.1 + shift, yf * 7.1, seed ^ 1777) * 0.30
                 + terrain_noise(xf * 15.3, yf * 15.3 + shift, seed ^ 3137) * 0.15;
-            // Keep a low-yield landscape between peaks. A hard threshold made
-            // the world read as isolated islands and forced every trip to be
-            // an all-or-nothing migration. The lower shoulder provides
-            // forage while the nonlinear upper shoulder preserves rich hubs.
+            // The lower shoulder provides low-yield forage between peaks;
+            // the nonlinear upper shoulder preserves rich hubs.
             let t = ((value * 0.8 + broad * 0.35 - 0.22) / 0.78).clamp(0.0, 1.0);
             let shoulder = t * t * (3.0 - 2.0 * t);
             habitat[(y * RESOURCE_GRID + x) as usize] = shoulder * 0.78 + t * 0.22;

@@ -1,4 +1,4 @@
-"""Read V3 schema2 journey JSONL; summarize attempts without scoring genes."""
+"""Read journey JSONL schema 2; summarize attempts without scoring genes."""
 import argparse
 from collections import Counter
 import hashlib

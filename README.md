@@ -2,12 +2,21 @@
 
 A small artificial-life sandbox with no script for how to survive.
 
+![Agents among green food patches in Primitive World](docs/images/primitive-world.png)
+
+<details>
+<summary>Another view of the world</summary>
+
+![Agents scattered across food patches and open terrain](docs/images/primitive-world-terrain.png)
+
+</details>
+
 Watch tiny neural-network agents find food, reproduce, exchange signals, move one
 another, and sometimes go extinct. Food patches shift. Families inherit mutated
 brains. In evolution mode, the last survivors seed another world without closing
 the window.
 
-**V3 is the project’s one active model.** This is an experimental, local GPU
+Primitive World is an experimental, local GPU
 simulation—not a claim of general intelligence or guaranteed cooperation.
 
 ## Play
@@ -21,7 +30,7 @@ cargo run --release
 ```
 
 On Windows, you can also double-click `Play.cmd`. It builds the current source
-before opening it. The window identifies **primitive-v3 / checkpoint 15**.
+before opening it. The window shows the application version and world status.
 
 For an ongoing evolution run, choose a **new** directory:
 
@@ -72,5 +81,4 @@ controlled comparisons, not by requiring every ability to be used.
 
 The repository contains `src/`, `shaders/`, `docs/`, and optional `tools/`.
 Your `runs/`, `reports/`, checkpoints, and build outputs are local data, not source.
-Retired models, trainers, and research plans live in Git history rather than a
-second set of current instructions. See [release status](docs/release.md).
+See [release status](docs/release.md) for supported formats and distribution checks.

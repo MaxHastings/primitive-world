@@ -13,7 +13,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  a.collected=f32(requests[i])/1000.0;a.ingested=0.0;a.spent=0.0;a.received=0.0;
  a.food+=a.collected;
  // Digestion is rate-limited physiology, not a brain action or resource gift.
- // Gathering is still chosen; every absorbed unit is removed from inventory.
+ // Gathering is chosen; every absorbed unit is removed from inventory.
  {
   let amount=min(min(a.food,0.1),max(0.0,100.0-a.energy)/params.resource_and_noise.y);
   a.food-=amount;a.energy+=amount*params.resource_and_noise.y;a.ingested=amount;

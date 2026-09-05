@@ -1,5 +1,5 @@
-//! Offline founder preparation. Only bodies that actually survived/reproduced
-//! contribute genomes; no action reward, population target or observer feedback.
+//! Random founder initialization, bank loading, and living-descendant export.
+//! Genomes receive no action reward, population target, or observer feedback.
 use crate::simulation::{AgentGpu, GENOME_SIZE, Simulation, observability::read_buffer};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -14,7 +14,18 @@ pub struct FounderBank {
     pub genomes: Vec<Vec<f32>>,
 }
 
-/// Frozen random development bank. Old genomes are never reinterpreted.
+impl FounderBank {
+    pub fn validate(&self) -> Result<(), String> {
+        // Format 4 stores the same genome layout under either identifier.
+        let compatible_model = self.model == crate::model::MODEL_ID || self.model == "primitive-v3";
+        if self.version != 4 || !compatible_model || self.genomes.is_empty() {
+            return Err("Expected a nonempty Primitive World founder bank in format 4".into());
+        }
+        validate_genomes(&self.genomes)
+    }
+}
+
+/// Reproducible random founder bank shared by default worlds.
 /// Random weights with no hand-written behavior; no claim of established viability.
 pub fn bundled() -> &'static FounderBank {
     static BANK: std::sync::OnceLock<FounderBank> = std::sync::OnceLock::new();
@@ -26,7 +37,7 @@ pub fn bundled() -> &'static FounderBank {
         FounderBank {
             version: 4,
             model: crate::model::MODEL_ID.into(),
-            name: "primitive-v3-unprepared-random-256".into(),
+            name: "primitive-world-random-256".into(),
             source_seed: 0,
             source_tick: 0,
             genomes,
@@ -40,7 +51,7 @@ pub fn validate_genomes(genomes: &[Vec<f32>]) -> Result<(), String> {
             .iter()
             .any(|g| g.len() != GENOME_SIZE || g.iter().any(|v| !v.is_finite() || v.abs() > 4.0))
     {
-        return Err("Invalid primitive-v3 founder genomes".into());
+        return Err("Invalid primitive-world founder genomes".into());
     }
     Ok(())
 }
@@ -48,16 +59,13 @@ pub fn validate_genomes(genomes: &[Vec<f32>]) -> Result<(), String> {
 impl Simulation {
     pub fn use_random_founders(&mut self) {
         self.settings.founder_genomes.clear();
-        self.settings.founder_name = "primitive-v3-unprepared-random".into();
+        self.settings.founder_name = "primitive-world-random".into();
     }
     pub fn load_founders(&mut self, path: &Path) -> Result<(), String> {
         let bank: FounderBank =
             serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
                 .map_err(|e| e.to_string())?;
-        if bank.version != 4 || bank.model != crate::model::MODEL_ID || bank.genomes.is_empty() {
-            return Err("Expected nonempty primitive-v3 founder bank".into());
-        }
-        validate_genomes(&bank.genomes)?;
+        bank.validate()?;
         self.settings.founder_name = bank.name;
         self.settings.founder_genomes = bank.genomes;
         Ok(())
@@ -91,7 +99,7 @@ impl Simulation {
             version: 4,
             model: crate::model::MODEL_ID.into(),
             name: format!(
-                "primitive-v3-descendants-seed{}-tick{}",
+                "primitive-world-descendants-seed{}-tick{}",
                 self.seed, self.tick
             ),
             source_seed: self.seed,
@@ -110,5 +118,48 @@ impl Simulation {
             .open(path)
             .map_err(|e| format!("{}: {e}; choose a new bank path", path.display()))?;
         file.write_all(&bytes).map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bank(model: &str) -> FounderBank {
+        serde_json::from_value(serde_json::json!({
+            "version": 4, "model": model, "name": "test-pool",
+            "source_seed": 42, "source_tick": 128,
+            "genomes": [vec![0.125; GENOME_SIZE]]
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn compatible_bank_identifiers_preserve_genomes_and_provenance() {
+        for model in [crate::model::MODEL_ID, "primitive-v3"] {
+            let bank = bank(model);
+            let before = serde_json::to_value(&bank).unwrap();
+            bank.validate().unwrap();
+            assert_eq!(serde_json::to_value(&bank).unwrap(), before);
+            assert_eq!(bank.genomes, vec![vec![0.125; GENOME_SIZE]]);
+        }
+        assert_eq!(bundled().model, crate::model::MODEL_ID);
+    }
+
+    #[test]
+    fn bank_validation_rejects_unknown_models_formats_and_invalid_genomes() {
+        assert!(bank("unrelated-model").validate().is_err());
+        let mut bank = bank(crate::model::MODEL_ID);
+        bank.version = 0;
+        assert!(bank.validate().is_err());
+        bank.version = 4;
+        bank.genomes[0].pop();
+        assert!(bank.validate().is_err());
+        bank.genomes = vec![vec![5.0; GENOME_SIZE]];
+        assert!(bank.validate().is_err());
+        bank.genomes = vec![vec![f32::NAN; GENOME_SIZE]];
+        assert!(bank.validate().is_err());
+        bank.genomes.clear();
+        assert!(bank.validate().is_err());
     }
 }
