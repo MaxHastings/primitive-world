@@ -27,8 +27,8 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  var child:Agent;let angle=random01(p.rng)*6.2831853;
  child.position=clamp(p.position+vec2<f32>(cos(angle),sin(angle))*2.0,vec2<f32>(0),vec2<f32>(params.world_size));
  child.energy=child_energy;child.food=0.0;p.energy-=cost;p.spent+=cost;
- p.next_birth=params.tick+params.lifecycle.y;p.lifetime_births++;
- if(p.energy<=0.0){p.alive=0u;atomicAdd(&stats[1],1u);}
+ p.next_birth=params.tick+params.lifecycle.y;p.lifetime_births++;p.life.offspring++;
+ if(p.energy<=0.0){p.alive=0u;p.life.death_cause=1u;atomicAdd(&stats[1],1u);}
  child.max_speed=p.max_speed;child.sensor_radius=p.sensor_radius;
  child.max_age=9000.0+2000.0*random01(p.rng^ci);
  child.brain_nodes=nodes;child.brain_edges=edges;
@@ -39,5 +39,6 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  child.lineage_id=atomicAdd(&stats[10],1u)+INVALID+1u;
  child.parent_lineage=p.lineage_id;child.birth_tick=params.tick;child.birth_parent_slot=pi;child.ancestry_depth=p.ancestry_depth+1u;
  child.founder_family=p.founder_family;
+ child.life=initial_life(child.energy,child.food,params.tick+1u,params.tick+1u);
  agents[pi]=p;agents[ci]=child;atomicAdd(&stats[3],1u);atomicAdd(&stats[22],1u);
 }

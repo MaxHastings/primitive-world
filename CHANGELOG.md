@@ -1,7 +1,56 @@
 # Changelog
 
+## Round-based lifetime-record selection
+
+- Add bounded, resumable training rounds: matched populations learn across repeated
+  batches before their candidate pool changes. Fresh runs collect an uncredited
+  initial world's lifetime archive.
+- Refresh pools through equal-world sampling independent of duration or behavior;
+  expire old records without renewing them when selected. Preserve source mappings
+  between factual measurements and opaque genomes.
+- Save partial worlds, incoming sampling state, and batch/round transitions. Resume
+  preserves exact choices and credit; unfinished worlds receive no reward.
+- Add configurable rounds, batches, compositions, seeds, and retention, plus frozen
+  and uniform controls. Learned improvement remains unestablished.
+- Use checkpoint format 20, selector weights format 4, training and game receipts
+  format 2, and viewer snapshots and retained pools format 1.
+
+## Genome-only population selection
+
+- Replace biological transfer scores/quotas with genome-only pool attention and
+  conditional founder sampling, retaining uniform exploration.
+- Capture founders before ticking and newborns on their birth tick; preserve a
+  behavior-independent 256-individual reservoir after death.
+- Instantiate exact selected copy counts through explicit founder slots. Mutation
+  remains at ordinary in-world births; external founding copies are unmutated.
+- Train only on exact natural world duration, with optional 1/2/4-world credit,
+  persisted optimizer/PRNG/actions, and no reward for pauses or interventions.
+- Add headless training, uniform/individual baselines, frozen matched-pool
+  evaluation, and explicit censoring. Learned improvement remains unestablished.
+- Advance checkpoints to 19 and evolution/selector state to 2. Old formats are
+  rejected without rewriting files; genome/bank formats and physics are unchanged.
+
+
+## 0.7.1
+
+- Replace late-survivor transfer with the 64 most recent offspring that reach
+  maturity. Capture every tick on the GPU, break same-tick ties by identity hash,
+  retain exact child genomes, and never refresh an entry for lingering longer.
+- Treat worlds without viable offspring as failures: mutate the incoming bank
+  without survivor selection, or draw a fresh random bank. Reproduction stays paid.
+- Show viable offspring and distinct descendants that actually reproduced.
+- Preserve selection state in experiment receipts and standalone checkpoint
+  sidecars. Explicitly migrate older loops without promoting historical survivors.
+- Verify actual births, recent-cohort replacement, sterile tails, retry behavior,
+  archive isolation, and save/resume eligibility. Update backups for both protocols.
+
 ## 0.7.0
 
+- Dispatch birth construction only for eligible attempts and body updates only
+  for living slots. Preserve dead records with a bulk GPU copy. Cache archived
+  genomes by identity and avoid redundant small-population observations between
+  demographic changes and the regular 128-tick refresh. Add an opt-in per-pass
+  GPU timing diagnostic. Paid reproduction and late-survivor selection remain.
 - Replace the fixed dense brain with inherited sparse gated networks: four initial
   units, 1–64 units and up to 512 explicit connections. Duplication preserves the
   existing computation before mutation; deletion and connection edits can shrink it.

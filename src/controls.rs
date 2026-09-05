@@ -8,7 +8,7 @@ pub enum Command {
     NewGame,
     LoadGame,
     Create,
-    Open(Box<experiments::SavedExperiment>, bool),
+    Open(Box<experiments::SavedExperiment>),
     Import,
     Save,
     Pause,
@@ -50,7 +50,7 @@ pub fn apply(state: &mut AppState, command: Command) {
             return;
         }
         Command::Create => state.new_experiment(),
-        Command::Open(saved, brains) => state.load_experiment(*saved, brains),
+        Command::Open(saved) => state.load_experiment(*saved),
         Command::Import => import(state),
         Command::Save => state
             .save_experiment()
@@ -66,11 +66,7 @@ pub fn apply(state: &mut AppState, command: Command) {
         }
         Command::WorldClick(point) => {
             state.handle_click(point);
-            if state.shock_mode != ShockMode::Select && state.paused {
-                state.refresh_metrics()
-            } else {
-                return;
-            }
+            return;
         }
         Command::Pan(delta) => {
             let delta = delta * WORLD_SIZE
@@ -123,7 +119,7 @@ pub fn apply(state: &mut AppState, command: Command) {
 #[cfg(windows)]
 fn import(state: &mut AppState) -> Result<(), String> {
     if let Some(path) = rfd::FileDialog::new()
-        .add_filter("Primitive World save", &["json", "checkpoint"])
+        .add_filter("Primitive World save", &["json"])
         .pick_file()
     {
         state.import_checkpoint(&path)?;

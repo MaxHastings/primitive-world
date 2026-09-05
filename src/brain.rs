@@ -129,6 +129,7 @@ pub fn validate(g: &[f32]) -> Result<(), String> {
 
 /// Preserves trajectories from equal reset state, including recurrent self loops
 /// and candidate-to-gate projections. Capacity failure leaves the genome intact.
+#[cfg(test)]
 pub fn duplicate(g: &mut [f32], node: usize) -> bool {
     let n = g[0] as usize;
     let count = g[1] as usize;
@@ -170,6 +171,7 @@ pub fn duplicate(g: &mut [f32], node: usize) -> bool {
     true
 }
 
+#[cfg(test)]
 pub fn delete_node(g: &mut [f32], node: usize) -> bool {
     let n = g[0] as usize;
     if n <= 1 || node >= n {
@@ -210,6 +212,7 @@ pub fn delete_node(g: &mut [f32], node: usize) -> bool {
 
 /// Same draw order and arithmetic as the GPU birth implementation. Structure is
 /// changed first, then only actual biases and encoded weights can be perturbed.
+#[cfg(test)]
 pub fn mutate(g: &mut [f32], seed: u32, settings: &SimSettings) {
     let mut rng = seed;
     let n = g[0] as usize;

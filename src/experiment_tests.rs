@@ -1,89 +1,129 @@
 use super::{body, fixed, gpu, put, read, scene, step};
-use crate::{experiments, simulation::*, survivor_observer, visible_trial::VisibleTrial};
+use crate::{experiments, simulation::*};
 
 #[test]
-fn experiment_preserves_memory_archive_and_world_number_across_resume() {
+fn viewer_rounds_save_load_and_extinction_resume_preserve_learning_and_pool() {
+    use crate::live_rounds::{Config, Viewer};
     let (d, q) = gpu();
-    let started = std::time::Instant::now();
-    let mut sim = Simulation::new(&d, &q, 1);
-    eprintln!(
-        "Simulation initialization: {:.3}s",
-        started.elapsed().as_secs_f64()
-    );
+    let mut sim = Simulation::new(&d, &q, 42);
     sim.settings.population = 4;
-    sim.settings.metabolic_cost = 0.08;
+    sim.settings.metabolic_cost = 10.0;
+    sim.settings.founder_genomes = vec![fixed(0, [0.0; 2]).to_vec()];
     sim.reset(&q);
-    step(&mut sim, &d, &q, 1);
-    assert_eq!(sim.metrics(&d, &q).unwrap().living, 4);
-    let original = sim.agent_snapshot(&d, &q).unwrap();
-    let mut latest = None;
-    survivor_observer::observe(&mut latest, &sim, &d, &q).unwrap();
-    let snapshot = crate::visible_trial::LoopSnapshot {
-        world_number: 7,
-        latest: latest.unwrap(),
-    };
-    let root = std::env::temp_dir().join(format!(
-        "primitive-resume-test-{}",
-        experiments::stamp().unwrap()
-    ));
+    let mut rounds = Viewer::new(
+        &mut sim,
+        &d,
+        &q,
+        &Config {
+            batches: 2,
+            compositions: 2,
+            environments: 2,
+            retention: 2,
+        },
+    )
+    .unwrap();
+    let root = super::temp("viewer-round-save");
     let directory = root.join("experiment");
     std::fs::create_dir_all(&directory).unwrap();
     let experiment = experiments::Experiment {
         directory,
-        name: "A continuing line".into(),
-        origin: "Random V6 fixture".into(),
-        total_ticks: 8000,
+        name: "Round test".into(),
+        origin: "Test".into(),
+        total_ticks: 0,
     };
-    let started = std::time::Instant::now();
-    experiment
-        .save(&sim, &d, &q, Some(snapshot.clone()))
-        .unwrap();
-    eprintln!(
-        "Complete experiment checkpoint/receipt save: {:.3}s",
-        started.elapsed().as_secs_f64()
-    );
-    let (saved, invalid) = experiments::list(&root).unwrap();
-    assert_eq!(invalid, 0);
-    assert_eq!(saved[0].world_number(), 7);
-    assert_eq!(saved[0].record.total_ticks, 8000);
-    step(&mut sim, &d, &q, 8);
-    sim.load_checkpoint(&q, &saved[0].checkpoint()).unwrap();
-    let restored = sim.agent_snapshot(&d, &q).unwrap();
-    assert_eq!(
-        bytemuck::cast_slice::<AgentGpu, u8>(&original),
-        bytemuck::cast_slice::<AgentGpu, u8>(&restored)
-    );
-    let trial = VisibleTrial::resume_loop(
-        &experiment.next_session().unwrap(),
-        saved[0].record.evolution.clone().unwrap(),
-        &sim,
+    // Save one live tick: no reward, no proposal and no hidden reset on load.
+    step(&mut sim, &d, &q, 1);
+    let original_bodies = sim.agent_snapshot(&d, &q).unwrap();
+    let snapshot = rounds.snapshot(&sim, &d, &q).unwrap();
+    experiment.save(&sim, &d, &q, snapshot.clone()).unwrap();
+    let (saves, skipped) = experiments::list(&root).unwrap();
+    assert_eq!(skipped, 0);
+    assert_eq!(saves.len(), 1);
+    assert_eq!(saves[0].record.version, 2);
+    assert_eq!(saves[0].record.rounds.training.learner().updates, 0);
+    sim.reset(&q);
+    let saved = &saves[0];
+    sim.load_round_checkpoint(
+        &q,
+        std::fs::File::open(saved.checkpoint()).unwrap(),
+        Some((saved.record.seed, saved.record.tick, saved.record.living)),
+        &saved.record.rounds.expected_settings().unwrap(),
     )
     .unwrap();
-    assert_eq!(trial.world_number, 7);
-    // Save at extinction: bodies alone cannot reconstruct the survivors.
-    sim.kill_agents_in_region(&d, &q, [WORLD_SIZE * 0.5; 2], WORLD_SIZE);
-    assert_eq!(sim.metrics(&d, &q).unwrap().living, 0);
-    let dead_checkpoint = experiment
-        .save(&sim, &d, &q, Some(trial.snapshot().unwrap()))
+    rounds = saved
+        .record
+        .rounds
+        .clone()
+        .restore(&mut sim, &d, &q)
         .unwrap();
-    sim.load_checkpoint(&q, &dead_checkpoint).unwrap();
-    let (saved, _) = experiments::list(&root).unwrap();
-    let mut resumed = VisibleTrial::resume_loop(
-        &experiment.next_session().unwrap(),
-        saved[0].record.evolution.clone().unwrap(),
-        &sim,
-    )
-    .unwrap();
-    resumed.advance(&mut sim, &d, &q).unwrap();
-    assert_eq!(resumed.world_number, 8);
-    assert_eq!(sim.tick, 0);
-    assert_eq!(sim.metrics(&d, &q).unwrap().living, 4);
     assert_eq!(
-        sim.settings.founder_genomes[..snapshot.latest.bank.genomes.len()],
-        snapshot.latest.bank.genomes
+        bytemuck::cast_slice::<AgentGpu, u8>(&original_bodies),
+        bytemuck::cast_slice::<AgentGpu, u8>(&sim.agent_snapshot(&d, &q).unwrap())
     );
-    assert_eq!(sim.settings.metabolic_cost, 0.08);
+    // Reach three rounds. Every intermediate extinction is a valid save/load point.
+    for world in 0..17 {
+        step(&mut sim, &d, &q, 32);
+        assert_eq!(sim.metrics(&d, &q).unwrap().living, 0);
+        let extinct = rounds.snapshot(&sim, &d, &q).unwrap();
+        let checkpoint = experiment.save(&sim, &d, &q, extinct.clone()).unwrap();
+        rounds.advance(&mut sim, &d, &q).unwrap();
+        let expected = serde_json::to_value(&rounds).unwrap();
+        sim.load_round_checkpoint(
+            &q,
+            std::fs::File::open(checkpoint).unwrap(),
+            None,
+            &extinct.expected_settings().unwrap(),
+        )
+        .unwrap();
+        rounds = extinct.restore(&mut sim, &d, &q).unwrap();
+        rounds.advance(&mut sim, &d, &q).unwrap();
+        assert_eq!(
+            serde_json::to_value(&rounds).unwrap(),
+            expected,
+            "world {world}"
+        );
+        let copies = sim.settings.founder_slots.clone();
+        assert_eq!(copies.len(), 4);
+        let genes = read::<f32>(&d, &q, &sim.genome_buffer, 4 * GENOME_SIZE);
+        for (slot, candidate) in copies.iter().enumerate() {
+            assert_eq!(
+                &genes[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE],
+                sim.settings.founder_genomes[*candidate as usize]
+            );
+        }
+    }
+    assert_eq!(rounds.training.round, 3);
+    assert_eq!(rounds.training.learner().updates, 4);
+    let crate::selector_comparison::CandidatePool::Retained(pool) =
+        &rounds.training.comparison.as_ref().unwrap().pool
+    else {
+        panic!()
+    };
+    assert!(pool.entries.iter().all(|e| e.source.round > 0));
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn mismatched_round_settings_are_rejected_before_replacing_the_live_world() {
+    let (d, q) = gpu();
+    let mut sim = scene(&d, &q);
+    put(&sim, &q, 0, body([602.0, 902.0]), &fixed(0, [0.0; 2]));
+    let checkpoint = super::temp("round-settings.checkpoint");
+    sim.save_checkpoint(&d, &q, &checkpoint).unwrap();
+    step(&mut sim, &d, &q, 1);
+    let before = sim.agent_snapshot(&d, &q).unwrap();
+    let mut wrong = sim.settings.clone();
+    wrong.metabolic_cost += 0.01;
+    assert!(
+        sim.load_round_checkpoint(&q, std::fs::File::open(&checkpoint).unwrap(), None, &wrong)
+            .is_err()
+    );
+    assert_eq!(sim.tick, 1);
+    assert_eq!(
+        bytemuck::cast_slice::<AgentGpu, u8>(&before),
+        bytemuck::cast_slice::<AgentGpu, u8>(&sim.agent_snapshot(&d, &q).unwrap())
+    );
+    std::fs::remove_file(checkpoint).unwrap();
 }
 
 #[test]
@@ -102,92 +142,6 @@ fn paused_food_brush_changes_food_inside_the_visible_circle() {
     let removed = sim.metrics(&d, &q).unwrap();
     assert!(removed.dropped_food < added.dropped_food);
     assert_eq!(sim.tick, 0);
-}
-
-#[test]
-fn rolling_survivors_retain_diversity_refresh_metadata_and_follow_recovery() {
-    let (d, q) = gpu();
-    let mut sim = scene(&d, &q);
-    sim.settings.population = 64;
-    let genes = fixed(0, [0.0; 2]);
-    for slot in 0..64 {
-        let mut a = body([602.0, 902.0]);
-        a.lineage_id = slot + 1;
-        put(&sim, &q, slot as usize, a, &genes);
-    }
-    let root = super::temp("rolling-archive");
-    let mut trial = VisibleTrial::new_loop(&root, &sim, &d, &q).unwrap();
-    let before = trial.snapshot().unwrap();
-    assert_eq!(before.latest.bodies.len(), 64);
-    let mut agents = sim.agent_snapshot(&d, &q).unwrap();
-    for a in agents.iter_mut().skip(1) {
-        a.alive = 0;
-    }
-    agents[0].node_change = 1;
-    q.write_buffer(
-        &sim.agent_buffers[sim.current_buffer],
-        0,
-        bytemuck::cast_slice(&agents),
-    );
-    sim.tick = 128;
-    trial.observe(&sim, &d, &q).unwrap();
-    let saved = trial.snapshot().unwrap();
-    assert_eq!(saved.latest.bodies.len(), 64);
-    assert_eq!(saved.latest.bodies[0].lineage_id, 1);
-    assert_eq!(saved.latest.bodies[0].node_change, 1);
-    assert_eq!(saved.latest.bodies[0].observed_tick, Some(128));
-    assert_eq!(
-        saved
-            .latest
-            .bodies
-            .iter()
-            .filter(|b| b.lineage_id == 1)
-            .count(),
-        1
-    );
-    assert!(
-        saved
-            .latest
-            .bodies
-            .iter()
-            .skip(1)
-            .all(|b| b.observed_tick == Some(0))
-    );
-
-    // The actual serialized archive must survive restart, not just in-memory state.
-    let snapshot = serde_json::from_slice(&serde_json::to_vec(&saved).unwrap()).unwrap();
-    let resumed_root = super::temp("rolling-resume");
-    let mut resumed = VisibleTrial::resume_loop(&resumed_root, snapshot, &sim).unwrap();
-    for slot in 0..64 {
-        let mut a = body([602.0, 902.0]);
-        a.lineage_id = slot + 100;
-        put(&sim, &q, slot as usize, a, &genes);
-    }
-    sim.tick = 256;
-    resumed.observe(&sim, &d, &q).unwrap();
-    let recovered = resumed.snapshot().unwrap();
-    assert_eq!(recovered.latest.bodies.len(), 64);
-    assert!(recovered.latest.bodies.iter().all(|b| b.lineage_id >= 100));
-    let expected = serde_json::to_vec(&recovered.latest).unwrap();
-    sim.kill_agents_in_region(&d, &q, [WORLD_SIZE * 0.5; 2], WORLD_SIZE);
-    resumed.observe(&sim, &d, &q).unwrap();
-    assert_eq!(
-        serde_json::to_vec(&resumed.snapshot().unwrap().latest).unwrap(),
-        expected
-    );
-    resumed.advance(&mut sim, &d, &q).unwrap();
-    assert_eq!(sim.settings.founder_genomes.len(), 256);
-    let transfer: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(resumed_root.join("world-000001/transfer.json")).unwrap(),
-    )
-    .unwrap();
-    let mut contributions = [0; 64];
-    for entry in transfer["provenance"].as_array().unwrap() {
-        contributions[entry["parent"].as_u64().unwrap() as usize] += 1;
-    }
-    assert_eq!(contributions, [4; 64]);
-    std::fs::remove_dir_all(root).unwrap();
-    std::fs::remove_dir_all(resumed_root).unwrap();
 }
 
 #[test]

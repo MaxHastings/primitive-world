@@ -2,8 +2,8 @@
 use bytemuck::{Pod, Zeroable};
 pub const MODEL_ID: &str = "primitive-v6-variable-brain";
 pub const FOUNDER_BANK_VERSION: u32 = 7;
-pub const CHECKPOINT_VERSION: u32 = 18;
-pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD018";
+pub const CHECKPOINT_VERSION: u32 = 20;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD020";
 pub const MAX_AGENTS: u32 = 16_384;
 pub const RESOURCE_GRID: u32 = 512;
 pub const OCCUPANCY_GRID: u32 = 256;
@@ -71,6 +71,7 @@ pub struct AgentGpu {
     /// Birth-time difference from the parent; zero for fresh founders.
     pub node_change: i32,
     pub edge_change: i32,
+    pub life: crate::life_record::LifeRecord,
 }
 impl Default for AgentGpu {
     fn default() -> Self {
@@ -206,6 +207,9 @@ pub struct SimSettings {
     pub edge_mutation_rate: f32,
     pub founder_genomes: Vec<Vec<f32>>,
     pub founder_name: String,
+    /// Explicit genome index for each initial body; empty uses the ordinary bank cycle.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub founder_slots: Vec<u32>,
 }
 impl Default for SimSettings {
     fn default() -> Self {
@@ -236,12 +240,24 @@ impl Default for SimSettings {
             edge_mutation_rate: 0.08,
             founder_genomes: crate::founders::bundled().genomes.clone(),
             founder_name: crate::founders::bundled().name.clone(),
+            founder_slots: vec![],
         }
     }
 }
 impl SimSettings {
+    pub fn founder_index(&self, slot: usize) -> usize {
+        self.founder_slots
+            .get(slot)
+            .map_or_else(|| slot % self.founder_genomes.len().max(1), |&i| i as usize)
+    }
     pub fn validate(&self) -> Result<(), String> {
-        if self.environment_rotation > 3
+        if (!self.founder_slots.is_empty()
+            && (self.founder_slots.len() != self.population as usize
+                || self
+                    .founder_slots
+                    .iter()
+                    .any(|&i| i as usize >= self.founder_genomes.len())))
+            || self.environment_rotation > 3
             || self.population > MAX_AGENTS
             || self.birth_cooldown > 1_000_000
             || [

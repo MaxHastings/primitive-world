@@ -36,11 +36,11 @@ Keep the ecology and the enjoyable continuous viewer. Food depletion, changing
 patches, weather, and other organisms already give behavior consequences. Keep
 inspection and ancestry so we can watch what develops and investigate surprises.
 
-Keep the optional survivor restart loop. It is useful for watching a lineage
-continue across worlds. Describe it plainly as external carryover: it rejuvenates
-bodies and favors late survivors, so it is different from an uninterrupted
-population reproducing in one world. That distinction needs clear presentation,
-not removal of a useful play mode.
+The default round-based evolution uses a separate lifetime-record population
+selector. It learns exclusively from subsequent world duration, preserving
+behavior-independent candidate samples including early deaths. It assigns no
+biological categories or success scores. See [the selection contract](evolution.md)
+for the architecture, founding protocol, training horizons, and persistence rules.
 
 ## Change
 
@@ -111,7 +111,7 @@ that every feature must be used, populations must become social, or brain sizes
 must increase. Do not add rescue rules to make those outcomes happen.
 
 Defer lifetime brain growth, evolvable body shapes, new sensory organs, explicit
-speciation protection, novelty rewards, and additional learning systems. They are
+speciation protection, novelty rewards, and learning inside organisms. They are
 possible future directions, not prerequisites for this one.
 
 Do not make a fixed-small/fixed-large comparison campaign, a shrinkage result,
@@ -128,7 +128,7 @@ as genetic material.
 
 The inspector shows units, connections, birth changes, and energy costs. World
 settings expose upkeep, copying, and paired structural mutation rates.
-Banks use format 7, checkpoints format 18, and both identify
+Banks use format 7, checkpoints format 20, and both identify
 `primitive-v6-variable-brain`. Earlier files remain for the earlier engine.
 
 Engineering verification focuses on broken inheritance, invalid graph references,

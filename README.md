@@ -12,8 +12,8 @@ A small artificial-life sandbox with no script for how to survive.
 </details>
 
 Watch tiny neural-network agents find food, reproduce, exchange signals, move one
-another, and sometimes go extinct. Food patches shift. Families inherit brains whose structure can grow, shrink, and change. In evolution mode, the last survivors seed another world without closing
-the window.
+another, and sometimes go extinct. Food patches shift. Families inherit brains whose structure can grow, shrink, and change. In evolution mode, a separate lifetime-record selector chooses the next founding population
+and learns from its world duration without closing the window.
 
 Primitive World is an experimental, local GPU
 simulation—not a claim of general intelligence or guaranteed cooperation.
@@ -31,15 +31,33 @@ cargo run --release
 On Windows, you can also double-click `Play.cmd`. It builds the current source
 before opening it. The window shows the application version and world status.
 
-For an ongoing evolution run, choose a **new** directory:
+**New Game and Load Game both use round-based evolution.** No special flag is
+needed. Start a new game, choose its world rules, and watch the initial world
+collect lifetime records. The selector then tries several founding populations
+on matched environments, learns after each completed batch, and refreshes its
+bounded candidate pool between rounds. One failed population cannot erase its
+alternatives.
+
+Defaults: three populations per batch, two environments, three batches per round,
+and four-round retention. The viewer shows the current round, batch, population,
+environment, pool size, and selector updates. Pause, speed controls, inspection,
+saving, and loading work throughout. World rules stay fixed for fair comparisons.
+
+For a command-line start in the viewer:
 
 ```sh
-cargo run --release -- --random-founders --seed 42 --watch-loop runs/my-first-run --view-speed 16x
+cargo run --release -- --random-founders --seed 42 --view-speed 16x
 ```
 
-Worlds end only at extinction. The same window starts the next world with actual
-survivor genes and mutated copies. Closing saves and stops. There is no deadline,
-automatic difficulty escalation, or hidden population rescue.
+For the same training engine without a viewer:
+
+```sh
+cargo run --release -- --train-loop runs/my-rounds --rounds 8 --random-founders --seed 42 --ticks 200000
+```
+
+Tick budgets pause unfinished headless work. See [training and resume](docs/evolution.md#training-in-rounds).
+Only saves from this round-based model can be loaded; there is no conversion of
+older experiments.
 
 **Expect early failures.** Random neural weights are not a competent starter
 policy, nor random action sampling. Some agents repeat ineffective actions.
@@ -49,8 +67,8 @@ Selection takes generations, and improvement is not guaranteed.
 
 - Start at 1x and click an agent to inspect its real inputs, energy, and decisions.
 - Speed up to watch generations, population collapses, and recoveries.
-- Change physical costs or food growth to test a population under pressure.
-- Save a checkpoint before intervening; compare what happens afterward.
+- Choose physical costs and food growth in New Game to test evolution under pressure.
+- Save and return to the same trial, candidate pool, and selector state.
 - Watch whether departures from depleted food lead to feeding and offspring elsewhere.
 
 Space pauses; WASD/arrows pan; mouse wheel zooms; Home fits the world; L changes

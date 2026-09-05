@@ -9,6 +9,8 @@
 fn main(@builtin(global_invocation_id) id:vec3<u32>){
  let i=id.x;if(i>=INVALID){return;}var a=source[i];births[i]=0u;
  if(a.alive==0u){destination[i]=a;return;}let d=decisions[i];
+ if(a.life.initialized==0u){a.life=initial_life(a.energy,a.food,a.birth_tick,params.tick);}
+ a.life.ticks++;a.life.actions[d.selected_action]++;a.life.invalid_decisions+=d.invalid;
  atomicAdd(&stats[24u+d.selected_action],1u);atomicAdd(&stats[31],d.invalid);
  a.collected=f32(requests[i])/1000.0;a.ingested=0.0;a.spent=0.0;a.received=0.0;
  a.food+=a.collected;
@@ -35,11 +37,11 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  // Only full affordable emissions occur. Receivers sample it next tick.
  if(d.selected_action==EMIT && params.physical.y>=0.5 && a.energy>=0.02){
   a.energy-=0.02;a.spent+=0.02;a.signal_payload=d.payload;a.signal_tick=params.tick+1u;
-  atomicAdd(&stats[9],1u);
+  a.life.emissions++;atomicAdd(&stats[9],1u);
  }
  a.brain_nodes=d.brain_nodes;a.brain_edges=d.brain_edges;
  a.hidden=d.hidden;a.rng=hash_u32(a.rng+params.tick+1u);
- if(a.energy<=0.0||a.age>=a.max_age){a.alive=0u;if(a.age>=a.max_age){atomicAdd(&stats[2],1u);}else{atomicAdd(&stats[1],1u);}}
+ if(a.energy<=0.0||a.age>=a.max_age){a.alive=0u;if(a.age>=a.max_age){a.life.death_cause=2u;atomicAdd(&stats[2],1u);}else{a.life.death_cause=1u;atomicAdd(&stats[1],1u);}}
  if(a.alive!=0u && d.selected_action==REPRODUCE){
   atomicAdd(&stats[20],1u);
   let cost=params.sensor_and_padding.w*(0.2+0.8*d.amount);

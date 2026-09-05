@@ -14,16 +14,17 @@ from run_io import save_state, exclusive_run
 
 def checkpoint_bytes():
     settings = b"{}"
-    return (b"PRIMWORLD018" + struct.pack("<III", 42, 128, len(settings))
+    return (b"PRIMWORLD020" + struct.pack("<III", 42, 128, len(settings))
             + settings + b"".join(struct.pack("<Q", 4) + b"data" for _ in range(9)))
 
 
 class BackupTests(unittest.TestCase):
-    def test_backup_can_preserve_previous_model_without_reinterpreting_it(self):
+    def test_previous_checkpoint_models_are_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "v4.checkpoint"
-            path.write_bytes(b"PRIMWORLD016" + checkpoint_bytes()[12:])
-            self.assertIn("Schema16", backup_run.checkpoint_header(path)["validation"])
+            path = Path(tmp) / "old.checkpoint"
+            path.write_bytes(b"PRIMWORLD019" + checkpoint_bytes()[12:])
+            with self.assertRaises(ValueError):
+                backup_run.checkpoint_header(path)
 
     def test_header_accepts_complete_layout_and_rejects_truncation(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -60,11 +61,12 @@ class BackupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             run = root / "run"
-            checkpoints = run / "checkpoints"
+            checkpoints = run
             checkpoints.mkdir(parents=True)
             source = checkpoints / "save.checkpoint"
             source.write_bytes(checkpoint_bytes())
             (checkpoints / "unfinished.partial").write_bytes(b"incomplete")
+            (run / "save-100.json").write_text(json.dumps(dict(version=2,rounds=dict(version=1),checkpoint="save.checkpoint",seed=42,tick=128)))
             backup = root / "backup"
             with redirect_stdout(StringIO()):
                 backup_run.run(run, backup)
@@ -74,30 +76,32 @@ class BackupTests(unittest.TestCase):
             self.assertEqual(len(list((backup / "archives").glob("*.zip"))), 1)
             self.assertEqual(source.read_bytes(), checkpoint_bytes())
 
-    def test_partial_world_handoff_is_deferred(self):
+    def test_incomplete_round_receipt_is_deferred(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            world = root / "run" / "world-000001"
-            world.mkdir(parents=True)
-            (world / "report.json").write_text(json.dumps({"termination_reason": "extinction"}))
-            (world / "survivors.bank.json").write_text("{}")
+            run = root / "run"
+            run.mkdir()
+            (run / "save-100.json").write_text(json.dumps(dict(version=2,rounds=dict(version=1),checkpoint="missing.checkpoint",seed=42,tick=128)))
             with redirect_stdout(StringIO()):
-                backup_run.run(root / "run", root / "backup")
-            latest = json.loads((root / "backup/latest.json").read_text())
-            self.assertEqual(latest["completed_worlds"], 0)
-            self.assertEqual(len(latest["deferred"]), 1)
-            self.assertTrue((world / "report.json").exists())
+                backup_run.run(run,root/"backup")
+            latest=json.loads((root/"backup"/"latest.json").read_text())
+            self.assertEqual(latest["full_checkpoints_backed_up"],0)
+            self.assertEqual(len(latest["deferred"]),1)
 
-    def test_summary_does_not_hide_different_settings(self):
-        def row(ticks, signature):
-            return dict(elapsed_ticks=ticks, tick=ticks, sample_max_ancestry=2,
-                        settings_signature=signature)
-        state = dict(worlds={"world-1": row(10, "easy"), "world-2": row(20, "hard")},
-                     checkpoints={}, checked_at="now", newest_world="world-3",
-                     free_disk_bytes=123, deferred=[])
-        summary = backup_run.summarize(state)
-        self.assertEqual(summary["physical_setting_variants"], 2)
-        self.assertIn("not proof of learning", summary["warning"])
+    def test_truncated_checkpoint_header_is_deferred(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = root / "run"
+            run.mkdir()
+            (run / "save.checkpoint").write_bytes(checkpoint_bytes()[:15])
+            (run / "save-100.json").write_text(json.dumps(dict(
+                version=2, rounds=dict(version=1), checkpoint="save.checkpoint",
+                seed=42, tick=128)))
+            with redirect_stdout(StringIO()):
+                backup_run.run(run, root / "backup")
+            latest = json.loads((root / "backup" / "latest.json").read_text())
+            self.assertEqual(latest["full_checkpoints_backed_up"], 0)
+            self.assertEqual(len(latest["deferred"]), 1)
 
     def test_lock_releases_and_state_replacement_leaves_valid_json(self):
         with tempfile.TemporaryDirectory() as tmp:

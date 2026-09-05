@@ -1,10 +1,9 @@
-"""Read-only world monitoring plus verified, non-destructive local backup archives."""
+"""Verified backups of current round-evolution game receipts and checkpoints."""
 import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
-import shutil
 import struct
 import uuid
 import zipfile
@@ -20,7 +19,7 @@ def checkpoint_header(path):
     size = path.stat().st_size
     with path.open("rb") as stream:
         magic = stream.read(12)
-        if magic not in (b"PRIMWORLD016", b"PRIMWORLD017", b"PRIMWORLD018"):
+        if magic != b"PRIMWORLD020":
             raise ValueError(f"Unexpected checkpoint version: {path}")
         seed, tick, settings_size = struct.unpack("<III", stream.read(12))
         if not 1 <= settings_size <= 32 * 1024 * 1024:
@@ -66,86 +65,44 @@ def archive(destination, name, sources):
     return dict(path=str(target), bytes=target.stat().st_size)
 
 
-def summarize(state):
-    rows = list(state["worlds"].values())
-    checkpoints = list(state["checkpoints"].values())
-    def average(part, key):
-        return sum(r[key] for r in part) / len(part) if part else None
-    return dict(checked_at=state["checked_at"], completed_worlds=len(rows),
-        total_elapsed_ticks=sum(r["elapsed_ticks"] for r in rows),
-        longest_observed_world_ticks=max((r["tick"] for r in rows), default=0),
-        sampled_max_ancestry=max((r["sample_max_ancestry"] for r in rows), default=0),
-        physical_setting_variants=len({r["settings_signature"] for r in rows}),
-        first_ten_mean_elapsed=average(rows[:10], "elapsed_ticks"),
-        last_ten_mean_elapsed=average(rows[-10:], "elapsed_ticks"),
-        full_checkpoints_backed_up=len(checkpoints),
-        latest_checkpoint=checkpoints[-1] if checkpoints else None,
-        newest_world=state["newest_world"], free_disk_bytes=state["free_disk_bytes"],
-        deferred=state["deferred"],
-        warning="Worlds have different seeds and may have user-edited settings; these are descriptive results, not proof of learning. Ancestry is sampled late-survivor ancestry, not the maximum ever born.")
-
-
 def run(run_dir, destination):
+    run_dir = run_dir.resolve(strict=True)
+    destination = destination.resolve()
+    if destination == run_dir or run_dir in destination.parents:
+        raise ValueError("Backup destination must be outside the experiment folder")
     destination.mkdir(parents=True, exist_ok=True)
     archive_dir = destination / "archives"
     archive_dir.mkdir(exist_ok=True)
     with exclusive_run(destination):
-        path = destination / "summary.json"
-        state = read(path) if path.exists() else dict(worlds={}, checkpoints={})
-        state.update(checked_at=datetime.now(timezone.utc).isoformat(), deferred=[],
-                     free_disk_bytes=shutil.disk_usage(destination).free)
-        if state["free_disk_bytes"] < 10 * 1024**3:
-            raise RuntimeError("Less than 10 GiB free; no deletion or automatic simulation restart authorized")
-        directories = sorted(p for p in run_dir.glob("world-*") if p.is_dir())
-        state["newest_world"] = directories[-1].name if directories else None
-        for directory in directories:
-            if directory.name in state["worlds"]:
-                continue
-            report_path = directory / "report.json"
-            if not report_path.exists():
-                continue
-            try:
-                report = read(report_path)
-                sample_path = directory / "survivors.bank.json"
-                sample = read(sample_path)
-                sources = [report_path, sample_path, directory / "ready.json"]
-                if report["termination_reason"] == "extinction":
-                    # The report precedes the handoff; don't archive a partial transfer.
-                    transfer = directory / "transfer.json"
-                    read(transfer)
-                    bank = directory / "next.bank.json"
-                    read(bank)
-                    sources += [transfer, bank]
-                settings = dict(report["final_settings"])
-                settings.pop("founder_genomes", None)
-                settings.pop("founder_name", None)
-                row = dict(tick=report["end"]["tick"], elapsed_ticks=report["elapsed_ticks"],
-                    births=report["end"]["events"][3], harvested=report["end"]["harvested"],
-                    reason=report["termination_reason"], invalid_outputs=report["end"]["invalid_outputs"],
-                    sampled=len(sample["bodies"]), sampled_descendants=sum(b["ancestry_depth"] > 0 for b in sample["bodies"]),
-                    sample_max_ancestry=max((b["ancestry_depth"] for b in sample["bodies"]), default=0),
-                    settings=settings, settings_signature=hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest(),
-                    backup=archive(archive_dir, directory.name, sources))
-                state["worlds"][directory.name] = row
-                save_state(destination, state)
-            except (FileNotFoundError, json.JSONDecodeError) as exc:
-                state["deferred"].append(dict(world=directory.name, reason=str(exc)))
-        checkpoints = sorted((run_dir / "checkpoints").glob("*.checkpoint"), key=lambda p: p.stat().st_mtime_ns)
-        checkpoints += sorted(run_dir.glob("world-*/paused.checkpoint"))
-        for checkpoint in checkpoints:
-            key = checkpoint.relative_to(run_dir).as_posix()
+        state_path = destination / "summary.json"
+        state = read(state_path) if state_path.exists() else dict(checkpoints={})
+        state.update(checked_at=datetime.now(timezone.utc).isoformat(), deferred=[])
+        for receipt in sorted(run_dir.rglob("save-*.json")):
+            key = receipt.relative_to(run_dir).as_posix()
             if key in state["checkpoints"]:
                 continue
-            metadata = checkpoint_header(checkpoint)
-            backup = archive(archive_dir, "checkpoint-" + hashlib.sha256(key.encode()).hexdigest()[:16], [checkpoint])
-            state["checkpoints"][key] = dict(source=str(checkpoint), **metadata, backup=backup)
-            save_state(destination, state)
-        save_state(destination, state)
-        summary = summarize(state)
+            try:
+                record = read(receipt)
+                if record.get("version") != 2 or record.get("rounds", {}).get("version") != 1:
+                    raise ValueError("Incompatible save; only round evolution is supported")
+                name = record["checkpoint"]
+                if Path(name).name != name or any(c in name for c in '/\\:') or not name.endswith('.checkpoint'):
+                    raise ValueError("Invalid checkpoint name")
+                checkpoint = receipt.parent / name
+                metadata = checkpoint_header(checkpoint)
+                if (metadata["seed"], metadata["tick"]) != (record["seed"], record["tick"]):
+                    raise ValueError("Receipt and checkpoint disagree")
+                result = archive(archive_dir, "save-" + hashlib.sha256(key.encode()).hexdigest()[:16], [receipt,checkpoint])
+                state["checkpoints"][key] = dict(source=str(receipt), **metadata, backup=result)
+                save_state(destination,state)
+            except (FileNotFoundError, json.JSONDecodeError, ValueError, KeyError, struct.error) as exc:
+                state["deferred"].append(dict(save=key,reason=str(exc)))
+        save_state(destination,state)
+        summary = dict(checked_at=state["checked_at"], full_checkpoints_backed_up=len(state["checkpoints"]),deferred=state["deferred"])
         latest = destination / "latest.next.json"
-        latest.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        latest.write_text(json.dumps(summary,indent=2)+"\n",encoding="utf-8")
         latest.replace(destination / "latest.json")
-        print(json.dumps(summary, indent=2))
+        print(json.dumps(summary,indent=2))
 
 
 if __name__ == "__main__":

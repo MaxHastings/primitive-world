@@ -59,6 +59,7 @@ pub fn validate_genomes(genomes: &[Vec<f32>]) -> Result<(), String> {
 impl Simulation {
     pub fn use_random_founders(&mut self) {
         self.settings.founder_genomes.clear();
+        self.settings.founder_slots.clear();
         self.settings.founder_name = "primitive-world-random".into();
     }
     pub fn load_founders(&mut self, path: &Path) -> Result<(), String> {
@@ -68,6 +69,7 @@ impl Simulation {
         bank.validate()?;
         self.settings.founder_name = bank.name;
         self.settings.founder_genomes = bank.genomes;
+        self.settings.founder_slots.clear();
         Ok(())
     }
 

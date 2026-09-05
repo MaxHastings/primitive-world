@@ -33,28 +33,6 @@ pub struct SurvivorSample {
     pub selection: String,
 }
 
-impl SurvivorSample {
-    /// Current living bodies take priority; retain earlier bodies to fill vacant
-    /// archive entries. Reobserving one individual never gives it another entry.
-    pub fn retain_previous(&mut self, previous: &Self) {
-        if self.bank.source_seed != previous.bank.source_seed {
-            return;
-        }
-        let mut identities: std::collections::HashSet<_> =
-            self.bodies.iter().map(|b| b.lineage_id).collect();
-        for (body, genome) in previous.bodies.iter().zip(&previous.bank.genomes) {
-            if self.bodies.len() == 64 {
-                break;
-            }
-            if identities.insert(body.lineage_id) {
-                self.bodies.push(body.clone());
-                self.bank.genomes.push(genome.clone());
-            }
-        }
-        self.selection = "Rolling archive of up to 64 distinct bodies: current sampled survivors first, then previously observed bodies to fill remaining entries. Each body retains its own genome and structural metadata from its recorded observation tick. Source tick/population describe the latest live observation, not all archived bodies.".into();
-    }
-}
-
 fn slots(agents: &[AgentGpu], seed: u32, tick: u32) -> Vec<usize> {
     let mut indices: Vec<_> = agents
         .iter()
@@ -79,34 +57,70 @@ pub fn observe(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
 ) -> Result<(), String> {
+    observe_cached(latest, sim, device, queue, None)
+}
+
+pub fn observe_cached(
+    latest: &mut Option<SurvivorSample>,
+    sim: &Simulation,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    previous: Option<&SurvivorSample>,
+) -> Result<(), String> {
     let agents = sim.agent_snapshot(device, queue)?;
     let chosen = slots(&agents, sim.seed, sim.tick);
     if chosen.is_empty() {
         return Ok(());
     } // Extinction must not erase the archive.
-    let stride = (GENOME_SIZE * std::mem::size_of::<f32>()) as u64;
-    let packed = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("read-only survivor genomes"),
-        size: stride * chosen.len() as u64,
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
-    });
-    let mut encoder = device.create_command_encoder(&Default::default());
-    for (out, &slot) in chosen.iter().enumerate() {
-        encoder.copy_buffer_to_buffer(
-            &sim.genome_buffer,
-            slot as u64 * stride,
-            &packed,
-            out as u64 * stride,
-            stride,
-        );
+    // Structure/weights are fixed during life. Match identity, never a reused
+    // slot, and never reuse a cache across worlds.
+    let cached: std::collections::HashMap<_, _> = previous
+        .filter(|p| p.bank.source_seed == sim.seed)
+        .into_iter()
+        .flat_map(|p| p.bodies.iter().zip(&p.bank.genomes))
+        .map(|(body, genome)| (body.lineage_id, genome))
+        .collect();
+    let missing: Vec<_> = chosen
+        .iter()
+        .copied()
+        .filter(|&slot| !cached.contains_key(&agents[slot].lineage_id))
+        .collect();
+    let mut genomes = Vec::new();
+    if !missing.is_empty() {
+        let stride = (GENOME_SIZE * std::mem::size_of::<f32>()) as u64;
+        let packed = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("read-only survivor genomes"),
+            size: stride * missing.len() as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&Default::default());
+        for (out, &slot) in missing.iter().enumerate() {
+            encoder.copy_buffer_to_buffer(
+                &sim.genome_buffer,
+                slot as u64 * stride,
+                &packed,
+                out as u64 * stride,
+                stride,
+            );
+        }
+        queue.submit(Some(encoder.finish()));
+        let bytes = read_buffer(device, queue, &packed)?;
+        let genes: &[f32] = bytemuck::cast_slice(&bytes);
+        genomes = genes
+            .chunks_exact(GENOME_SIZE)
+            .map(<[f32]>::to_vec)
+            .collect();
     }
-    queue.submit(Some(encoder.finish()));
-    let bytes = read_buffer(device, queue, &packed)?;
-    let genes: &[f32] = bytemuck::cast_slice(&bytes);
-    let genomes: Vec<_> = genes
-        .chunks_exact(GENOME_SIZE)
-        .map(<[f32]>::to_vec)
+    let mut fresh = genomes.into_iter();
+    let genomes: Vec<_> = chosen
+        .iter()
+        .map(|&slot| {
+            cached.get(&agents[slot].lineage_id).map_or_else(
+                || fresh.next().expect("packed missing genome"),
+                |g| (*g).clone(),
+            )
+        })
         .collect();
     crate::founders::validate_genomes(&genomes)?;
     *latest = Some(SurvivorSample {

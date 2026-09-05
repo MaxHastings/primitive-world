@@ -4,15 +4,17 @@ use std::{collections::HashMap, sync::mpsc};
 use wgpu::util::DeviceExt;
 const RESOURCE_SCALE: f32 = 1000.0;
 
-struct Compute {
+pub(crate) struct Compute {
     pipeline: wgpu::ComputePipeline,
     groups: Vec<wgpu::BindGroup>,
+    #[cfg(test)]
+    timing: Option<(wgpu::QuerySet, u32)>,
 }
 fn pair<'a>(f: impl Fn(usize) -> Vec<&'a wgpu::Buffer>) -> Vec<Vec<&'a wgpu::Buffer>> {
     (0..2).map(f).collect()
 }
 impl Compute {
-    fn new(
+    pub(crate) fn new(
         device: &wgpu::Device,
         name: &str,
         source: &str,
@@ -80,10 +82,45 @@ impl Compute {
                 })
             })
             .collect();
-        Self { pipeline, groups }
+        Self {
+            pipeline,
+            groups,
+            #[cfg(test)]
+            timing: None,
+        }
     }
-    fn dispatch(&self, encoder: &mut wgpu::CommandEncoder, group: usize, x: u32, y: u32) {
-        let mut pass = encoder.begin_compute_pass(&Default::default());
+    fn descriptor(&self) -> wgpu::ComputePassDescriptor<'_> {
+        wgpu::ComputePassDescriptor {
+            #[cfg(test)]
+            timestamp_writes: self.timing.as_ref().map(|(queries, index)| {
+                wgpu::ComputePassTimestampWrites {
+                    query_set: queries,
+                    beginning_of_pass_write_index: Some(*index),
+                    end_of_pass_write_index: Some(*index + 1),
+                }
+            }),
+            ..Default::default()
+        }
+    }
+    fn dispatch_indirect(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        group: usize,
+        arguments: &wgpu::Buffer,
+    ) {
+        let mut pass = encoder.begin_compute_pass(&self.descriptor());
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.groups[group], &[]);
+        pass.dispatch_workgroups_indirect(arguments, 0);
+    }
+    pub(crate) fn dispatch(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        group: usize,
+        x: u32,
+        y: u32,
+    ) {
+        let mut pass = encoder.begin_compute_pass(&self.descriptor());
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.groups[group], &[]);
         pass.dispatch_workgroups(x, y, 1);
@@ -130,7 +167,11 @@ pub struct Simulation {
     pub params_buffer: wgpu::Buffer,
     pub alive_count_buffer: wgpu::Buffer,
     pub family_observer: Option<crate::family_observer::FamilyObserver>,
-    decision_buffer: wgpu::Buffer,
+    pub reproduction_archive: Option<crate::reproduction_archive::Archive>,
+    pub(crate) active_indices: wgpu::Buffer,
+    birth_dispatch: wgpu::Buffer,
+    birth_flags: wgpu::Buffer,
+    pub(crate) decision_buffer: wgpu::Buffer,
     fertility_buffer: wgpu::Buffer,
     terrain_buffer: wgpu::Buffer,
     terrain_epoch: u32,
@@ -139,7 +180,6 @@ pub struct Simulation {
     summary_buffer: wgpu::Buffer,
     tick_params_buffer: wgpu::Buffer,
     alive_count_readback: wgpu::Buffer,
-    death_stats_readback: wgpu::Buffer,
     selection_params_buffer: wgpu::Buffer,
     selection_key_buffer: wgpu::Buffer,
     selection_output_buffer: wgpu::Buffer,
@@ -185,23 +225,26 @@ impl Simulation {
         );
         let request_buffer = buffer(device, "harvest", MAX_AGENTS as u64 * 4);
         let occupancy_buffer = buffer(device, "occupancy", SPATIAL_CELL_COUNT as u64 * 4);
-        let cell_offsets = [
-            buffer(device, "cell offsets A", SPATIAL_CELL_COUNT as u64 * 4),
-            buffer(device, "cell offsets B", SPATIAL_CELL_COUNT as u64 * 4),
-        ];
+        let cell_offsets = buffer(device, "cell offsets", SPATIAL_CELL_COUNT as u64 * 4);
         let cursors = buffer(device, "scatter cursors", SPATIAL_CELL_COUNT as u64 * 4);
         let indices = buffer(device, "body indices", MAX_AGENTS as u64 * 4);
         let free_flags = buffer(device, "free flags", MAX_AGENTS as u64 * 4);
         let birth_flags = buffer(device, "birth requests", MAX_AGENTS as u64 * 4);
-        let free_prefix = [
-            buffer(device, "free prefix A", MAX_AGENTS as u64 * 4),
-            buffer(device, "free prefix B", MAX_AGENTS as u64 * 4),
-        ];
-        let birth_prefix = [
-            buffer(device, "birth prefix A", MAX_AGENTS as u64 * 4),
-            buffer(device, "birth prefix B", MAX_AGENTS as u64 * 4),
-        ];
+        let free_prefix = buffer(device, "free prefix", MAX_AGENTS as u64 * 4);
+        let birth_prefix = buffer(device, "birth prefix", MAX_AGENTS as u64 * 4);
+        let active_indices = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("living slots and indirect work count"),
+            size: u64::from(MAX_AGENTS + 4) * 4,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::INDIRECT,
+            mapped_at_creation: false,
+        });
         let free_indices = buffer(device, "free slots", MAX_AGENTS as u64 * 4);
+        let birth_dispatch = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("eligible birth work count"),
+            size: 12,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::INDIRECT,
+            mapped_at_creation: false,
+        });
         let parents = buffer(device, "parents", MAX_AGENTS as u64 * 4);
         let claims = buffer(device, "interaction claims", MAX_AGENTS as u64 * 4);
         let death_stats_buffer = buffer(device, "counters", DEATH_STATS_COUNT as u64 * 4);
@@ -219,7 +262,6 @@ impl Simulation {
         );
         let alive_count_buffer = buffer(device, "alive count", 4);
         let alive_count_readback = readback(device, 4);
-        let death_stats_readback = readback(device, DEATH_STATS_COUNT as u64 * 4);
         let selection_params_buffer = uniform(device, "selection", 16);
         let selection_key_buffer = buffer(device, "selection key", 4);
         let selection_output_buffer = buffer(
@@ -264,30 +306,33 @@ impl Simulation {
             "rwu",
             pair(|s| vec![&agent_buffers[s], &occupancy_buffer, &params_buffer])
         );
-        add!(
-            "spatial_init",
-            "../shaders/prefix_init.wgsl",
-            "main",
-            "rw",
-            vec![vec![&occupancy_buffer, &cell_offsets[0]]]
-        );
-        for n in 0..16 {
-            let name = format!("spatial_{n}");
-            let entry = format!("step_{}", 1u32 << n);
-            add!(
-                &name,
-                "../shaders/prefix_step.wgsl",
-                &entry,
-                "rw",
-                pair(|s| vec![&cell_offsets[s], &cell_offsets[1 - s]])
+        for (name, input, output) in [
+            ("spatial", &occupancy_buffer, &cell_offsets),
+            ("free", &free_flags, &free_prefix),
+            ("birth", &birth_flags, &birth_prefix),
+        ] {
+            let sums = buffer(
+                device,
+                "scan block totals",
+                (input.size() / 4).div_ceil(256) * 4,
             );
+            for entry in ["blocks", "sums", "add"] {
+                let key = format!("{name}_{entry}");
+                add!(
+                    &key,
+                    "../shaders/block_scan.wgsl",
+                    entry,
+                    "rww",
+                    vec![vec![input, output, &sums]]
+                );
+            }
         }
         add!(
             "cursors",
             "../shaders/prepare_scatter.wgsl",
             "main",
             "rw",
-            vec![vec![&cell_offsets[0], &cursors]]
+            vec![vec![&cell_offsets, &cursors]]
         );
         add!(
             "scatter",
@@ -296,6 +341,7 @@ impl Simulation {
             "rwwu",
             pair(|s| vec![&agent_buffers[s], &cursors, &indices, &params_buffer])
         );
+        #[cfg(test)]
         add!(
             "perceive",
             "../shaders/perceive.wgsl",
@@ -306,12 +352,13 @@ impl Simulation {
                 &resource_buffer,
                 &ground_buffer,
                 &occupancy_buffer,
-                &cell_offsets[0],
+                &cell_offsets,
                 &indices,
                 &perception_buffer,
                 &params_buffer
             ])
         );
+        #[cfg(test)]
         add!(
             "decide",
             "../shaders/decide.wgsl",
@@ -324,6 +371,49 @@ impl Simulation {
                 &params_buffer,
                 &genome_buffer
             ])
+        );
+        passes.insert(
+            "perceive_live".into(),
+            Compute::new(
+                device,
+                "perceive_live",
+                &live_source(include_str!("../shaders/perceive.wgsl"), 8),
+                "main",
+                "rrwrrrwur",
+                pair(|s| {
+                    vec![
+                        &agent_buffers[s],
+                        &resource_buffer,
+                        &ground_buffer,
+                        &occupancy_buffer,
+                        &cell_offsets,
+                        &indices,
+                        &perception_buffer,
+                        &params_buffer,
+                        &active_indices,
+                    ]
+                }),
+            ),
+        );
+        passes.insert(
+            "decide_live".into(),
+            Compute::new(
+                device,
+                "decide_live",
+                &live_source(include_str!("../shaders/decide.wgsl"), 5),
+                "main",
+                "rrwurr",
+                pair(|s| {
+                    vec![
+                        &agent_buffers[s],
+                        &perception_buffer,
+                        &decision_buffer,
+                        &params_buffer,
+                        &genome_buffer,
+                        &active_indices,
+                    ]
+                }),
+            ),
         );
         add!(
             "consume",
@@ -340,6 +430,7 @@ impl Simulation {
                 &ground_buffer
             ])
         );
+        #[cfg(test)]
         add!(
             "body",
             "../shaders/update_agents.wgsl",
@@ -353,6 +444,40 @@ impl Simulation {
                 &params_buffer,
                 &birth_flags,
                 &death_stats_buffer
+            ])
+        );
+        passes.insert(
+            "body_live".into(),
+            Compute::new(
+                device,
+                "body_live",
+                &live_source(include_str!("../shaders/update_agents.wgsl"), 7),
+                "main",
+                "rrrw uwwr".replace(' ', "").as_str(),
+                pair(|s| {
+                    vec![
+                        &agent_buffers[s],
+                        &decision_buffer,
+                        &request_buffer,
+                        &agent_buffers[1 - s],
+                        &params_buffer,
+                        &birth_flags,
+                        &death_stats_buffer,
+                        &active_indices,
+                    ]
+                }),
+            ),
+        );
+        add!(
+            "record_life",
+            "../shaders/record_life.wgsl",
+            "main",
+            "rwru",
+            pair(|s| vec![
+                &agent_buffers[1 - s],
+                &agent_buffers[s],
+                &perception_buffer,
+                &params_buffer
             ])
         );
         for entry in ["clear", "propose", "resolve"] {
@@ -388,51 +513,31 @@ impl Simulation {
             pair(|s| vec![&agent_buffers[s], &free_flags, &params_buffer])
         );
         add!(
-            "free_init",
-            "../shaders/agent_prefix_init.wgsl",
-            "main",
-            "rw",
-            vec![vec![&free_flags, &free_prefix[0]]]
-        );
-        add!(
-            "birth_init",
-            "../shaders/agent_prefix_init.wgsl",
-            "main",
-            "rw",
-            vec![vec![&birth_flags, &birth_prefix[0]]]
-        );
-        for n in 0..14 {
-            let entry = format!("step_{}", 1u32 << n);
-            let name = format!("free_{n}");
-            add!(
-                &name,
-                "../shaders/agent_prefix_step.wgsl",
-                &entry,
-                "rw",
-                pair(|s| vec![&free_prefix[s], &free_prefix[1 - s]])
-            );
-            let name = format!("birth_{n}");
-            add!(
-                &name,
-                "../shaders/agent_prefix_step.wgsl",
-                &entry,
-                "rw",
-                pair(|s| vec![&birth_prefix[s], &birth_prefix[1 - s]])
-            );
-        }
-        add!(
             "free_compact",
-            "../shaders/compact_agent_indices.wgsl",
+            "../shaders/compact_slots.wgsl",
             "main",
-            "rrw",
-            vec![vec![&free_flags, &free_prefix[0], &free_indices]]
+            "rrwwww",
+            vec![vec![
+                &free_flags,
+                &free_prefix,
+                &free_indices,
+                &active_indices,
+                &perception_buffer,
+                &decision_buffer
+            ]]
         );
         add!(
             "birth_compact",
             "../shaders/compact_agent_indices.wgsl",
             "main",
-            "rrw",
-            vec![vec![&birth_flags, &birth_prefix[0], &parents]]
+            "rrwrw",
+            vec![vec![
+                &birth_flags,
+                &birth_prefix,
+                &parents,
+                &free_prefix,
+                &birth_dispatch
+            ]]
         );
         add!(
             "birth",
@@ -442,9 +547,9 @@ impl Simulation {
             pair(|s| vec![
                 &agent_buffers[s],
                 &free_indices,
-                &free_prefix[0],
+                &free_prefix,
                 &parents,
-                &birth_prefix[0],
+                &birth_prefix,
                 &params_buffer,
                 &death_stats_buffer,
                 &decision_buffer,
@@ -528,7 +633,11 @@ impl Simulation {
             params_buffer,
             alive_count_buffer,
             family_observer: None,
+            reproduction_archive: None,
             decision_buffer,
+            active_indices,
+            birth_dispatch,
+            birth_flags,
             fertility_buffer,
             terrain_buffer,
             terrain_epoch: 0,
@@ -537,7 +646,6 @@ impl Simulation {
             summary_buffer,
             tick_params_buffer,
             alive_count_readback,
-            death_stats_readback,
             selection_params_buffer,
             selection_key_buffer,
             selection_output_buffer,
@@ -548,6 +656,7 @@ impl Simulation {
         sim
     }
     pub fn reset(&mut self, queue: &wgpu::Queue) {
+        self.reproduction_archive = None;
         self.family_observer = None;
         self.settings.validate().expect("valid reset settings");
         queue.write_buffer(
@@ -618,6 +727,12 @@ impl Simulation {
     fn dispatch(&self, e: &mut wgpu::CommandEncoder, name: &str, group: usize, x: u32, y: u32) {
         self.passes[name].dispatch(e, group, x, y);
     }
+    fn scan(&self, e: &mut wgpu::CommandEncoder, name: &str, count: u32) {
+        self.dispatch(e, &format!("{name}_blocks"), 0, count.div_ceil(256), 1);
+        self.dispatch(e, &format!("{name}_sums"), 0, 1, 1);
+        self.dispatch(e, &format!("{name}_add"), 0, count.div_ceil(256), 1);
+    }
+
     pub fn encode_ticks(
         &mut self,
         e: &mut wgpu::CommandEncoder,
@@ -660,34 +775,39 @@ impl Simulation {
             let d = 1 - s;
             // Only slots already dead at tick start may be reused: disjoint parent/child writes.
             self.dispatch(e, "free", s, groups, 1);
-            self.dispatch(e, "free_init", 0, groups, 1);
-            for n in 0..14 {
-                self.dispatch(e, &format!("free_{n}"), n % 2, groups, 1);
-            }
+            self.scan(e, "free", MAX_AGENTS);
             self.dispatch(e, "free_compact", 0, groups, 1);
             self.dispatch(e, "resource", 0, 64, 64);
             self.dispatch(e, "clear", 0, 32, 32);
             self.dispatch(e, "count", s, groups, 1);
-            self.dispatch(e, "spatial_init", 0, 1024, 1);
-            for n in 0..16 {
-                self.dispatch(e, &format!("spatial_{n}"), n % 2, 1024, 1);
-            }
+            self.scan(e, "spatial", SPATIAL_CELL_COUNT);
             self.dispatch(e, "cursors", 0, 1024, 1);
             self.dispatch(e, "scatter", s, groups, 1);
-            self.dispatch(e, "perceive", s, groups, 1);
-            self.dispatch(e, "decide", s, groups, 1);
+            self.passes["perceive_live"].dispatch_indirect(e, s, &self.active_indices);
+            self.passes["decide_live"].dispatch_indirect(e, s, &self.active_indices);
             self.dispatch(e, "consume", s, groups, 1);
-            self.dispatch(e, "body", s, groups, 1);
+            // Preserve dead records (including slot generations) with a bulk GPU
+            // copy. Only living bodies need the expensive structured update.
+            e.copy_buffer_to_buffer(
+                &self.agent_buffers[s],
+                0,
+                &self.agent_buffers[d],
+                0,
+                self.agent_buffers[s].size(),
+            );
+            e.clear_buffer(&self.birth_flags, 0, None);
+            self.passes["body_live"].dispatch_indirect(e, s, &self.active_indices);
             for n in ["interact_clear", "interact_propose", "interact_resolve"] {
                 self.dispatch(e, n, d, groups, 1);
             }
-            self.dispatch(e, "birth_init", 0, groups, 1);
-            for n in 0..14 {
-                self.dispatch(e, &format!("birth_{n}"), n % 2, groups, 1);
-            }
+            self.scan(e, "birth", MAX_AGENTS);
             self.dispatch(e, "birth_compact", 0, groups, 1);
-            self.dispatch(e, "birth", d, groups, 1);
+            self.passes["birth"].dispatch_indirect(e, d, &self.birth_dispatch);
+            self.dispatch(e, "record_life", d, groups, 1);
             self.dispatch(e, "release", d, groups, 1);
+            if let Some(archive) = &self.reproduction_archive {
+                archive.encode(e, d);
+            }
             if let Some(observer) = &self.family_observer {
                 observer.encode(e, d);
             }
@@ -745,6 +865,7 @@ impl Simulation {
     }
     /// Read the same body by slot AND incarnation, not the nearest new neighbor.
     /// Only observer buffers are written; all simulation buffers remain read-only.
+    #[cfg(test)]
     pub fn refresh_selected_agent(
         &self,
         device: &wgpu::Device,
@@ -803,6 +924,7 @@ impl Simulation {
         );
         queue.submit(Some(e.finish()));
     }
+    #[cfg(test)]
     pub fn kill_agents_in_region(
         &self,
         device: &wgpu::Device,
@@ -836,6 +958,17 @@ impl Simulation {
         );
         queue.submit(Some(e.finish()));
     }
+    pub fn encode_telemetry(&self, e: &mut wgpu::CommandEncoder, output: &wgpu::Buffer) {
+        e.copy_buffer_to_buffer(&self.alive_count_buffer, 0, output, 0, 4);
+        e.copy_buffer_to_buffer(
+            &self.death_stats_buffer,
+            0,
+            output,
+            4,
+            u64::from(DEATH_STATS_COUNT) * 4,
+        );
+    }
+
     pub fn copy_alive_count(&self, encoder: &mut wgpu::CommandEncoder) {
         encoder.copy_buffer_to_buffer(
             &self.alive_count_buffer,
@@ -844,35 +977,6 @@ impl Simulation {
             0,
             4,
         );
-    }
-
-    pub fn copy_death_stats(&self, encoder: &mut wgpu::CommandEncoder) {
-        encoder.copy_buffer_to_buffer(
-            &self.death_stats_buffer,
-            0,
-            &self.death_stats_readback,
-            0,
-            (DEATH_STATS_COUNT * 4) as u64,
-        );
-    }
-
-    pub fn read_death_stats(
-        &self,
-        device: &wgpu::Device,
-    ) -> Option<[u32; DEATH_STATS_COUNT as usize]> {
-        let slice = self.death_stats_readback.slice(..);
-        let (sender, receiver) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = sender.send(result);
-        });
-        let _ = device.poll(wgpu::Maintain::Wait);
-        receiver.recv().ok()?.ok()?;
-        let mapped = slice.get_mapped_range();
-        let values = bytemuck::cast_slice(&mapped);
-        let result: [u32; DEATH_STATS_COUNT as usize] = values.try_into().ok()?;
-        drop(mapped);
-        self.death_stats_readback.unmap();
-        Some(result)
     }
 
     pub fn read_alive_count(&self, device: &wgpu::Device) -> Option<u32> {
@@ -941,6 +1045,12 @@ fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
                 WORLD_SIZE,
                 s.environment_rotation,
             ),
+            life: crate::life_record::LifeRecord::initial(
+                65.0,
+                if i < s.population { 2.0 } else { 0.0 },
+                0,
+                0,
+            ),
             energy: 65.0,
             food: if i < s.population { 2.0 } else { 0.0 },
             age: random01(&mut rng) * 300.0,
@@ -955,14 +1065,14 @@ fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
             founder_family: if s.founder_genomes.is_empty() {
                 i
             } else {
-                i % s.founder_genomes.len() as u32
+                s.founder_index(i as usize) as u32
             },
             brain_nodes: if i >= s.population {
                 0
             } else if s.founder_genomes.is_empty() {
                 DEFAULT_NODES as u32
             } else {
-                s.founder_genomes[i as usize % s.founder_genomes.len()][0] as u32
+                s.founder_genomes[s.founder_index(i as usize)][0] as u32
             },
             brain_edges: if i >= s.population {
                 0
@@ -970,7 +1080,7 @@ fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
                 (DEFAULT_NODES * 8 + 2 * DEFAULT_NODES * DEFAULT_NODES + OUTPUTS * DEFAULT_NODES)
                     as u32
             } else {
-                s.founder_genomes[i as usize % s.founder_genomes.len()][1] as u32
+                s.founder_genomes[s.founder_index(i as usize)][1] as u32
             },
             ..Default::default()
         })
@@ -984,7 +1094,7 @@ fn build_genomes(seed: u32, s: &SimSettings) -> Vec<f32> {
         if s.founder_genomes.is_empty() {
             row.copy_from_slice(&random_genome(&mut rng));
         } else {
-            row.copy_from_slice(&s.founder_genomes[i % s.founder_genomes.len()]);
+            row.copy_from_slice(&s.founder_genomes[s.founder_index(i)]);
         }
     }
     genes
@@ -1133,6 +1243,17 @@ fn build_ground(habitat: &[f32]) -> Vec<[u32; 8]> {
 fn random01(state: &mut u32) -> f32 {
     *state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
     ((*state >> 8) as f32) / 16_777_215.0
+}
+
+pub fn live_source(source: &str, binding: u32) -> String {
+    assert_eq!(source.matches("let i=id.x;").count(), 1);
+    format!(
+        "@group(0) @binding({binding}) var<storage,read> live_slots:array<u32>;\n{}",
+        source.replace(
+            "let i=id.x;",
+            "if(id.x>=live_slots[3]){return;}let i=live_slots[4u+id.x];"
+        )
+    )
 }
 
 pub fn shader_source(source: &str) -> String {

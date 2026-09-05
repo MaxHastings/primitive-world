@@ -5,9 +5,10 @@ and general adaptation are unverified capabilities.
 
 ## Build and data formats
 
-- Application version: 0.7.0.
+- Application version: 0.7.1.
+- Candidate archive: `life-reservoir-v3`; selector weights format 4; training format 2; game receipts format 2.
 - Model identifier in reports and exported banks: `primitive-v6-variable-brain`.
-- Checkpoint format: 18.
+- Checkpoint format: 20 (factual lifetime records and explicit founder slots); older formats need their matching executable.
 - Founder-bank format: 7.
 - GPU genome storage: about 105.4 MiB in one storage binding, plus world/render buffers.
 

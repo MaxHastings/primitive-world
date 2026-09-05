@@ -114,9 +114,11 @@ genome using the environment seed. --founders loads an explicitly named bank
 without additional initialization noise. Invalid banks fail, never fall back.
 
 Birth inheritance and [between-world evolution](evolution.md) are distinct.
-The native survivor loop carries a rolling archive of up to 64 bodies' genomes,
-including descendant mutations, into the next world. It does not rank original
-founders by family scores. Each sampled genome is retained exactly, with balanced
-replicas filling the next bank using the current world mutation settings. Body state and memories reset; genes do not.
+The native loop samples up to 256 individuals per world, including founders and
+descendants, and retains their factual lifetime records and exact genomes. A
+separate selector uses completed lifetime records to choose founding copies for
+matched trials. It learns from natural world duration; the candidate pool refreshes
+between rounds independently of reward. Founding copies are unmutated. Mutation
+occurs at ordinary in-world births, and body state and memories reset between worlds.
 
 The bundled bank contains untrained random graphs. Random does not mean competent.

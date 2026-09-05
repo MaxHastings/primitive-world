@@ -4,6 +4,17 @@ const FOOD_CAPACITY:f32=8.0;
 const INTERACTION_RADIUS:f32=6.0;
 const NONE:u32=0u; const COLLECT:u32=1u;
 const TRANSFER:u32=2u; const APPLY_FORCE:u32=3u; const EMIT:u32=4u; const REPRODUCE:u32=5u;
+struct LifeRecord {
+ ticks:u32,birth_tick:u32,death_tick:u32,death_cause:u32,
+ actions:array<u32,6>,invalid_decisions:u32,transfers:u32,forces:u32,emissions:u32,offspring:u32,
+ start_energy:f32,start_food:f32,end_energy:f32,end_food:f32,energy_sum:f32,food_sum:f32,
+ collected:f32,consumed:f32,given:f32,received:f32,spent:f32,distance:f32,displaced:f32,
+ local_food_sum:f32,nearby_sum:f32,first_observed_tick:u32,initialized:u32,
+};
+fn initial_life(energy:f32,food:f32,birth:u32,observed:u32)->LifeRecord {
+ var r:LifeRecord;r.start_energy=energy;r.end_energy=energy;r.start_food=food;r.end_food=food;
+ r.birth_tick=birth;r.first_observed_tick=observed;r.initialized=1u;return r;
+}
 struct Agent {
  position:vec2<f32>, velocity:vec2<f32>, energy:f32, age:f32, max_speed:f32, sensor_radius:f32,
  food:f32, action:u32, target_id:u32, alive:u32,
@@ -15,6 +26,7 @@ struct Agent {
  ancestry_depth:u32,lifetime_births:u32,distance_travelled:f32,founder_family:u32,
  hidden:array<f32,HIDDEN_COUNT>,
  brain_nodes:u32,brain_edges:u32,node_change:i32,edge_change:i32,
+ life:LifeRecord,
 };
 struct Region {food:f32,bodies:f32,};
 struct Body {offset:vec2<f32>,velocity:vec2<f32>,signal_present:f32,signal:f32,slot:u32,generation:u32,};

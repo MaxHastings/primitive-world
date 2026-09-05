@@ -266,8 +266,26 @@ impl Simulation {
     pub fn load_checkpoint_checked(
         &mut self,
         queue: &wgpu::Queue,
+        file: impl Read,
+        expected: Option<(u32, u32, u32)>,
+    ) -> Result<(), String> {
+        self.load_checkpoint_data(queue, file, expected, None)
+    }
+    pub fn load_round_checkpoint(
+        &mut self,
+        queue: &wgpu::Queue,
+        file: impl Read,
+        expected: Option<(u32, u32, u32)>,
+        settings: &SimSettings,
+    ) -> Result<(), String> {
+        self.load_checkpoint_data(queue, file, expected, Some(settings))
+    }
+    fn load_checkpoint_data(
+        &mut self,
+        queue: &wgpu::Queue,
         mut file: impl Read,
         expected: Option<(u32, u32, u32)>,
+        round_settings: Option<&SimSettings>,
     ) -> Result<(), String> {
         let mut magic = [0; 12];
         file.read_exact(&mut magic).map_err(|e| e.to_string())?;
@@ -289,6 +307,13 @@ impl Simulation {
         file.read_exact(&mut json).map_err(|e| e.to_string())?;
         let settings: SimSettings = serde_json::from_slice(&json).map_err(|e| e.to_string())?;
         settings.validate()?;
+        if let Some(expected) = round_settings
+            && serde_json::to_value(expected).map_err(|e| e.to_string())?
+                != serde_json::to_value(&settings).map_err(|e| e.to_string())?
+        {
+            return Err("Checkpoint settings disagree with round evolution state".into());
+        }
+
         let mut buffers = vec![
             &self.agent_buffers[0],
             &self.resource_buffer,
@@ -318,6 +343,7 @@ impl Simulation {
             .chunks_exact(std::mem::size_of::<AgentGpu>())
             .map(bytemuck::pod_read_unaligned::<AgentGpu>)
         {
+            a.life.validate()?;
             if a.alive > 1
                 || a.action > 5
                 || a.position
@@ -464,6 +490,7 @@ impl Simulation {
         queue.write_buffer(&self.agent_buffers[1], 0, &data[0]);
         queue.write_buffer(&self.resource_display_buffer, 0, &data[1]);
         self.settings = settings;
+        self.reproduction_archive = None;
         self.seed = seed;
         self.tick = tick;
         self.current_buffer = 0;

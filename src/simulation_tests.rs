@@ -1,5 +1,152 @@
 use super::*;
 
+/// Manual timing, never a performance assertion: GPU, driver and contention matter.
+#[test]
+#[ignore = "manual GPU throughput and per-pass profile"]
+fn profile_tick_throughput() {
+    let instance = wgpu::Instance::new(&Default::default());
+    let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
+    eprintln!("Adapter: {:?}", adapter.get_info());
+    let (d, q) = pollster::block_on(adapter.request_device(
+        &wgpu::DeviceDescriptor {
+            label: Some("tick profiler"),
+            required_features: wgpu::Features::TIMESTAMP_QUERY,
+            required_limits: adapter.limits(),
+            memory_hints: wgpu::MemoryHints::Performance,
+        },
+        None,
+    ))
+    .unwrap();
+    let mut s = Simulation::new(&d, &q, 42);
+    for population in [32, 4096] {
+        s.settings.population = population;
+        s.reset(&q);
+        step(&mut s, &d, &q, 32);
+        let start = std::time::Instant::now();
+        for _ in 0..16 {
+            step(&mut s, &d, &q, 32);
+        }
+        eprintln!(
+            "population={population}, batch=32: {:.0} ticks/s",
+            512.0 / start.elapsed().as_secs_f64()
+        );
+        s.reset(&q);
+        step(&mut s, &d, &q, 32);
+        let start = std::time::Instant::now();
+        for _ in 0..64 {
+            step(&mut s, &d, &q, 8);
+            crate::survivor_observer::observe(&mut None, &s, &d, &q).unwrap();
+        }
+        eprintln!(
+            "population={population}, batch=8 + survivor snapshot: {:.0} ticks/s",
+            512.0 / start.elapsed().as_secs_f64()
+        );
+        s.reset(&q);
+        step(&mut s, &d, &q, 32);
+        let archive = crate::reproduction_archive::Snapshot::initial(&s, &d, &q).unwrap();
+        s.reproduction_archive =
+            Some(crate::reproduction_archive::Archive::new(&d, &q, &s, &archive).unwrap());
+        let telemetry = readback(&d, 144);
+        let start = std::time::Instant::now();
+        for _ in 0..64 {
+            let mut encoder = d.create_command_encoder(&Default::default());
+            s.encode_ticks(&mut encoder, &d, &q, 8);
+            s.encode_telemetry(&mut encoder, &telemetry);
+            q.submit(Some(encoder.finish()));
+            let (tx, rx) = mpsc::channel();
+            telemetry
+                .slice(..)
+                .map_async(wgpu::MapMode::Read, move |r| {
+                    tx.send(r).unwrap();
+                });
+            d.poll(wgpu::Maintain::Wait);
+            rx.recv().unwrap().unwrap();
+            let mapped = telemetry.slice(..).get_mapped_range();
+            let counters: &[u32] = bytemuck::cast_slice(&mapped);
+            let _living = counters[0];
+            drop(mapped);
+            telemetry.unmap();
+        }
+        eprintln!(
+            "population={population}, batch=8 + telemetry + optimized archive: {:.0} ticks/s (no rendering)",
+            512.0 / start.elapsed().as_secs_f64()
+        );
+        let mut names: Vec<_> = [
+            "free",
+            "free_blocks",
+            "free_sums",
+            "free_add",
+            "free_compact",
+            "resource",
+            "clear",
+            "count",
+            "spatial_blocks",
+            "spatial_sums",
+            "spatial_add",
+            "cursors",
+            "scatter",
+            "perceive_live",
+            "decide_live",
+            "consume",
+            "body_live",
+            "interact_clear",
+            "interact_propose",
+            "interact_resolve",
+            "birth_blocks",
+            "birth_sums",
+            "birth_add",
+            "birth_compact",
+            "birth",
+            "release",
+            "alive",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+        names.sort();
+        let queries = d.create_query_set(&wgpu::QuerySetDescriptor {
+            label: Some("per pass"),
+            ty: wgpu::QueryType::Timestamp,
+            count: names.len() as u32 * 2,
+        });
+        for (i, name) in names.iter().enumerate() {
+            s.passes.get_mut(name).unwrap().timing = Some((queries.clone(), i as u32 * 2));
+        }
+        step(&mut s, &d, &q, 1);
+        let resolved = d.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: names.len() as u64 * 16,
+            usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let mut encoder = d.create_command_encoder(&Default::default());
+        encoder.resolve_query_set(&queries, 0..names.len() as u32 * 2, &resolved, 0);
+        q.submit(Some(encoder.finish()));
+        let times = read::<u64>(&d, &q, &resolved, names.len() * 2);
+        let mut rows: Vec<_> = names
+            .iter()
+            .enumerate()
+            .filter_map(|(i, name)| {
+                let delta = times[2 * i + 1].saturating_sub(times[2 * i]);
+                (delta > 0).then_some((delta, name))
+            })
+            .collect();
+        rows.sort_by(|a, b| b.0.cmp(&a.0));
+        for (delta, name) in rows {
+            eprintln!(
+                "  {name}: {:.1} us",
+                delta as f64 * f64::from(q.get_timestamp_period()) / 1000.0
+            );
+        }
+        for pass in s.passes.values_mut() {
+            pass.timing = None;
+        }
+    }
+}
+
+#[path = "reproductive_tests.rs"]
+mod reproduction;
+
 #[path = "experiment_tests.rs"]
 mod experiments;
 
@@ -508,10 +655,17 @@ fn physical_cli_overrides_validate_and_cannot_override_checkpoints() {
     assert_eq!(s.settings.metabolic_cost, 0.05);
     assert_eq!(s.settings.movement_energy_cost, 0.02);
     for flag in ["--motor-gain", "--metabolic-cost", "--movement-cost"] {
-        let args: Vec<String> = ["world", "--checkpoint", "unused.checkpoint", flag, "1"]
-            .into_iter()
-            .map(String::from)
-            .collect();
+        let args: Vec<String> = [
+            "world",
+            "--headless",
+            "--checkpoint",
+            "unused.checkpoint",
+            flag,
+            "1",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
         assert!(
             crate::headless::configure(&mut s, &args)
                 .unwrap_err()
@@ -723,171 +877,9 @@ fn zero_world_mutation_law_copies_exactly_at_birth() {
         "zero mutation probability must permit exact copying"
     );
 }
-#[test]
-fn visible_trial_has_no_tick_cutoff_and_exports_only_on_extinction_or_user_close() {
-    let (d, q) = gpu();
-    let mut s = scene(&d, &q);
-    put(&s, &q, 0, body([602.0, 902.0]), &fixed(0, [0.0; 2]));
-    step(&mut s, &d, &q, 1);
-    let directory = temp("visible-extinction");
-    let mut trial = crate::visible_trial::VisibleTrial::new(&directory, &s, &d, &q).unwrap();
-    assert!(crate::visible_trial::VisibleTrial::new(&directory, &s, &d, &q).is_err());
-    for tick in [8192, 200000, 1000001] {
-        s.tick = tick;
-        trial.observe(&s, &d, &q).unwrap();
-        assert!(trial.finish(&s, &d, &q, false).is_err());
-        assert!(!trial.finished);
-        assert!(!directory.join("report.json").exists());
-    }
-    let dead = AgentGpu::default();
-    q.write_buffer(
-        &s.agent_buffers[s.current_buffer],
-        0,
-        bytemuck::bytes_of(&dead),
-    );
-    step(&mut s, &d, &q, 1);
-    trial.finish(&s, &d, &q, false).unwrap();
-    assert!(trial.finished);
-    let report: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(directory.join("report.json")).unwrap()).unwrap();
-    assert_eq!(report["termination_reason"], "extinction");
-    assert!(report["tick_limit"].is_null());
-    s.load_founders(&directory.join("survivors.bank.json"))
-        .unwrap();
-    assert_eq!(s.settings.founder_genomes.len(), 1);
-    for name in ["ready.json", "report.json", "survivors.bank.json"] {
-        std::fs::remove_file(directory.join(name)).unwrap();
-    }
-    std::fs::remove_dir(directory).unwrap();
-
-    put(&s, &q, 0, body([602.0, 902.0]), &fixed(0, [0.0; 2]));
-    step(&mut s, &d, &q, 1);
-    let directory = temp("visible-user-close");
-    let mut trial = crate::visible_trial::VisibleTrial::new(&directory, &s, &d, &q).unwrap();
-    trial.finish(&s, &d, &q, true).unwrap();
-    let report: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(directory.join("report.json")).unwrap()).unwrap();
-    assert_eq!(report["termination_reason"], "user_closed");
-    assert_eq!(report["end"]["living"], 1);
-    s.load_checkpoint(&q, &directory.join("paused.checkpoint"))
-        .unwrap();
-    for name in [
-        "ready.json",
-        "report.json",
-        "survivors.bank.json",
-        "paused.checkpoint",
-    ] {
-        std::fs::remove_file(directory.join(name)).unwrap();
-    }
-    std::fs::remove_dir(directory).unwrap();
-}
 
 #[test]
-fn visible_trial_cli_rejects_headless_and_tick_limits() {
-    let args = |items: &[&str]| items.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    assert!(crate::headless::arguments(&args(&["world", "--watch-loop", "new"])).is_ok());
-    assert!(crate::headless::arguments(&args(&["world", "--watch-output", "new"])).is_err());
-    for option in ["--headless", "--ticks", "--families", "--output"] {
-        let mut values = args(&["world", "--watch-loop", "new", option]);
-        if option == "--ticks" || option == "--output" {
-            values.push("123".into());
-        }
-        assert!(crate::headless::arguments(&values).is_err());
-    }
-}
-
-#[test]
-fn native_visible_loop_reuses_simulation_and_carries_genomes_across_two_extinctions() {
-    let (d, q) = gpu();
-    let mut s = scene(&d, &q);
-    s.settings.population = 4;
-    s.settings.metabolic_cost = 0.083;
-    s.settings.motor_response_gain = 7.0;
-    put(&s, &q, 0, body([602.0, 902.0]), &fixed(5, [0.0; 2]));
-    step(&mut s, &d, &q, 1); // Includes an actual newborn and its current mutations.
-    let root = temp("native-visible-loop");
-    let mut trial = crate::visible_trial::VisibleTrial::new_loop(&root, &s, &d, &q).unwrap();
-    let first_save = trial.autosave(&s, &d, &q).unwrap();
-    let second_save = trial.autosave(&s, &d, &q).unwrap();
-    assert_ne!(first_save, second_save);
-    assert_eq!(first_save.extension().unwrap(), "checkpoint");
-    assert_eq!(
-        std::fs::read(&first_save).unwrap(),
-        std::fs::read(&second_save).unwrap()
-    );
-    s.load_checkpoint(&q, &first_save).unwrap();
-    std::fs::remove_file(first_save).unwrap();
-    std::fs::remove_file(second_save).unwrap();
-    std::fs::remove_dir(root.join("checkpoints")).unwrap();
-    assert!(trial.advance(&mut s, &d, &q).is_err());
-    for expected_world in 2..=3 {
-        trial.observe(&s, &d, &q).unwrap();
-        let old_dir = trial.directory.clone();
-        let old_seed = s.seed;
-        let mut dead = s.agent_snapshot(&d, &q).unwrap();
-        for body in &mut dead {
-            body.alive = 0;
-        }
-        q.write_buffer(
-            &s.agent_buffers[s.current_buffer],
-            0,
-            bytemuck::cast_slice(&dead),
-        );
-        step(&mut s, &d, &q, 1);
-        trial.advance(&mut s, &d, &q).unwrap();
-        assert_eq!(trial.world_number, expected_world);
-        assert!(trial.is_loop());
-        assert!(!trial.finished); // The same AppState must not exit its event loop.
-        assert_eq!(s.tick, 0);
-        assert_ne!(s.seed, old_seed);
-        assert_eq!(s.settings.metabolic_cost, 0.083);
-        assert_eq!(s.settings.motor_response_gain, 7.0);
-        assert_eq!(s.metrics(&d, &q).unwrap().living, 4);
-        let saved: crate::founders::FounderBank =
-            serde_json::from_slice(&std::fs::read(old_dir.join("survivors.bank.json")).unwrap())
-                .unwrap();
-        assert_eq!(
-            s.settings.founder_genomes[..saved.genomes.len()],
-            saved.genomes
-        );
-        let transfer: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(old_dir.join("transfer.json")).unwrap()).unwrap();
-        assert_eq!(transfer["provenance"].as_array().unwrap().len(), 256);
-        for (child, p) in s
-            .settings
-            .founder_genomes
-            .iter()
-            .zip(transfer["provenance"].as_array().unwrap())
-        {
-            let parent = &saved.genomes[p["parent"].as_u64().unwrap() as usize];
-            let mut expected = parent.clone();
-            if p["kind"] == "offspring_replica" {
-                crate::brain::mutate(
-                    &mut expected,
-                    p["mutation_seed"].as_u64().unwrap() as u32,
-                    &s.settings,
-                );
-            }
-            assert_eq!(*child, expected);
-        }
-        for name in [
-            "ready.json",
-            "report.json",
-            "survivors.bank.json",
-            "next.bank.json",
-            "transfer.json",
-        ] {
-            std::fs::remove_file(old_dir.join(name)).unwrap();
-        }
-        std::fs::remove_dir(old_dir).unwrap();
-    }
-    std::fs::remove_file(trial.directory.join("ready.json")).unwrap();
-    std::fs::remove_dir(&trial.directory).unwrap();
-    std::fs::remove_file(root.join("registration.json")).unwrap();
-    std::fs::remove_dir(root).unwrap();
-}
-#[test]
-fn checkpoint_rejects_corrupt_trace_without_mutating_live_world() {
+fn checkpoint_rejects_corrupt_trace_and_lifetime_without_mutating_live_world() {
     use std::io::{Seek, SeekFrom, Write};
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
@@ -922,6 +914,32 @@ fn checkpoint_rejects_corrupt_trace_without_mutating_live_world() {
     assert_eq!(
         bytemuck::cast_slice::<AgentGpu, u8>(&before),
         bytemuck::cast_slice::<AgentGpu, u8>(&after)
+    );
+    // A corrupt lifetime must be rejected before it can feed future selector records.
+    let life_pos = 24
+        + serde_json::to_vec(&s.settings).unwrap().len() as u64
+        + 8
+        + std::mem::offset_of!(AgentGpu, life) as u64;
+    let mut file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+    file.seek(SeekFrom::Start(pos)).unwrap();
+    file.write_all(&0f32.to_le_bytes()).unwrap();
+    file.seek(SeekFrom::Start(life_pos)).unwrap();
+    file.write_all(&999u32.to_le_bytes()).unwrap();
+    drop(file);
+    assert!(
+        s.load_checkpoint(&q, &path)
+            .unwrap_err()
+            .contains("life record")
+    );
+    assert_eq!(s.tick, 1);
+    assert_eq!(
+        bytemuck::cast_slice::<AgentGpu, u8>(&before),
+        bytemuck::cast_slice::<AgentGpu, u8>(&read::<AgentGpu>(
+            &d,
+            &q,
+            &s.agent_buffers[s.current_buffer],
+            1
+        ))
     );
     std::fs::remove_file(path).unwrap();
 }
@@ -1037,10 +1055,10 @@ fn temp(name: &str) -> std::path::PathBuf {
 #[test]
 fn layout_and_cli_contract() {
     assert_eq!(GENOME_SIZE, 1686);
-    assert_eq!(std::mem::size_of::<AgentGpu>(), 416);
+    assert_eq!(std::mem::size_of::<AgentGpu>(), 544);
     assert_eq!(std::mem::size_of::<PerceptionGpu>(), 400);
     assert_eq!(std::mem::size_of::<DecisionGpu>(), 1024);
-    assert_eq!(std::mem::size_of::<SelectionOutput>(), 1848);
+    assert_eq!(std::mem::size_of::<SelectionOutput>(), 1976);
     assert_eq!(std::mem::size_of::<SimParams>(), 112);
     assert!(MAX_AGENTS as usize * GENOME_SIZE * 4 <= 256 * 1024 * 1024);
     for flag in [

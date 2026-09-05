@@ -68,6 +68,24 @@ fn install(sim: &mut Simulation, device: &wgpu::Device, condition: Condition) {
         }),
     );
     sim.passes.insert("decide".into(), pass);
+    let active = Compute::new(
+        device,
+        "active capability comparison",
+        &live_source(&source, 5),
+        "main",
+        "rrwurr",
+        pair(|s| {
+            vec![
+                &sim.agent_buffers[s],
+                &sim.perception_buffer,
+                &sim.decision_buffer,
+                &sim.params_buffer,
+                &sim.genome_buffer,
+                &sim.active_indices,
+            ]
+        }),
+    );
+    sim.passes.insert("decide_live".into(), active);
 }
 
 fn decide(sim: &Simulation, device: &wgpu::Device, queue: &wgpu::Queue) -> DecisionGpu {

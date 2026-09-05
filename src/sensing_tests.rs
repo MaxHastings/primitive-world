@@ -7,10 +7,7 @@ fn sense(s: &Simulation, d: &wgpu::Device, q: &wgpu::Queue) -> (PerceptionGpu, D
     let groups = MAX_AGENTS.div_ceil(64);
     s.dispatch(&mut e, "clear", 0, 32, 32);
     s.dispatch(&mut e, "count", s.current_buffer, groups, 1);
-    s.dispatch(&mut e, "spatial_init", 0, 1024, 1);
-    for n in 0..16 {
-        s.dispatch(&mut e, &format!("spatial_{n}"), n % 2, 1024, 1);
-    }
+    s.scan(&mut e, "spatial", SPATIAL_CELL_COUNT);
     s.dispatch(&mut e, "cursors", 0, 1024, 1);
     s.dispatch(&mut e, "scatter", s.current_buffer, groups, 1);
     s.dispatch(&mut e, "perceive", s.current_buffer, groups, 1);
@@ -252,7 +249,7 @@ fn previous_model_checkpoint_is_rejected_before_any_world_change() {
     let err = s
         .load_checkpoint_reader(&q, std::io::Cursor::new(b"PRIMWORLD016"))
         .unwrap_err();
-    assert!(err.contains("format 18"));
+    assert!(err.contains(&format!("format {CHECKPOINT_VERSION}")));
     assert_eq!(s.tick, 0);
     assert_eq!(
         bytemuck::bytes_of(&read::<AgentGpu>(&d, &q, &s.agent_buffers[0], 1)[0]),

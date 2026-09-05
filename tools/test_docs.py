@@ -24,7 +24,9 @@ class DocumentationTests(unittest.TestCase):
     def test_front_page_has_a_portable_evolution_command(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertNotIn("C:/Users/", readme)
-        self.assertIn("--watch-loop runs/my-first-run", readme)
+        self.assertIn("cargo run --release", readme)
+        self.assertIn("New Game and Load Game both use round-based evolution", readme)
+        self.assertNotIn("--watch-loop", readme)
 
 
 if __name__ == "__main__":

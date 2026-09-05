@@ -48,6 +48,7 @@ fn resolve(@builtin(global_invocation_id) id: vec3<u32>) {
     let amount=min(min(a.food,d.amount),max(0.0,FOOD_CAPACITY-b.food));
     if (amount<=0.0) { return; }
     a.food-=amount; b.food+=amount; b.received+=amount;
+    a.life.transfers++;a.life.given+=amount;
     record(i,j,TRANSFER,amount,a.position);
     atomicAdd(&stats[4],1u); atomicAdd(&stats[6],u32(amount*1000.0));
   } else {
@@ -61,11 +62,12 @@ fn resolve(@builtin(global_invocation_id) id: vec3<u32>) {
     b.position=clamp(old+displacement,vec2<f32>(0),vec2<f32>(params.world_size));
     let actual=b.position-old;let cost=min(a.energy,length(actual)*0.2);
     b.moved+=actual;a.energy-=cost;a.spent+=cost;
+    a.life.forces++;b.life.displaced+=length(actual);
     atomicAdd(&stats[13],u32(round(cost*1000.0)));
     atomicAdd(&stats[15],u32(round(length(actual)*1000.0)));
     record(i,j,APPLY_FORCE,length(actual),a.position);
     atomicAdd(&stats[5],1u);
-    if(a.energy<=0.0){a.alive=0u;atomicAdd(&stats[7],1u);}
+    if(a.energy<=0.0){a.alive=0u;a.life.death_cause=1u;atomicAdd(&stats[7],1u);}
   }
   agents[i]=a; agents[j]=b;
 }

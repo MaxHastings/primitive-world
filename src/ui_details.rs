@@ -166,111 +166,14 @@ pub fn history(ui: &mut egui::Ui, state: &mut AppState) {
 }
 
 pub fn physics(ui: &mut egui::Ui, state: &mut AppState) {
-    let physical = |s: &simulation::SimSettings| {
-        (
-            s.population,
-            s.resource_regeneration,
-            s.metabolic_cost,
-            s.movement_energy_cost,
-            s.motor_response_gain,
-            s.evolving_landscape,
-            s.force_enabled,
-            s.communication_enabled,
-            [
-                s.brain_node_cost,
-                s.brain_edge_cost,
-                s.genome_copy_cost,
-                s.mutation_probability,
-                s.mutation_magnitude,
-                s.node_mutation_rate,
-                s.edge_mutation_rate,
-            ],
-        )
-    };
-    let before = physical(&state.simulation.settings);
-    ui.collapsing("Physical settings", |ui| {
-        ui.small("Physical changes apply live. Initial bodies applies at the next world.");
-        ui.add(
-            egui::Slider::new(&mut state.simulation.settings.population, 0..=MAX_AGENTS)
-                .text("Initial bodies"),
-        );
-        ui.add(
-            egui::Slider::new(
-                &mut state.simulation.settings.resource_regeneration,
-                0.0..=0.1,
-            )
-            .text("Regeneration"),
-        );
-        ui.add(
-            egui::Slider::new(&mut state.simulation.settings.metabolic_cost, 0.0..=0.2)
-                .text("Metabolic cost"),
-        );
-        ui.add(
-            egui::Slider::new(
-                &mut state.simulation.settings.movement_energy_cost,
-                0.0..=0.1,
-            )
-            .text("Movement cost"),
-        );
-        ui.add(
-            egui::Slider::new(
-                &mut state.simulation.settings.motor_response_gain,
-                0.1..=32.0,
-            )
-            .logarithmic(true)
-            .text("Motor response gain"),
-        );
-        ui.small("Zero movement intent remains zero; maximum speed is unchanged.");
-        ui.checkbox(
-            &mut state.simulation.settings.evolving_landscape,
-            "Evolving geography",
-        );
-        ui.checkbox(
-            &mut state.simulation.settings.force_enabled,
-            "Contact force available",
-        );
-        ui.checkbox(
-            &mut state.simulation.settings.communication_enabled,
-            "Local signals available",
-        );
+    ui.collapsing("World rules", |ui| {
+        let s = &state.simulation.settings;
+        ui.small("Rules stay fixed so every population gets a fair comparison. Configure a New Game to change them.");
+        ui.label(format!("Founding bodies: {}", s.population));
+        ui.label(format!("Food regeneration: {:.3}", s.resource_regeneration));
+        ui.label(format!("Metabolism: {:.3} · movement cost: {:.3}", s.metabolic_cost, s.movement_energy_cost));
+        ui.label(format!("Brain upkeep: {:.4} per unit · {:.5} per connection", s.brain_node_cost, s.brain_edge_cost));
     });
-    ui.collapsing("Brain and inheritance", |ui| {
-        let s = &mut state.simulation.settings;
-        ui.small("Costs and mutation are world rules. Architecture changes at reproduction.");
-        ui.add(egui::Slider::new(&mut s.brain_node_cost, 0.0..=0.01).text("Upkeep per unit"));
-        ui.add(
-            egui::Slider::new(&mut s.brain_edge_cost, 0.0..=0.001).text("Upkeep per connection"),
-        );
-        ui.add(
-            egui::Slider::new(&mut s.genome_copy_cost, 0.0..=0.01)
-                .text("Copy cost per encoded value"),
-        );
-        ui.add(
-            egui::Slider::new(&mut s.mutation_probability, 0.0..=1.0)
-                .text("Parameter mutation probability"),
-        );
-        ui.add(
-            egui::Slider::new(&mut s.mutation_magnitude, 0.0..=4.0)
-                .text("Parameter mutation magnitude"),
-        );
-        ui.add(
-            egui::Slider::new(
-                &mut s.node_mutation_rate,
-                0.0..=(0.5 - s.edge_mutation_rate),
-            )
-            .text("Duplicate / delete probability each"),
-        );
-        ui.add(
-            egui::Slider::new(
-                &mut s.edge_mutation_rate,
-                0.0..=(0.5 - s.node_mutation_rate),
-            )
-            .text("Connect / disconnect probability each"),
-        );
-    });
-    if before != physical(&state.simulation.settings) {
-        state.world_revision = state.world_revision.saturating_add(1);
-    }
 }
 
 pub fn events(ui: &mut egui::Ui, state: &mut AppState, command: &mut controls::Command) {

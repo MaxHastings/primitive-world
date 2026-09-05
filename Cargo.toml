@@ -1,6 +1,6 @@
 [package]
 name = "primitive_world"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2024"
 rust-version = "1.93"
 description = "A local GPU artificial-life sandbox with evolving recurrent agents"
@@ -14,7 +14,7 @@ egui-wgpu = "0.31"
 egui-winit = "0.31"
 pollster = "0.4"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
 wgpu = "24"
 winit = "0.30"
 

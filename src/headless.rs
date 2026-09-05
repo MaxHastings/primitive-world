@@ -3,9 +3,16 @@ use std::{collections::HashMap, io::Write, path::Path};
 pub const HELP: &str = "Primitive World
 Run: primitive_world [--seed N] [--founders PATH | --random-founders]
 Headless: --headless --ticks N --sample N --output PATH
-Single-window survivor loop: --watch-loop NEW_DIRECTORY [--view-speed 1x|2x|4x|8x|16x|MAX]
-  Extinction saves genes and replaces the world in place, retaining speed and camera.
-Options: --habitat-contrast X (0..1) --environment-rotation N (0..3)
+Default viewer: New Game and Load Game use round-based evolution.
+  --load-game RECEIPT.json opens a saved experiment in the viewer.
+Round training without viewer: --train-loop NEW_DIRECTORY [--rounds 8] --ticks BUDGET
+  [--batches-per-round 3] [--pool-retention 4] [--compositions 3]
+  [--comparison-seeds 11,22] [--candidate-pool EXTINCT_ARCHIVE]
+  [--selector-policy population|individual|uniform] [--selector-model PATH] [--selector-frozen]
+  --round-resume STATE.json resumes in a new output directory.
+  --single-batch runs just one matched comparison; --comparison-resume resumes it.
+  Tick budgets pause unfinished worlds; only complete natural extinctions train.
+Playback: --view-fps 10|30|60 (default 30) --compute-budget 10..100 (default 100)\n  1x targets 60 ticks/second; MAX is uncapped. Budget controls work/idle time, not hardware power.\nOptions: --habitat-contrast X (0..1) --environment-rotation N (0..3)
          --population N --regeneration X --no-force --no-signals --static-landscape
          --metabolic-cost X --movement-cost X --motor-gain X
          --checkpoint PATH --save-checkpoint PATH --export-founders PATH
@@ -34,6 +41,8 @@ fn new_report(path: &str) -> Result<std::fs::File, String> {
 
 pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
     let flags = [
+        "--selector-frozen",
+        "--single-batch",
         "--headless",
         "--families",
         "--random-founders",
@@ -44,6 +53,18 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
         "--version",
     ];
     let valued = [
+        "--train-loop",
+        "--load-game",
+        "--selector-policy",
+        "--selector-model",
+        "--candidate-pool",
+        "--comparison-seeds",
+        "--compositions",
+        "--comparison-resume",
+        "--rounds",
+        "--batches-per-round",
+        "--pool-retention",
+        "--round-resume",
         "--habitat-contrast",
         "--environment-rotation",
         "--seed",
@@ -61,8 +82,9 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
         "--export-founders",
         "--survivors",
         "--survivor-sample",
-        "--watch-loop",
         "--view-speed",
+        "--view-fps",
+        "--compute-budget",
         "--journeys",
         "--journey-sample",
         "--famine-at",
@@ -93,29 +115,130 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
     }
     if out
         .get("--view-speed")
-        .is_some_and(|v| !["1x", "2x", "4x", "8x", "16x", "MAX"].contains(&v.as_str()))
+        .is_some_and(|v| !crate::playback::SPEED_LABELS.contains(&v.as_str()))
     {
-        return Err("Invalid --view-speed: use 1x, 2x, 4x, 8x, 16x or MAX".into());
+        return Err("Invalid --view-speed: use 1x, 2x, 4x, 8x, 16x, 32x, 64x, 128x or MAX".into());
     }
-    if out.contains_key("--watch-loop") {
-        for key in [
-            "--headless",
-            "--ticks",
-            "--families",
-            "--output",
-            "--survivors",
-            "--survivor-sample",
-            "--journeys",
-            "--journey-sample",
-            "--famine-at",
-            "--restore-at",
-        ] {
-            if out.contains_key(key) {
-                return Err(format!(
-                    "--watch-loop is visible and extinction-only; cannot combine with {key}"
-                ));
+    if out
+        .get("--view-fps")
+        .is_some_and(|v| !["10", "30", "60"].contains(&v.as_str()))
+    {
+        return Err("Invalid --view-fps: use 10, 30 or 60".into());
+    }
+    if out
+        .get("--compute-budget")
+        .is_some_and(|v| v.parse::<u32>().map_or(true, |n| !(10..=100).contains(&n)))
+    {
+        return Err("Invalid --compute-budget: use an integer from 10 to 100".into());
+    }
+    if out.contains_key("--headless")
+        && ["--view-speed", "--view-fps", "--compute-budget"]
+            .iter()
+            .any(|k| out.contains_key(*k))
+    {
+        return Err("Playback controls apply to the viewer; headless runs are uncapped".into());
+    }
+    if !out.contains_key("--headless") && !out.contains_key("--train-loop") {
+        if out.contains_key("--checkpoint") {
+            return Err("Load the complete round save with --load-game RECEIPT.json".into());
+        }
+        if out.contains_key("--load-game") {
+            for key in out.keys() {
+                if ![
+                    "--load-game",
+                    "--view-speed",
+                    "--view-fps",
+                    "--compute-budget",
+                ]
+                .contains(&key.as_str())
+                {
+                    return Err(format!(
+                        "Load Game preserves the experiment; cannot override {key}"
+                    ));
+                }
             }
         }
+    } else if out.contains_key("--load-game") {
+        return Err("--load-game opens a saved evolution in the viewer".into());
+    }
+    let selector_options = [
+        "--selector-policy",
+        "--selector-model",
+        "--selector-frozen",
+        "--single-batch",
+        "--candidate-pool",
+        "--comparison-seeds",
+        "--compositions",
+        "--comparison-resume",
+        "--rounds",
+        "--batches-per-round",
+        "--pool-retention",
+        "--round-resume",
+    ];
+    let single = out.contains_key("--single-batch") || out.contains_key("--comparison-resume");
+    if single
+        && [
+            "--rounds",
+            "--round-resume",
+            "--batches-per-round",
+            "--pool-retention",
+        ]
+        .iter()
+        .any(|k| out.contains_key(*k))
+    {
+        return Err("Choose round training or a single comparison".into());
+    }
+    if out.contains_key("--single-batch")
+        && (!out.contains_key("--candidate-pool") || !out.contains_key("--comparison-seeds"))
+    {
+        return Err("A single comparison needs a candidate pool and matched seeds".into());
+    }
+    for resume in ["--round-resume", "--comparison-resume"] {
+        if out.contains_key(resume) {
+            for key in out.keys() {
+                if !["--train-loop", resume, "--ticks"].contains(&key.as_str()) {
+                    return Err(format!(
+                        "Resume preserves the experiment; cannot override {key}"
+                    ));
+                }
+            }
+        }
+    }
+    if out.contains_key("--train-loop") {
+        for key in [
+            "--headless",
+            "--families",
+            "--journeys",
+            "--survivors",
+            "--famine-at",
+            "--restore-at",
+            "--output",
+            "--save-checkpoint",
+            "--export-founders",
+            "--sample",
+            "--journey-sample",
+            "--survivor-sample",
+            "--view-speed",
+            "--view-fps",
+            "--compute-budget",
+        ] {
+            if out.contains_key(key) {
+                return Err(format!("--train-loop cannot combine with {key}"));
+            }
+        }
+        if out.contains_key("--checkpoint") {
+            return Err("Use --round-resume for headless training".into());
+        }
+        if out.contains_key("--candidate-pool")
+            && ["--founders", "--random-founders"]
+                .iter()
+                .any(|k| out.contains_key(*k))
+        {
+            return Err("Choose a candidate pool or initial founders".into());
+        }
+        crate::selector_run::configure_selector(&out, 1)?;
+    } else if selector_options.iter().any(|k| out.contains_key(*k)) {
+        return Err("Selector experiment options require --train-loop".into());
     }
     Ok(out)
 }

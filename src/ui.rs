@@ -22,7 +22,7 @@ pub struct UiState {
     pub name: String,
     pub seed: u32,
     pub setup: simulation::SimSettings,
-    pub continuous: bool,
+    pub evolution: live_rounds::Config,
     pub has_world: bool,
     pub saves: Vec<experiments::SavedExperiment>,
     pub library_notice: String,
@@ -44,7 +44,7 @@ impl UiState {
             name: "My first evolution".into(),
             seed: 1,
             setup: simulation::SimSettings::default(),
-            continuous: true,
+            evolution: live_rounds::Config::default(),
             has_world: command_line_world,
             saves: Vec::new(),
             library_notice: String::new(),
@@ -161,16 +161,13 @@ fn draw_home(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                                 ),
                             )
                         {
-                            *action = Action::Open(Box::new(saved.clone()), false);
+                            *action = Action::Open(Box::new(saved.clone()));
                         }
                         if large_button(ui, "New Game", "Start with random, untrained brains") {
                             *action = Action::NewGame;
                         }
-                        if large_button(
-                            ui,
-                            "Load Game",
-                            "Continue or branch from your saved experiments",
-                        ) {
+                        if large_button(ui, "Load Game", "Resume your saved evolution and selector")
+                        {
                             *action = Action::LoadGame;
                         }
                         ui.add_space(14.0);
@@ -199,10 +196,13 @@ fn draw_new(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                 heading(ui, "New Game", "Fresh brains. Your own evolutionary line.");
                 ui.label("Experiment name");
                 ui.add(egui::TextEdit::singleline(&mut state.ui.name).desired_width(380.0));
-                ui.checkbox(
-                    &mut state.ui.continuous,
-                    "At extinction, seed the next world from late survivors",
-                );
+                ui.label("Evolution runs in rounds. The selector tests several populations before refreshing its pool.");
+                egui::CollapsingHeader::new("Evolution setup").show(ui, |ui| {
+                    ui.add(egui::Slider::new(&mut state.ui.evolution.compositions, 2..=8).text("Populations per batch"));
+                    ui.add(egui::Slider::new(&mut state.ui.evolution.environments, 2..=8).text("Matched environments"));
+                    ui.add(egui::Slider::new(&mut state.ui.evolution.batches, 1..=16).text("Batches per round"));
+                    ui.add(egui::Slider::new(&mut state.ui.evolution.retention, 1..=16).text("Pool retention in rounds"));
+                });
                 egui::CollapsingHeader::new("World setup").show(ui, |ui| {
                     ui.add(egui::DragValue::new(&mut state.ui.seed).prefix("Seed "));
                     ui.add(
@@ -266,7 +266,7 @@ fn draw_load(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
             heading(
                 ui,
                 "Load Game",
-                "Continue a saved evolutionary line or branch from its brains.",
+                "Continue your saved round-based evolution.",
             );
             if !state.ui.library_notice.is_empty() {
                 ui.colored_label(egui::Color32::YELLOW, &state.ui.library_notice);
@@ -289,18 +289,14 @@ fn draw_load(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                                 saved.record.tick,
                                 saved.record.living
                             ));
+                            ui.small(saved.record.rounds.position());
                             ui.small(format!(
                                 "{} · {} ticks in your experiment",
                                 saved.record.origin, saved.record.total_ticks
                             ));
                             ui.horizontal(|ui| {
                                 if ui.button("Continue").clicked() {
-                                    *action = Action::Open(Box::new(saved.clone()), false);
-                                }
-                                if (saved.record.living > 0 || saved.record.evolution.is_some())
-                                    && ui.button("Use brains in a new world").clicked()
-                                {
-                                    *action = Action::Open(Box::new(saved.clone()), true);
+                                    *action = Action::Open(Box::new(saved.clone()));
                                 }
                             });
                         });
@@ -332,19 +328,18 @@ fn draw_play(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                     egui::Label::new(egui::RichText::new(name).strong()).truncate(),
                 )
                 .on_hover_text(name);
-                if let Some(trial) = &state.visible_trial {
-                    ui.small(format!("World {}", trial.world_number));
+                if let Some(rounds) = &state.rounds {
+                    ui.small(format!("Round {}", rounds.training.round))
+                        .on_hover_text(rounds.position());
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("Save").clicked() {
                         *action = Action::Save;
                     }
                     egui::ComboBox::from_id_salt("speed")
-                        .selected_text(["1x", "2x", "4x", "8x", "16x", "MAX"][state.speed_index])
+                        .selected_text(playback::SPEED_LABELS[state.speed_index])
                         .show_ui(ui, |ui| {
-                            for (i, label) in
-                                ["1x", "2x", "4x", "8x", "16x", "MAX"].iter().enumerate()
-                            {
+                            for (i, label) in playback::SPEED_LABELS.iter().enumerate() {
                                 ui.selectable_value(&mut state.speed_index, i, *label);
                             }
                         });
@@ -408,27 +403,12 @@ fn draw_play(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                 *action = Action::WorldClick(point);
             }
             if world.dragged() && world.drag_delta() != egui::Vec2::ZERO {
-                if state.shock_mode == ShockMode::Select {
-                    *action = Action::Pan(world.drag_delta());
-                } else if let Some(point) = world.interact_pointer_pos() {
-                    *action = Action::WorldClick(point);
-                }
+                *action = Action::Pan(world.drag_delta());
             }
             if world.hovered() {
                 let scroll = ui.input(|i| i.smooth_scroll_delta.y);
                 if scroll != 0.0 {
                     *action = Action::Zoom(scroll);
-                }
-                if state.shock_mode != ShockMode::Select
-                    && let Some(point) = ui.input(|i| i.pointer.hover_pos())
-                {
-                    let radius = state.shock_radius * state.ui.world_rect.height() / WORLD_SIZE;
-                    ui.painter().circle_stroke(
-                        point,
-                        radius,
-                        egui::Stroke::new(1.5, egui::Color32::YELLOW),
-                    );
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
                 }
             }
             egui::Area::new(egui::Id::new("world_controls"))
@@ -454,15 +434,6 @@ fn draw_play(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                                             );
                                         }
                                     });
-                                if state.shock_mode != ShockMode::Select {
-                                    ui.colored_label(
-                                        egui::Color32::YELLOW,
-                                        state.shock_mode.name(),
-                                    );
-                                    if ui.button("Done").clicked() {
-                                        state.shock_mode = ShockMode::Select;
-                                    }
-                                }
                             });
                         });
                 });
@@ -475,6 +446,22 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
         "Life in this world",
         "Population and history at a glance.",
     );
+    if let Some(rounds) = &state.rounds {
+        ui.strong(rounds.position());
+        ui.small(if rounds.training.comparison.is_none() {
+            "The initial world is collecting lifetime records. Selection begins after natural extinction."
+        } else { "Every population faces the same environments. Learning happens after the whole batch finishes." });
+        if let Some(last) = &rounds.last_batch {
+            ui.collapsing("Last completed comparison", |ui| {
+                if let Some(rows) = last["duration_ticks"].as_array() {
+                    for (i, row) in rows.iter().enumerate() {
+                        ui.label(format!("Population {}: {} ticks", i + 1, row));
+                    }
+                }
+            });
+        }
+        ui.separator();
+    }
     egui::Grid::new("world_stats")
         .num_columns(2)
         .striped(true)
@@ -485,6 +472,20 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
             ui.label("Births");
             ui.strong(state.births.to_string());
             ui.end_row();
+            if let Some(rounds) = &state.rounds {
+                ui.label("Candidate pool");
+                ui.strong(format!("{} / 256", rounds.pool_size()));
+                ui.end_row();
+                ui.label("Incoming candidates");
+                ui.strong(rounds.training.intake.len().to_string());
+                ui.end_row();
+                ui.label("Selector updates");
+                ui.strong(rounds.training.learner().updates.to_string());
+                ui.end_row();
+                ui.label("Completed trials");
+                ui.strong(rounds.training.learner().completed_worlds.to_string());
+                ui.end_row();
+            }
             ui.label("Tick");
             ui.strong(state.simulation.tick.to_string());
             ui.end_row();
@@ -492,6 +493,14 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
             ui.strong(state.ticks_last_second.to_string());
             ui.end_row();
         });
+    ui.small(format!(
+        "Actual {:.1}x · target {} (1x = 60 ticks/s)",
+        state.ticks_last_second as f32 / playback::BASE_TPS as f32,
+        playback::SPEED_LABELS[state.speed_index]
+    ));
+    if let Some(ms) = state.gpu_tick_ms {
+        ui.small(format!("Simulation GPU time: {ms:.3} ms/tick"));
+    }
     ui_details::stats(ui, state);
     ui_details::history(ui, state);
     if ui.button("Inspect evolution").clicked() {
@@ -508,27 +517,21 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
 fn experiment(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
     heading(
         ui,
-        "Change the conditions",
-        "Live controls and deliberate interventions.",
+        "Experiment controls",
+        "Playback, fixed world rules, and exports.",
     );
-    ui_details::physics(ui, state);
-    ui.collapsing("Interventions", |ui| {
-        for (mode, label) in [
-            (ShockMode::Select, "Inspect"),
-            (ShockMode::RemoveResource, "Remove food"),
-            (ShockMode::AddResource, "Add food"),
-            (ShockMode::KillAgents, "Remove agents"),
-        ] {
-            ui.selectable_value(&mut state.shock_mode, mode, label);
-        }
-        if state.shock_mode != ShockMode::Select {
-            ui.add(egui::Slider::new(&mut state.shock_radius, 4.0..=400.0).text("Brush radius"));
-            ui.colored_label(
-                egui::Color32::YELLOW,
-                "Clicking the world now applies this intervention.",
-            );
-        }
+    ui.collapsing("Playback and compute", |ui| {
+        ui.label("Simulation speed and viewer refresh are independent.");
+        egui::ComboBox::from_id_salt("view_refresh").selected_text(format!("{} FPS",state.render_hz)).show_ui(ui,|ui| {
+            for hz in [10,30,60] { ui.selectable_value(&mut state.render_hz,hz,format!("{hz} FPS")); }
+        });
+        let mut percent = state.compute_budget * 100.0;
+        ui.add(egui::Slider::new(&mut percent,10.0..=100.0).suffix("%").text("Compute duty budget"));
+        state.compute_budget = percent / 100.0;
+        ui.small("Lower budgets insert idle time between batches. This is not a GPU utilization or wattage limit.");
+        ui.small("MAX pursues available throughput; other speeds idle once their target is met.");
     });
+    ui_details::physics(ui, state);
     ui_details::events(ui, state, action);
     ui.collapsing("Export & diagnostics", |ui| {
         if ui.button("Export living descendants").clicked() {

@@ -1,6 +1,6 @@
 //! Append-only experiment saves. A receipt is published only after its complete
 //! body checkpoint; failed writes never replace the last resumable experiment.
-use crate::{simulation::Simulation, visible_trial::LoopSnapshot};
+use crate::{live_rounds::Viewer, simulation::Simulation};
 use serde::{Deserialize, Serialize};
 use std::{
     io::{Read, Write},
@@ -8,6 +8,10 @@ use std::{
     sync::mpsc,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+// Round saves embed the original bank, fixed pool, incoming pool, and live archive.
+// Fully populated sparse genomes can exceed the former 16 MiB receipt limit.
+const RECEIPT_LIMIT: u64 = 64 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct Experiment {
@@ -29,7 +33,7 @@ pub struct SaveRecord {
     pub tick: u32,
     pub living: u32,
     pub total_ticks: u64,
-    pub evolution: Option<LoopSnapshot>,
+    pub rounds: Viewer,
 }
 
 #[derive(Clone)]
@@ -86,7 +90,7 @@ impl SavedExperiment {
         self.directory.join(&self.record.checkpoint)
     }
     pub fn world_number(&self) -> u64 {
-        self.record.evolution.as_ref().map_or(1, |x| x.world_number)
+        self.record.rounds.world_number()
     }
     pub fn experiment(&self) -> Experiment {
         Experiment {
@@ -140,25 +144,14 @@ pub fn create(name: &str, origin: &str) -> Result<Experiment, String> {
 }
 
 impl Experiment {
-    pub fn next_session(&self) -> Result<PathBuf, String> {
-        Ok(self.directory.join(format!("session-{}", stamp()?)))
-    }
-
     pub fn save(
         &self,
         sim: &Simulation,
         d: &wgpu::Device,
         q: &wgpu::Queue,
-        evolution: Option<LoopSnapshot>,
+        rounds: Viewer,
     ) -> Result<PathBuf, String> {
-        if let Some(snapshot) = &evolution {
-            snapshot.validate()?;
-            if snapshot.latest.bank.source_seed != sim.seed
-                || snapshot.latest.bank.source_tick > sim.tick
-            {
-                return Err("Survivor archive does not belong to this checkpoint".into());
-            }
-        }
+        rounds.validate_world(sim.seed, sim.tick)?;
         let stamp = stamp()?;
         let checkpoint = format!("save-{stamp}.checkpoint");
         let pending = self
@@ -173,7 +166,7 @@ impl Experiment {
         let complete = self.directory.join(&checkpoint);
         std::fs::rename(&pending, &complete).map_err(|e| e.to_string())?;
         let record = SaveRecord {
-            version: 1,
+            version: 2,
             model: crate::model::MODEL_ID.into(),
             name: self.name.clone(),
             origin: self.origin.clone(),
@@ -183,7 +176,7 @@ impl Experiment {
             tick: sim.tick,
             living: sim.metrics(d, q)?.living as u32,
             total_ticks: self.total_ticks,
-            evolution,
+            rounds,
         };
         publish_record(&self.directory.join(format!("save-{stamp}.json")), &record)?;
         Ok(complete)
@@ -191,13 +184,17 @@ impl Experiment {
 }
 
 fn publish_record(path: &Path, record: &SaveRecord) -> Result<(), String> {
+    let bytes = serde_json::to_vec(record).map_err(|e| e.to_string())?;
+    if bytes.len() as u64 > RECEIPT_LIMIT {
+        return Err("Experiment receipt is too large".into());
+    }
     let pending = path.with_extension("json.partial");
     let mut file = std::fs::OpenOptions::new()
         .create_new(true)
         .write(true)
         .open(&pending)
         .map_err(|e| e.to_string())?;
-    file.write_all(&serde_json::to_vec(record).map_err(|e| e.to_string())?)
+    file.write_all(&bytes)
         .and_then(|()| file.sync_all())
         .map_err(|e| e.to_string())?;
     drop(file);
@@ -209,12 +206,12 @@ fn publish_record(path: &Path, record: &SaveRecord) -> Result<(), String> {
 
 pub fn read_record(path: &Path) -> Result<SavedExperiment, String> {
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    if file.metadata().map_err(|e| e.to_string())?.len() > 16_777_216 {
+    if file.metadata().map_err(|e| e.to_string())?.len() > RECEIPT_LIMIT {
         return Err("Experiment receipt is too large".into());
     }
     let record = read_record_data(file)?;
-    if record.version != 1 || record.model != crate::model::MODEL_ID {
-        return Err("Unsupported experiment save".into());
+    if record.version != 2 || record.model != crate::model::MODEL_ID {
+        return Err("Incompatible save: this simulator requires round-based evolution saves. Start a New Game.".into());
     }
     let checkpoint = Path::new(&record.checkpoint);
     if checkpoint.components().count() != 1
@@ -227,14 +224,7 @@ pub fn read_record(path: &Path) -> Result<SavedExperiment, String> {
     {
         return Err("Invalid experiment checkpoint path".into());
     }
-    if let Some(snapshot) = &record.evolution {
-        snapshot.validate()?;
-        if snapshot.latest.bank.source_seed != record.seed
-            || snapshot.latest.bank.source_tick > record.tick
-        {
-            return Err("Survivor archive does not belong to this experiment".into());
-        }
-    }
+    record.rounds.validate_world(record.seed, record.tick)?;
     let directory = path
         .parent()
         .ok_or("Save has no parent folder")?
@@ -246,19 +236,22 @@ pub fn read_record(path: &Path) -> Result<SavedExperiment, String> {
 }
 
 fn read_record_data(reader: impl Read) -> Result<SaveRecord, String> {
-    const LIMIT: u64 = 16_777_216;
     let mut bytes = Vec::new();
     // Bound the actual read too, in case a file grows after the metadata check.
     reader
-        .take(LIMIT + 1)
+        .take(RECEIPT_LIMIT + 1)
         .read_to_end(&mut bytes)
         .map_err(|e| e.to_string())?;
-    if bytes.len() as u64 > LIMIT {
+    if bytes.len() as u64 > RECEIPT_LIMIT {
         return Err("Experiment receipt is too large".into());
     }
     // serde_json::from_reader(File) performs tiny unbuffered OS reads. Parsing
     // the bounded memory slice avoids millions of disk calls per archive.
-    serde_json::from_slice(&bytes).map_err(|e| e.to_string())
+    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    if value.get("version").and_then(|v| v.as_u64()) != Some(2) {
+        return Err("Incompatible save: start a New Game with round-based evolution".into());
+    }
+    serde_json::from_value(value).map_err(|e| e.to_string())
 }
 
 /// One latest valid receipt per experiment. Interrupted saves are skipped, with
@@ -316,9 +309,9 @@ mod tests {
             }
         }
         let mut value = serde_json::json!({
-            "version": 1, "model": crate::model::MODEL_ID, "name": "Fixture",
+            "version": 2, "model": crate::model::MODEL_ID, "name": "Fixture",
             "origin": "Test", "checkpoint": "save-1.checkpoint", "saved_at_ms": 1,
-            "seed": 42, "tick": 128, "living": 1, "total_ticks": 128, "evolution": null
+            "seed": 42, "tick": 128, "living": 1, "total_ticks": 128, "rounds": crate::live_rounds::test_fixture(42, 128, 1)
         });
         // Unknown fields remain permitted; a large field isolates I/O behavior.
         value["padding"] = serde_json::Value::String("x".repeat(1_000_000));
@@ -333,10 +326,72 @@ mod tests {
             reader.calls
         );
         assert!(
-            read_record_data(std::io::repeat(b' ').take(16_777_217))
+            read_record_data(std::io::repeat(b' ').take(RECEIPT_LIMIT + 1))
                 .err()
                 .unwrap()
                 .contains("too large")
+        );
+    }
+
+    #[test]
+    fn populated_round_receipt_above_the_old_limit_roundtrips() {
+        use crate::{
+            candidate_pool::{Intake, Pool},
+            model::*,
+            neural_selector::Learner,
+        };
+        let mut genome = crate::brain::blank(HIDDEN).to_vec();
+        genome[1] = MAX_EDGES as f32;
+        genome[NODE_BIAS..EDGE_BASE].fill(-1.234_567_8e-20);
+        for (i, edge) in genome[EDGE_BASE..].chunks_exact_mut(3).enumerate() {
+            edge.copy_from_slice(&[
+                (100 + i / HIDDEN) as f32,
+                (i % HIDDEN) as f32,
+                -1.234_567_8e-20,
+            ]);
+        }
+        crate::brain::validate(&genome).unwrap();
+        let mut archive = crate::candidate_pool::tests::archive(42, 256, 128);
+        for entry in &mut archive.entries {
+            entry.genome = genome.clone();
+            entry.body.brain_nodes = HIDDEN as u32;
+            entry.body.brain_edges = MAX_EDGES as u32;
+        }
+        let mut rounds = crate::live_rounds::test_fixture(42, 128, 1);
+        rounds.training.plan.settings.founder_genomes = vec![genome; 256];
+        rounds.training.plan.retention = 1;
+        rounds.training.intake = Intake::new(256, 7);
+        let mut learner = Learner::new(9);
+        learner.frozen = true;
+        rounds
+            .training
+            .start(Pool::from_archive(&archive).unwrap(), learner)
+            .unwrap();
+        archive.source_seed = 11;
+        rounds.training.accept_world(&archive).unwrap();
+        archive.source_seed = 22;
+        rounds.archive = archive;
+        rounds.validate_world(22, 128).unwrap();
+        let record = SaveRecord {
+            version: 2,
+            model: MODEL_ID.into(),
+            name: "Large round".into(),
+            origin: "Test".into(),
+            checkpoint: "save-1.checkpoint".into(),
+            saved_at_ms: 1,
+            seed: 22,
+            tick: 128,
+            living: 0,
+            total_ticks: 128,
+            rounds,
+        };
+        let bytes = serde_json::to_vec(&record).unwrap();
+        assert!(bytes.len() > 16_777_216, "fixture size: {}", bytes.len());
+        let restored = read_record_data(std::io::Cursor::new(bytes)).unwrap();
+        restored.rounds.validate_world(22, 128).unwrap();
+        assert_eq!(
+            serde_json::to_value(&record).unwrap(),
+            serde_json::to_value(restored).unwrap()
         );
     }
 
@@ -427,7 +482,7 @@ mod tests {
         std::fs::create_dir_all(&folder).unwrap();
         std::fs::write(folder.join("save-100.checkpoint"), b"fixture").unwrap();
         let mut record = SaveRecord {
-            version: 1,
+            version: 2,
             model: crate::model::MODEL_ID.into(),
             name: "Line A".into(),
             origin: "Random".into(),
@@ -437,7 +492,7 @@ mod tests {
             tick: 300,
             living: 10,
             total_ticks: 900,
-            evolution: None,
+            rounds: crate::live_rounds::test_fixture(42, 300, 10),
         };
         publish_record(&folder.join("save-100.json"), &record).unwrap();
         std::fs::write(folder.join("save-200.json"), b"broken").unwrap();

@@ -1,123 +1,88 @@
 # Playing Primitive World
 
-## Start a world
+Run `cargo run --release`, or double-click `Play.cmd` on Windows. The main menu
+opens with **New Game** and **Load Game**. Both use round-based evolution.
 
-Run this from the repository root:
+## New Game
 
-```sh
-cargo run --release
-```
+Name your experiment and choose its world rules. Evolution setup controls the
+number of populations, matched environments, batches, and retention rounds.
+Defaults are three populations, two environments, three batches per round, and
+four-round retention. Start evolution begins running immediately.
 
-The home screen opens first. Choose **New Game**, name the experiment, choose its
-seed and conditions, and press **Start evolution**. New games use seed-specific
-random, untrained brains and immediately begin running. No starter policy or
-survival template is supplied. The app saves experiment receipts under its local
-data folder (on Windows, `%LOCALAPPDATA%\PrimitiveWorld\experiments`).
+The initial world gathers lifetime records. After natural extinction, the selector
+proposes different founding populations from those records. Each population faces
+the same environment seeds. The pool stays available across attempts; the selector
+learns after an entire batch ends. Between rounds, a bounded sample from the trial
+worlds replaces old pool entries. The game keeps advancing rounds until you stop.
+No target behavior, rescue population, or artificial extinction deadline is added.
 
-Save-library discovery runs in the background. New Game remains available while
-the library is loading, and returning to Main Menu does not rescan old receipts.
-Opening Load Game or pressing Refresh requests a new background scan.
-
-Windows users can run `Play.cmd` or `Play.ps1`; arguments pass to the simulator.
-If rebuilding an executable that is already running fails with an access error,
-leave that process alone and use `cargo run --release --target-dir target/another-build`.
-This changes the build location, not the simulation model.
-
-## Continuous evolution
-
-```sh
-cargo run --release -- --random-founders --seed 42 --watch-loop runs/my-first-run --view-speed 16x
-```
-
-Use a new directory for each launch. Parent directories are created automatically.
-`1x`, `2x`, `4x`, `8x`, `16x`, and `MAX` are available; actual throughput depends on
-your GPU, population, and observation workload.
-
-At extinction, survivor genes seed a new world in the same window. Speed, camera,
-lens, and final physical settings carry forward. There is no world-length or
-round limit. Closing the viewer saves the current world and stops; it does not
-secretly reopen.
-
-The viewer writes a full checkpoint at startup and every five wall-clock minutes
-while a loop is active and its state changes. Saving briefly stalls the viewer.
-Autosaves appear in the run’s `checkpoints/` folder; closing writes
-`world-NNNNNN/paused.checkpoint`. Completed worlds also contain survivor banks,
-reports, and the parent-to-child handoff records. There is no automatic retention
-deletion: long runs accumulate files. These are local backups, not protection
-against disk failure.
+The overview displays the current round, batch, population, environment, candidate
+pool, incoming candidates, and selector updates. The last completed comparison
+shows each population's world durations. World rules remain fixed throughout a
+save so the comparisons mean the same thing. Configure a New Game to change them.
 
 ## Controls
 
 | Control | Effect |
 | --- | --- |
-| Space | Pause/resume |
+| Space / Pause | Pause or resume the current trial |
+| Step | Run one simulation tick |
+| Speed menu | 1x through 128x, or MAX |
 | WASD / arrows | Pan |
 | Mouse wheel | Zoom |
 | Home | Fit the world |
-| Lens menu, lower-left | Change information lens |
+| L / Lens menu | Change information lens |
 | Click a body | Inspect that individual |
+| Escape / Menu | Save and return to the menu |
 
-The inspector follows identity, not just a reusable storage slot. Death ends
-tracking and leaves a labeled snapshot. A newborn is not silently substituted.
-The displayed observation has a tick label; it precedes the next frame’s steps.
+1x targets 60 simulation ticks per second. Display FPS and compute budget control
+presentation and pacing, not the learning reward. The inspector follows the exact
+individual; death does not substitute a new organism reusing the same slot.
 
-Physical controls affect the live world. Seed and initial population apply at
-the next reset/world creation. Adding/removing food and killing bodies are manual
-experiments, not hidden assistance. Record interventions when comparing results.
+## Save and Load Game
 
-## Saves and gene pools
+Save preserves the physical world, private neural state, current lifetime archive,
+fixed candidate pool, incoming samples, proposed populations, completed durations,
+selector weights, optimizer, and random state. Closing saves too. Autosaves occur
+every five minutes while running and around natural world transitions. A pause or
+close does not award an extinction reward or refresh the pool.
 
-**Save** preserves bodies, genes, private state, settings, and the current
-survivor-transfer archive. The status line shows the result. **Menu → Load Game**
-lists the latest complete save for each experiment; interrupted or incompatible
-saves are left untouched and skipped. Continuing a save opens it paused. **Use
-brains in a new world** branches from its living or archived survivors.
-
-**Import save…** can import a compatible experiment receipt or a raw checkpoint.
-The imported data becomes a new local experiment, leaving the source untouched.
-
-To open a checkpoint from the command line:
+Load Game lists the latest complete save for each experiment. It opens paused at
+the saved trial. Resume continues the current world, including a saved extinction
+transition, without awarding the same batch twice. Import save accepts the complete
+`save-*.json` receipt. Its paired checkpoint must remain beside it.
 
 ```sh
-cargo run --release -- --checkpoint path/to/world.checkpoint
+cargo run --release -- --load-game path/to/save-123.json
 ```
 
-To continue its evolution loop:
+On Windows, managed experiments live in `%LOCALAPPDATA%/PrimitiveWorld/experiments`.
+`PRIMITIVE_WORLD_SAVES` can select another folder. Receipts are published only after
+their complete checkpoint. Incomplete or incompatible saves are skipped and a notice
+appears. Older models are not supported or migrated. Saved files are never deleted
+automatically; back up an experiment folder and its checkpoints together.
+
+Game receipts use format 2, viewer round snapshots format 1, training state format
+2, selector weights format 4, and physical checkpoints format 20. Founder genomes
+remain format 7. These format identities are separate from application version.
+
+## Command-line starts
 
 ```sh
-cargo run --release -- --checkpoint path/to/world.checkpoint --watch-loop runs/resumed-run --view-speed 16x
+cargo run --release -- --random-founders --seed 42 --view-speed 16x
 ```
 
-CLI checkpoint launches begin running. The checkpoint’s settings take precedence;
-physical overrides cannot accompany `--checkpoint`. The new loop’s world numbering
-starts at 1, but the loaded tick, bodies, genes, and state are preserved.
+This opens a fresh round-based evolution directly in the viewer. Headless training
+uses the same engine through `--train-loop`; see [evolution](evolution.md).
 
-**Export living descendants** in the Experiment tab saves a sample of descendant
-genomes for fresh bodies in another world. It does not save settings or memories.
-No living descendants means there is nothing eligible for this particular export.
-The automatic evolution loop separately samples late survivors, including founders.
+## Reading behavior
 
-**Export history** writes a uniquely named JSON file under `reports/history/`.
-It contains the latest 400 metric samples, not the entire run. Old exports are not
-overwritten. Use headless sampling for a complete bounded diagnostic history.
+Collection is chosen; digestion of carried food is automatic. Force displaces
+another body. Signals are local numbers without a prescribed meaning. None of
+these abilities is required to become useful. Longer world duration is the
+selector's evidence, not proof of intelligence or sustained improvement.
 
-Checkpoints use format 18; founder banks use format 7. Primitive V6 rejects
-older dense layouts without conversion or modifying the source file. Start a
-fresh V6 world; use the matching older executable for old experiments.
-See [release status](release.md).
-
-The inspector shows each organism's unit count, connection count, structural
-upkeep, construction cost, and birth changes. Brain and inheritance settings
-control shared world costs and mutation rates. Four units is a starting size,
-not a minimum or a target.
-
-## Reading the behavior
-
-Collection is a chosen action. Digestion of carried food is automatic. An agent
-walking through food need not collect it. Force displaces another body; it does
-not directly inflict damage or spill food. Signals are local numbers with no
-built-in meaning. No ability is required to become useful.
-
-A sparse population may recover or die. A long world may contain many generations
-or a lingering bottleneck. Look at births, population history, feeding, and actual
-journeys together—not just the final survival tick.
+Export living descendants saves genes, not the complete game. Export history
+writes the latest 400 metric samples under `reports/history/`. Neither replaces
+Save. See [release status](release.md) for model limits.

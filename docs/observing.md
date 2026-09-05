@@ -94,17 +94,37 @@ interpreting treatment differences. A memory-removal effect shows dependence on
 recurrence, not necessarily long-term recall; signal sends alone do not demonstrate
 useful communication. A fixed walker is one explicit baseline, not an optimal one.
 
+## Measure tick throughput
+
+```sh
+cargo test --release profile_tick_throughput -- --ignored --nocapture --test-threads=1
+```
+
+This manual diagnostic prints the GPU/driver, batch throughput for worlds starting
+with 32 and 4,096 bodies, the cost of taking full survivor snapshots every small
+batch, the current telemetry/archive path, and individual GPU pass timestamps.
+Each throughput case resets the same seeded world and warms up for 32 ticks;
+populations can change during the following 512 ticks. Per-pass timings are from
+one subsequent tick, not an average. Rendering and Windows event-loop waits are
+excluded, so these numbers are not a promise of visible playback speed. Run without
+other GPU workloads when comparing builds. GPU timestamp support is required.
+
+Playback 128x requests 7,680 ticks per second (60 x 128); it cannot guarantee that
+rate. Sensing every in-range food cell, recurrent decisions, ecology, GPU dispatch
+and synchronization all cost time even when presentation is infrequent.
+
 ## Back up an evolution run
 
 ```sh
-python tools/backup_run.py --run runs/my-first-run --backup reports/my-backups
+python tools/backup_run.py --run path/to/experiment --backup reports/my-backups
 ```
 
-The standard-library tool incrementally archives completed worlds and full saves,
+The standard-library tool incrementally archives complete game receipts and their checkpoints,
 checks archive bytes against source SHA-256 values, and leaves originals alone.
 It never controls the viewer, changes difficulty, restarts a run, or deletes old
 files. It is a one-shot command, not a scheduler; the viewer itself handles its
-five-minute loop autosaves. Incomplete `.partial` saves are ignored.
+five-minute autosaves. Incomplete `.partial` saves are ignored. Headless training
+states use a different layout; preserve their directories and referenced checkpoints together.
 
 Checkpoint header/layout validation is not a GPU semantic load test. ZIP archives
 are local copies, not off-device protection. Keep space available, copy valuable
