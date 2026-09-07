@@ -118,8 +118,8 @@ interventions are user experiments; record them when comparing outcomes.
 
 ## Persistence, observation, and limits
 
-Checkpoints use format 22; founder banks use format 8. The fixed
-primitive-v8-population-search model rejects older layouts without rewriting them.
+Checkpoints use format 23; founder banks use format 8. The fixed
+primitive-v9-descendant-population-search model rejects older layouts without rewriting them.
 Checkpoints preserve settings, bodies, genomes, food, soil, event counters,
 controller traces, current/candidate founding groups, paired outcomes/history and search RNG. Derived indexing/terrain is rebuilt after load. Loading
 validates before mutating the world. Save/export refuses existing destinations.

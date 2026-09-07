@@ -1,5 +1,10 @@
 # Changelog
 
+## Descendant founder carryover
+
+- Preserve a uniform sample of terminal descendant genomes as sparse candidate-founder replacements after a natural extinction. Whole founding populations still compete only on matched completed-world duration; no individual descendant score is introduced.
+- Advance to model `primitive-v9-descendant-population-search` and checkpoint 23. Existing model/checkpoint data remains rejected without conversion.
+
 ## 0.9.0 — founding-population selection
 
 - Compare complete founding populations by completed world duration on matched seeds; keep the current population on ties or failed candidates.

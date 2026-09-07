@@ -42,7 +42,7 @@ overrides it. Import a current receipt with Load Game or:
 cargo run --release -- --load-game path/to/save-123.json
 ```
 
-The current model is `primitive-v8-population-search`: receipts 4, checkpoints 22,
+The current model is `primitive-v9-descendant-population-search`: receipts 4, checkpoints 23,
 founder banks 8. Noncurrent data is rejected without conversion or deletion.
 Exports require new paths. See [headless observation](observing.md),
 [performance limits](performance.md), and the [implementation checklist](implementation-checklist.md).

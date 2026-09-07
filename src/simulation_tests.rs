@@ -1424,7 +1424,7 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v8-population-search");
+    assert_eq!(MODEL_ID, "primitive-v9-descendant-population-search");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
     assert_eq!(crate::founders::bundled().version, 8);
 }

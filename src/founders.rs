@@ -21,7 +21,9 @@ impl FounderBank {
     pub fn validate(&self) -> Result<(), String> {
         let compatible_model = self.model == crate::model::MODEL_ID;
         if self.version != FOUNDER_BANK_VERSION || !compatible_model || self.genomes.is_empty() {
-            return Err("Expected a nonempty Primitive World founder bank in format 8; noncurrent banks are rejected".into());
+            return Err(format!(
+                "Expected a nonempty Primitive World founder bank in format {FOUNDER_BANK_VERSION}; noncurrent banks are rejected"
+            ));
         }
         validate_genomes(&self.genomes)
     }

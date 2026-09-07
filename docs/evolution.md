@@ -32,12 +32,15 @@ position's genome and the group's mixture and multiplicities. Default New Game
 and headless runs create one seed-specific random genome per founding body.
 An explicitly imported current-format bank repeats across founding positions.
 
-Each candidate copies the full current founding group. It mutates uniformly
-selected 5% of positions (floor, minimum one). Every fourth candidate also replaces
-1% of positions with fresh random genomes (floor, minimum one). These positions
-are disjoint; a one-founder exploratory candidate is entirely random. Other
-positions remain unchanged. There is no identity ranking, genetic clustering,
-novelty score or separate learned selector.
+Each candidate copies the full current founding group. After an incumbent world
+ends naturally, a uniform sample of its terminal descendant genomes replaces up
+to 5% of founder positions (floor, minimum one). This uses the ordinary sparse
+variation budget: if a world produced fewer descendants, the remaining positions
+are parameter-mutated copies of the incumbent. Every fourth candidate also
+replaces 1% of positions with fresh random genomes (floor, minimum one). These
+positions are disjoint; a one-founder exploratory candidate is entirely random.
+Other positions remain unchanged. There is no identity ranking, genetic
+clustering, novelty score or separate learned selector.
 
 Parameter mutation uses the world settings, default probability .02 and magnitude
 .03, bounded to [-4,4]. For candidate construction only, if all mutation draws leave
@@ -47,12 +50,13 @@ Setting either mutation
 setting to zero disables parameter changes; periodic random exploration remains.
 Births keep the ordinary mutation rule without the candidate fallback.
 
-**Within-world descendant genomes are not directly copied into future founding
-groups.** Their inherited mutations, feeding and reproduction affect the world's
-survival duration and therefore selection of the group that founded them. This
-keeps successful population combinations intact rather than selecting isolated
-survivors. It selects founding groups capable of sustaining an evolving ecology;
-it does not archive every useful mutation that appears later within that ecology.
+**Within-world descendant genomes are retained as potential, not automatically
+accepted, founders.** At natural extinction, each terminal descendant slot has
+the same chance to enter the next challenger; no lifespan, birth count, behavior
+or survivor score ranks it. A descendant genome carries forward only if the
+complete challenger population lasts strictly longer than the incumbent on the
+matched world. This keeps whole-population longevity as the only selector while
+preventing a reset from discarding all evolved mutations.
 
 Fresh founders and biological newborns retain their existing different endowments.
 All new bodies start with zero recurrent memory. Founding is initialization, not a
@@ -75,7 +79,7 @@ advancing is valid; resuming cannot score that world twice. Derived indexes and
 terrain are rebuilt. Manual ecological intervention makes a world ineligible for
 population comparison. Read-only diagnostic observers do not alter eligibility.
 
-There is one current model, `primitive-v8-population-search`: checkpoint 22,
+There is one current model, `primitive-v9-descendant-population-search`: checkpoint 23,
 game receipt 4, founder bank 8. Noncurrent files are rejected, never converted,
 executed through a compatibility path, overwritten or deleted.
 

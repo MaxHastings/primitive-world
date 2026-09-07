@@ -38,8 +38,9 @@ have seed-specific random brains. Each paired comparison preserves the current
 founding group unless its candidate produces a longer world. Candidates change
 5% of founder positions; every fourth candidate also introduces 1% fresh random
 brains. Memory gates, near/far regional senses and sector targeting stay active.
-Within-world descendants affect world duration; their genomes are not directly
-archived into the next founding group. See the precise [inheritance rule](docs/evolution.md).
+After a natural extinction, a sparse uniform sample of that world's terminal
+descendant genomes can seed the next candidate. The candidate still has to win
+the matched whole-world longevity comparison. See the precise [inheritance rule](docs/evolution.md).
 
 For the same evolutionary loop without rendering:
 

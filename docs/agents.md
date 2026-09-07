@@ -109,5 +109,6 @@ noise. It repeats across founding positions; invalid data fails without fallback
 Paid births copy the parent's fixed genome with the world-controlled mutation
 probability and magnitude, default .02 and .03. Every newborn starts with fresh
 body state and zero memory. Between worlds, [population selection](evolution.md)
-compares complete founding groups. Later biological generations affect world
-duration, but their genomes are not directly copied into subsequent founding groups.
+compares complete founding groups. A sparse uniform sample of terminal biological
+descendants can enter the next candidate, but only the complete candidate group's
+world duration decides whether any of those genomes carry forward.

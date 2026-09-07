@@ -448,8 +448,12 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
             b.duration
         ));
         ui.small(format!(
-            "Candidate founders: {} unchanged, {} mutated, {} fresh random",
-            state.simulation.settings.population - p.mutated_founders - p.random_founders,
+            "Candidate founders: {} unchanged, {} terminal descendants, {} mutated, {} fresh random",
+            state.simulation.settings.population
+                - p.descendant_founders
+                - p.mutated_founders
+                - p.random_founders,
+            p.descendant_founders,
             p.mutated_founders,
             p.random_founders
         ));

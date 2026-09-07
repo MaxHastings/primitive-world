@@ -10,8 +10,9 @@ population on ties or failed candidates. A continuing world is never cut short.
 
 Preserve complete founding combinations and simple occasional random exploration.
 Do not add an individual-survival ranking, learned selector, reward taxonomy,
-novelty system or broad candidate pool. Later biological generations influence
-world outcomes; only the evaluated founding genomes are carried between worlds.
+novelty system or broad candidate pool. Terminal descendant genomes can enter a
+sparse challenger, but only an evaluated founding population that wins on world
+longevity is carried between worlds.
 See [the exact inheritance rule](evolution.md).
 
 Preserve near/far regional sensing, sector targets and flexible memory gates.

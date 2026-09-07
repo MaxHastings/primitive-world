@@ -6,8 +6,8 @@ and general adaptation are unverified capabilities.
 ## Build and data formats
 
 - Application version: 0.9.0.
-- Model: `primitive-v8-population-search`.
-- Checkpoint format: 22, including founding populations, paired outcomes/history and search RNG.
+- Model: `primitive-v9-descendant-population-search`.
+- Checkpoint format: 23, including founding populations, paired outcomes/history, search RNG, and candidate descendant carryover counts.
 - Founder-bank format: 8; game receipts: 4.
 - Genome allocation: 74.25 MiB for 16,384 bodies, plus world/render buffers.
 

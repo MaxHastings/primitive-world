@@ -8,7 +8,7 @@ not mean observed adaptive success. Verification and delivery remain explicit.
 - [x] 2. Progress is cumulative: current founding genomes survive failed candidates and are mutated into later proposals.
 - [x] 3. Simple current/candidate pair, same seed and reset body/environment conditions, strict longer-duration acceptance, ties keep current population.
 - [x] 4. Eight-individual lifetime selection and its shader/passes/state are removed. No individual endurance ranking constructs candidates.
-- [x] 5. Inheritance is explicit: saved **founding groups** carry forward. Later descendant mutations affect world outcomes but are not directly archived. `docs/evolution.md` explains this change from the superseded plan.
+- [x] 5. Inheritance is explicit: saved **founding groups** carry forward, with a sparse uniform sample of terminal descendants eligible only through a complete challenger population. `docs/evolution.md` explains the longevity-only comparison.
 - [x] 6. Living worlds continue indefinitely; pause, budget, save and tick-capacity stops cannot create completed scores. Natural completion is idempotent; exact duration excludes empty trailing batch ticks.
 - [x] 7. No learned selector, secondary scoring network, training-round engine, broad candidate pool or authored behavioral reward components. Only one population comparator exists.
 - [x] 8. Simple mutation and periodic random exploration; no similarity clustering, novelty score or extra diversity-management system.
