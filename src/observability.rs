@@ -1,9 +1,16 @@
 use super::*;
 use std::collections::HashSet;
 use std::io::{Read, Write};
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CheckpointMetadata {
+    settings: SimSettings,
+    progress: crate::evolution::Progress,
+}
 
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub struct WorldMetrics {
+    pub food_ingested: f64,
     pub tick: u32,
     pub living: u64,
     pub juveniles: u64,
@@ -35,16 +42,10 @@ pub struct WorldMetrics {
 pub struct EvolutionSnapshot {
     pub tick: u32,
     pub living: u64,
-    pub unique_lineages: u64,
+    pub individual_identities: u64,
     pub parent_lineages_present: u64,
     pub maximum_ancestry_depth: u32,
     pub mean_ancestry_depth: f64,
-    pub mean_nodes: f64,
-    pub mean_connections: f64,
-    pub node_histogram: Vec<u64>,
-    pub connection_histogram: Vec<u64>,
-    pub expanded_descendants: u64,
-    pub contracted_descendants: u64,
 }
 
 pub fn read_buffer(
@@ -113,8 +114,6 @@ impl Simulation {
         let mut parent_lineages = HashSet::new();
         let mut snapshot = EvolutionSnapshot {
             tick: self.tick,
-            node_histogram: vec![0; HIDDEN + 1],
-            connection_histogram: vec![0; MAX_EDGES + 1],
             ..Default::default()
         };
         for agent in agents.iter().filter(|a| a.alive != 0) {
@@ -126,20 +125,12 @@ impl Simulation {
             snapshot.maximum_ancestry_depth =
                 snapshot.maximum_ancestry_depth.max(agent.ancestry_depth);
             snapshot.mean_ancestry_depth += agent.ancestry_depth as f64;
-            snapshot.mean_nodes += agent.brain_nodes as f64;
-            snapshot.mean_connections += agent.brain_edges as f64;
-            snapshot.node_histogram[agent.brain_nodes as usize] += 1;
-            snapshot.connection_histogram[agent.brain_edges as usize] += 1;
-            snapshot.expanded_descendants += u64::from(agent.node_change > 0);
-            snapshot.contracted_descendants += u64::from(agent.node_change < 0);
         }
-        snapshot.unique_lineages = lineages.len() as u64;
+        snapshot.individual_identities = lineages.len() as u64;
         snapshot.parent_lineages_present = parent_lineages.len() as u64;
         if snapshot.living > 0 {
             let count = snapshot.living as f64;
             snapshot.mean_ancestry_depth /= count;
-            snapshot.mean_nodes /= count;
-            snapshot.mean_connections /= count;
         }
         Ok(snapshot)
     }
@@ -162,6 +153,8 @@ impl Simulation {
         let events = read_buffer(device, queue, &self.death_stats_buffer)?;
         let counters: &[u32] = bytemuck::cast_slice(&events);
         Ok(WorldMetrics {
+            food_ingested: (u64::from(counters[0]) + (u64::from(counters[14]) << 32)) as f64
+                / 1000.0,
             tick: self.tick,
             living: total[0],
             juveniles: total[1],
@@ -193,11 +186,23 @@ impl Simulation {
                 .map_err(|_| "Invalid action counters")?,
             invalid_outputs: counters[31],
             force_attempts: counters[12],
-            force_energy_spent: (counters[13] as f64 + counters[14] as f64) / 1000.0,
+            force_energy_spent: counters[13] as f64 / 1000.0,
             forced_distance: counters[15] as f64 / 1000.0,
         })
     }
 
+    pub fn checkpoint_metadata(&self) -> Result<Vec<u8>, String> {
+        self.settings.validate()?;
+        self.progress
+            .validate(self.settings.population, self.seed, self.tick)?;
+        self.search
+            .validate(self.settings.population, self.progress.phase)?;
+        serde_json::to_vec(&CheckpointMetadata {
+            settings: self.settings.clone(),
+            progress: self.progress.clone(),
+        })
+        .map_err(|e| e.to_string())
+    }
     pub fn save_checkpoint(
         &self,
         device: &wgpu::Device,
@@ -205,7 +210,7 @@ impl Simulation {
         path: &std::path::Path,
     ) -> Result<(), String> {
         // Capture before opening the destination, so a GPU read failure cannot truncate a save.
-        let settings = serde_json::to_vec(&self.settings).map_err(|e| e.to_string())?;
+        let settings = self.checkpoint_metadata()?;
         let buffers = [
             &self.agent_buffers[self.current_buffer],
             &self.resource_buffer,
@@ -243,6 +248,12 @@ impl Simulation {
                 .map_err(|e| e.to_string())?;
             file.write_all(&bytes).map_err(|e| e.to_string())?;
         }
+        for genes in [&self.search.incumbent, &self.search.challenger] {
+            let bytes: &[u8] = bytemuck::cast_slice(genes);
+            file.write_all(&(bytes.len() as u64).to_le_bytes())
+                .map_err(|e| e.to_string())?;
+            file.write_all(bytes).map_err(|e| e.to_string())?;
+        }
         Ok(())
     }
 
@@ -271,27 +282,27 @@ impl Simulation {
     ) -> Result<(), String> {
         self.load_checkpoint_data(queue, file, expected, None)
     }
-    pub fn load_round_checkpoint(
+    pub fn load_game_checkpoint(
         &mut self,
         queue: &wgpu::Queue,
         file: impl Read,
-        expected: Option<(u32, u32, u32)>,
-        settings: &SimSettings,
+        expected: (u32, u32, u32),
+        world: u64,
     ) -> Result<(), String> {
-        self.load_checkpoint_data(queue, file, expected, Some(settings))
+        self.load_checkpoint_data(queue, file, Some(expected), Some(world))
     }
     fn load_checkpoint_data(
         &mut self,
         queue: &wgpu::Queue,
         mut file: impl Read,
         expected: Option<(u32, u32, u32)>,
-        round_settings: Option<&SimSettings>,
+        expected_world: Option<u64>,
     ) -> Result<(), String> {
         let mut magic = [0; 12];
         file.read_exact(&mut magic).map_err(|e| e.to_string())?;
         if &magic != CHECKPOINT_MAGIC {
             return Err(format!(
-                "Unsupported checkpoint: expected {} format {}. Use the matching older engine for earlier worlds.",
+                "Unsupported checkpoint: expected {} format {}. Only current-format data can be loaded.",
                 MODEL_ID, CHECKPOINT_VERSION
             ));
         }
@@ -299,21 +310,25 @@ impl Simulation {
         file.read_exact(&mut fields).map_err(|e| e.to_string())?;
         let seed = u32::from_le_bytes(fields[0..4].try_into().unwrap());
         let tick = u32::from_le_bytes(fields[4..8].try_into().unwrap());
+        if tick > MAX_WORLD_TICKS {
+            return Err("Checkpoint exceeds world tick capacity".into());
+        }
         let settings_len = u32::from_le_bytes(fields[8..12].try_into().unwrap()) as usize;
         if settings_len > 16_777_216 {
             return Err("Invalid settings length".into());
         }
         let mut json = vec![0; settings_len];
         file.read_exact(&mut json).map_err(|e| e.to_string())?;
-        let settings: SimSettings = serde_json::from_slice(&json).map_err(|e| e.to_string())?;
-        settings.validate()?;
-        if let Some(expected) = round_settings
-            && serde_json::to_value(expected).map_err(|e| e.to_string())?
-                != serde_json::to_value(&settings).map_err(|e| e.to_string())?
-        {
-            return Err("Checkpoint settings disagree with round evolution state".into());
+        let metadata: CheckpointMetadata =
+            serde_json::from_slice(&json).map_err(|e| e.to_string())?;
+        let settings = metadata.settings;
+        metadata
+            .progress
+            .validate(settings.population, seed, tick)?;
+        if expected_world.is_some_and(|world| world != metadata.progress.world) {
+            return Err("The game receipt and checkpoint world do not match".into());
         }
-
+        settings.validate()?;
         let mut buffers = vec![
             &self.agent_buffers[0],
             &self.resource_buffer,
@@ -343,8 +358,9 @@ impl Simulation {
             .chunks_exact(std::mem::size_of::<AgentGpu>())
             .map(bytemuck::pod_read_unaligned::<AgentGpu>)
         {
-            a.life.validate()?;
-            if a.alive > 1
+            if a.lived_ticks > tick
+                || a.lifetime_padding != 0
+                || a.alive > 1
                 || a.action > 5
                 || a.position
                     .iter()
@@ -368,14 +384,6 @@ impl Simulation {
                 .chain(&a.velocity)
                 .chain(&a.moved)
                 .any(|v| !v.is_finite())
-                || a.brain_nodes > HIDDEN as u32
-                || a.brain_edges > MAX_EDGES as u32
-                || a.node_change.unsigned_abs() > 1
-                || a.edge_change.unsigned_abs() > MAX_EDGES as u32
-                || (a.alive != 0 && a.brain_nodes == 0)
-                || a.hidden[a.brain_nodes.min(HIDDEN as u32) as usize..]
-                    .iter()
-                    .any(|v| *v != 0.0)
                 || a.food < 0.0
                 || a.food > 8.001
                 || a.energy < 0.0
@@ -393,18 +401,8 @@ impl Simulation {
             }
         }
         let genes: &[f32] = bytemuck::cast_slice(&data[8]);
-        for (body, genome) in data[0]
-            .chunks_exact(std::mem::size_of::<AgentGpu>())
-            .map(bytemuck::pod_read_unaligned::<AgentGpu>)
-            .zip(genes.chunks_exact(GENOME_SIZE))
-        {
-            if body.brain_nodes == 0 && body.alive == 0 && genome.iter().all(|v| *v == 0.0) {
-                continue;
-            }
+        for genome in genes.chunks_exact(GENOME_SIZE) {
             crate::brain::validate(genome)?;
-            if body.brain_nodes != genome[0] as u32 || body.brain_edges != genome[1] as u32 {
-                return Err("Checkpoint body and brain disagree".into());
-            }
         }
         if data[2]
             .chunks_exact(4)
@@ -448,11 +446,10 @@ impl Simulation {
             .chunks_exact(std::mem::size_of::<DecisionGpu>())
             .map(bytemuck::pod_read_unaligned::<DecisionGpu>)
         {
-            if d.selected_action > 5
+            if d.evaluated > 1
+                || d.selected_action > 5
                 || d.invalid > 1
                 || d.target > MAX_AGENTS
-                || d.brain_nodes > HIDDEN as u32
-                || d.brain_edges > MAX_EDGES as u32
                 || d.update_gates
                     .iter()
                     .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
@@ -466,6 +463,55 @@ impl Simulation {
                     .any(|v| !v.is_finite())
             {
                 return Err("Invalid checkpoint decision".into());
+            }
+        }
+        let mut populations = Vec::new();
+        for expected in [
+            settings.population as usize * GENOME_SIZE,
+            if metadata.progress.phase == crate::evolution::Phase::Challenger {
+                settings.population as usize * GENOME_SIZE
+            } else {
+                0
+            },
+        ] {
+            let mut length = [0; 8];
+            file.read_exact(&mut length).map_err(|e| e.to_string())?;
+            if u64::from_le_bytes(length) != (expected * 4) as u64 {
+                return Err("Invalid founding population length".into());
+            }
+            let mut genes = vec![0.0f32; expected];
+            file.read_exact(bytemuck::cast_slice_mut(&mut genes))
+                .map_err(|e| e.to_string())?;
+            populations.push(genes);
+        }
+        let search = crate::evolution::Search {
+            challenger: populations.pop().unwrap(),
+            incumbent: populations.pop().unwrap(),
+        };
+        search.validate(settings.population, metadata.progress.phase)?;
+        let counters: &[u32] = bytemuck::cast_slice(&data[4]);
+        if counters[18] > tick || counters[30] > 1 {
+            return Err("Invalid world completion counters".into());
+        }
+        if let Some(o) = &metadata.progress.completed {
+            let alive = bytemuck::cast_slice::<u8, AgentGpu>(&data[0])
+                .iter()
+                .any(|a| a.alive != 0);
+            let accepted = metadata
+                .progress
+                .baseline
+                .as_ref()
+                .map(|b| o.duration > b.duration && search.challenger != search.incumbent);
+            if alive
+                || counters[30] != 0
+                || o.duration != counters[18]
+                || o.births != counters[3]
+                || o.maximum_generation != counters[23]
+                || o.food_ingested
+                    != (u64::from(counters[0]) + (u64::from(counters[14]) << 32)) as f64 / 1000.0
+                || o.challenger_accepted != accepted
+            {
+                return Err("Completed outcome does not match physical checkpoint".into());
             }
         }
         // Reject trailing payloads before mutating live state.
@@ -489,8 +535,9 @@ impl Simulation {
         }
         queue.write_buffer(&self.agent_buffers[1], 0, &data[0]);
         queue.write_buffer(&self.resource_display_buffer, 0, &data[1]);
+        self.progress = metadata.progress;
+        self.search = search;
         self.settings = settings;
-        self.reproduction_archive = None;
         self.seed = seed;
         self.tick = tick;
         self.current_buffer = 0;

@@ -1,4 +1,4 @@
-"""Verified backups of current round-evolution game receipts and checkpoints."""
+"""Verified backups of current game receipts and checkpoints."""
 import argparse
 from datetime import datetime, timezone
 import hashlib
@@ -19,13 +19,13 @@ def checkpoint_header(path):
     size = path.stat().st_size
     with path.open("rb") as stream:
         magic = stream.read(12)
-        if magic != b"PRIMWORLD020":
+        if magic != b"PRIMWORLD022":
             raise ValueError(f"Unexpected checkpoint version: {path}")
         seed, tick, settings_size = struct.unpack("<III", stream.read(12))
         if not 1 <= settings_size <= 32 * 1024 * 1024:
             raise ValueError("Invalid settings length")
         json.loads(stream.read(settings_size))
-        for _ in range(9):
+        for _ in range(11):
             length, = struct.unpack("<Q", stream.read(8))
             if stream.tell() + length > size:
                 raise ValueError("Incomplete checkpoint buffer")
@@ -33,7 +33,7 @@ def checkpoint_header(path):
         if stream.tell() != size:
             raise ValueError("Checkpoint has trailing bytes")
     return dict(seed=seed, tick=tick, bytes=size,
-                validation=f"Schema{int(magic[-3:])} header, JSON settings and all nine buffer boundaries; not a GPU semantic load test")
+                validation=f"Schema{int(magic[-3:])} header, JSON settings and all buffer boundaries; not a GPU semantic load test")
 
 
 def archive(destination, name, sources):
@@ -83,8 +83,8 @@ def run(run_dir, destination):
                 continue
             try:
                 record = read(receipt)
-                if record.get("version") != 2 or record.get("rounds", {}).get("version") != 1:
-                    raise ValueError("Incompatible save; only round evolution is supported")
+                if record.get("version") != 4 or record.get("model") != "primitive-v8-population-search":
+                    raise ValueError("Unsupported game receipt")
                 name = record["checkpoint"]
                 if Path(name).name != name or any(c in name for c in '/\\:') or not name.endswith('.checkpoint'):
                     raise ValueError("Invalid checkpoint name")

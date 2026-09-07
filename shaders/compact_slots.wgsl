@@ -7,11 +7,11 @@
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id:vec3<u32>){
  let i=id.x;if(i>=INVALID){return;}
- if(i==0u){let count=INVALID-prefix[INVALID-1u];live_slots[0]=(count+63u)/64u;live_slots[1]=1u;live_slots[2]=1u;live_slots[3]=count;}
+ if(i==0u){let count=INVALID-prefix[INVALID-1u];live_slots[0]=(count+LIVE_WORKGROUP_SIZE-1u)/LIVE_WORKGROUP_SIZE;live_slots[1]=1u;live_slots[2]=1u;live_slots[3]=count;}
  if(free_flags[i]!=0u){
   free_indices[prefix[i]-1u]=i;
   // Clear an expired trace once, rather than writing large empty records every tick.
-  if(decisions[i].brain_nodes!=0u){
+  if(decisions[i].evaluated!=0u){
    var d:Decision;d.target_id=INVALID;decisions[i]=d;
    var p:Perception;for(var k=0u;k<8u;k++){p.bodies[k].slot=INVALID;}perceptions[i]=p;
   }

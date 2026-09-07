@@ -1,10 +1,13 @@
 //! primitive-world: fixed-frame sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
-pub const MODEL_ID: &str = "primitive-v6-variable-brain";
-pub const FOUNDER_BANK_VERSION: u32 = 7;
-pub const CHECKPOINT_VERSION: u32 = 20;
-pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD020";
+pub const MODEL_ID: &str = "primitive-v8-population-search";
+pub const FOUNDER_BANK_VERSION: u32 = 8;
+pub const CHECKPOINT_VERSION: u32 = 22;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD022";
 pub const MAX_AGENTS: u32 = 16_384;
+/// Reserve room for the largest permitted birth cooldown in shader tick arithmetic.
+pub const MAX_WORLD_TICKS: u32 = u32::MAX - 1_000_001;
+pub const LIVE_WORKGROUP_SIZE: usize = 8;
 pub const RESOURCE_GRID: u32 = 512;
 pub const OCCUPANCY_GRID: u32 = 256;
 pub const SPATIAL_CELL_COUNT: u32 = OCCUPANCY_GRID * OCCUPANCY_GRID;
@@ -17,17 +20,18 @@ pub const REGIONS: usize = SECTORS * 2;
 pub const NEIGHBOR_BASE: usize = 52;
 pub const NEIGHBOR_INPUTS: usize = 7;
 pub const INPUTS: usize = NEIGHBOR_BASE + SECTORS * NEIGHBOR_INPUTS;
-/// GPU capacity, not inherited dormant structure. Only encoded nodes/edges exist.
-pub const HIDDEN: usize = 64;
-pub const DEFAULT_NODES: usize = 4;
+/// Eight fixed recurrent units, with dense sensory, recurrent, gate and output weights.
+pub const HIDDEN: usize = 8;
 pub const OUTPUTS: usize = 20;
 pub const FORCE_OUTPUT: usize = 18;
-pub const MAX_EDGES: usize = 512;
-pub const NODE_BIAS: usize = 2;
-pub const GATE_BIAS: usize = NODE_BIAS + HIDDEN;
-pub const OUTPUT_BIAS: usize = GATE_BIAS + HIDDEN;
-pub const EDGE_BASE: usize = OUTPUT_BIAS + OUTPUTS;
-pub const GENOME_SIZE: usize = EDGE_BASE + MAX_EDGES * 3;
+pub const NODE_BIAS: usize = 0;
+pub const GATE_BIAS: usize = HIDDEN;
+pub const OUTPUT_BIAS: usize = 2 * HIDDEN;
+pub const INPUT_BASE: usize = OUTPUT_BIAS + OUTPUTS;
+pub const RECURRENT_BASE: usize = INPUT_BASE + HIDDEN * INPUTS;
+pub const GATE_BASE: usize = RECURRENT_BASE + HIDDEN * HIDDEN;
+pub const OUTPUT_BASE: usize = GATE_BASE + HIDDEN * HIDDEN;
+pub const GENOME_SIZE: usize = OUTPUT_BASE + OUTPUTS * HIDDEN;
 pub const ACTION_NAMES: [&str; 6] = ["none", "collect", "transfer", "force", "emit", "reproduce"];
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
@@ -66,12 +70,9 @@ pub struct AgentGpu {
     /// Founder genome slot; observer bookkeeping, never a cognitive input.
     pub founder_family: u32,
     pub hidden: [f32; HIDDEN],
-    pub brain_nodes: u32,
-    pub brain_edges: u32,
-    /// Birth-time difference from the parent; zero for fresh founders.
-    pub node_change: i32,
-    pub edge_change: i32,
-    pub life: crate::life_record::LifeRecord,
+    /// Actual evaluated ticks, excluding the randomized initial biological age.
+    pub lived_ticks: u32,
+    pub lifetime_padding: u32,
 }
 impl Default for AgentGpu {
     fn default() -> Self {
@@ -108,7 +109,7 @@ pub struct PerceptionGpu {
 pub struct DecisionGpu {
     pub scores: [f32; 6],
     pub selected_action: u32,
-    pub score_padding: u32,
+    pub evaluated: u32,
     pub movement: [f32; 2],
     pub amount: f32,
     pub payload: f32,
@@ -117,8 +118,6 @@ pub struct DecisionGpu {
     pub invalid: u32,
     pub body_padding: u32,
     pub force: [f32; 2],
-    pub brain_nodes: u32,
-    pub brain_edges: u32,
     pub hidden: [f32; HIDDEN],
     pub update_gates: [f32; HIDDEN],
     pub inputs: [f32; INPUTS],
@@ -193,23 +192,11 @@ pub struct SimSettings {
     pub force_enabled: bool,
     pub communication_enabled: bool,
     pub evolving_landscape: bool,
-    /// Energy charged each tick for one expressed computational unit.
-    pub brain_node_cost: f32,
-    /// Every encoded connection costs upkeep, including zero-weight connections.
-    pub brain_edge_cost: f32,
-    /// Energy per logical genome value (counts, biases, edge triples), not padding.
-    pub genome_copy_cost: f32,
+    /// Independent per-parameter birth mutation probability; not a brain output.
     pub mutation_probability: f32,
     pub mutation_magnitude: f32,
-    /// Probability for each of duplication and deletion at a birth.
-    pub node_mutation_rate: f32,
-    /// Probability for each of connection insertion and deletion at a birth.
-    pub edge_mutation_rate: f32,
     pub founder_genomes: Vec<Vec<f32>>,
     pub founder_name: String,
-    /// Explicit genome index for each initial body; empty uses the ordinary bank cycle.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub founder_slots: Vec<u32>,
 }
 impl Default for SimSettings {
     fn default() -> Self {
@@ -231,33 +218,16 @@ impl Default for SimSettings {
             force_enabled: true,
             communication_enabled: true,
             evolving_landscape: true,
-            brain_node_cost: default_brain_node_cost(),
-            brain_edge_cost: default_brain_edge_cost(),
-            genome_copy_cost: default_genome_copy_cost(),
             mutation_probability: 0.02,
             mutation_magnitude: 0.03,
-            node_mutation_rate: 0.04,
-            edge_mutation_rate: 0.08,
-            founder_genomes: crate::founders::bundled().genomes.clone(),
-            founder_name: crate::founders::bundled().name.clone(),
-            founder_slots: vec![],
+            founder_genomes: Vec::new(),
+            founder_name: "primitive-world-random".into(),
         }
     }
 }
 impl SimSettings {
-    pub fn founder_index(&self, slot: usize) -> usize {
-        self.founder_slots
-            .get(slot)
-            .map_or_else(|| slot % self.founder_genomes.len().max(1), |&i| i as usize)
-    }
     pub fn validate(&self) -> Result<(), String> {
-        if (!self.founder_slots.is_empty()
-            && (self.founder_slots.len() != self.population as usize
-                || self
-                    .founder_slots
-                    .iter()
-                    .any(|&i| i as usize >= self.founder_genomes.len())))
-            || self.environment_rotation > 3
+        if self.environment_rotation > 3
             || self.population > MAX_AGENTS
             || self.birth_cooldown > 1_000_000
             || [
@@ -272,13 +242,8 @@ impl SimSettings {
                 self.sensor_radius,
                 self.reproduction_cost,
                 self.maturity_age,
-                self.brain_node_cost,
-                self.brain_edge_cost,
-                self.genome_copy_cost,
                 self.mutation_probability,
                 self.mutation_magnitude,
-                self.node_mutation_rate,
-                self.edge_mutation_rate,
             ]
             .iter()
             .any(|x| !x.is_finite() || *x < 0.0)
@@ -297,31 +262,15 @@ impl SimSettings {
             || self.habitat_contrast > 1.0
             || self.heterogeneity > 1.0
             || self.maturity_age > 11000.0
-            || self.brain_node_cost > 10.0
-            || self.brain_edge_cost > 10.0
-            || self.genome_copy_cost > 10.0
             || self.mutation_probability > 1.0
             || self.mutation_magnitude > 8.0
-            || 2.0 * (self.node_mutation_rate + self.edge_mutation_rate) > 1.0
         {
             return Err("Invalid primitive-world physical settings".into());
         }
         crate::founders::validate_genomes(&self.founder_genomes)
     }
 }
-/// Four unlabelled units with sparse, exchangeable random sensory connections.
+/// Fixed recurrent brains with random inherited parameters.
 pub fn random_genome(rng: &mut u32) -> [f32; GENOME_SIZE] {
     crate::brain::random_genome(rng)
-}
-
-fn default_brain_node_cost() -> f32 {
-    0.001
-}
-
-fn default_brain_edge_cost() -> f32 {
-    0.00002
-}
-
-fn default_genome_copy_cost() -> f32 {
-    0.001
 }

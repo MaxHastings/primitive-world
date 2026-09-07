@@ -18,7 +18,7 @@ fn profile_tick_throughput() {
     ))
     .unwrap();
     let mut s = Simulation::new(&d, &q, 42);
-    for population in [32, 4096] {
+    for population in [32, 1000, 4096] {
         s.settings.population = population;
         s.reset(&q);
         step(&mut s, &d, &q, 32);
@@ -43,9 +43,6 @@ fn profile_tick_throughput() {
         );
         s.reset(&q);
         step(&mut s, &d, &q, 32);
-        let archive = crate::reproduction_archive::Snapshot::initial(&s, &d, &q).unwrap();
-        s.reproduction_archive =
-            Some(crate::reproduction_archive::Archive::new(&d, &q, &s, &archive).unwrap());
         let telemetry = readback(&d, 144);
         let start = std::time::Instant::now();
         for _ in 0..64 {
@@ -68,7 +65,7 @@ fn profile_tick_throughput() {
             telemetry.unmap();
         }
         eprintln!(
-            "population={population}, batch=8 + telemetry + optimized archive: {:.0} ticks/s (no rendering)",
+            "population={population}, batch=8 + telemetry: {:.0} ticks/s (no rendering)",
             512.0 / start.elapsed().as_secs_f64()
         );
         let mut names: Vec<_> = [
@@ -110,7 +107,9 @@ fn profile_tick_throughput() {
             count: names.len() as u32 * 2,
         });
         for (i, name) in names.iter().enumerate() {
-            s.passes.get_mut(name).unwrap().timing = Some((queries.clone(), i as u32 * 2));
+            if let Some(pass) = s.passes.get_mut(name) {
+                pass.timing = Some((queries.clone(), i as u32 * 2));
+            }
         }
         step(&mut s, &d, &q, 1);
         let resolved = d.create_buffer(&wgpu::BufferDescriptor {
@@ -141,17 +140,19 @@ fn profile_tick_throughput() {
         for pass in s.passes.values_mut() {
             pass.timing = None;
         }
+        eprintln!(
+            "After 545 ticks: {} living, {} births",
+            s.metrics(&d, &q).unwrap().living,
+            s.metrics(&d, &q).unwrap().events[3]
+        );
     }
 }
-
-#[path = "reproductive_tests.rs"]
-mod reproduction;
 
 #[path = "experiment_tests.rs"]
 mod experiments;
 
-#[path = "capability_experiment.rs"]
-mod capability_experiment;
+#[path = "evolution_tests.rs"]
+mod evolution;
 
 #[path = "sensing_tests.rs"]
 mod sensing;
@@ -658,6 +659,7 @@ fn physical_cli_overrides_validate_and_cannot_override_checkpoints() {
         let args: Vec<String> = [
             "world",
             "--headless",
+            "--single-world",
             "--checkpoint",
             "unused.checkpoint",
             flag,
@@ -680,13 +682,10 @@ fn physical_cli_overrides_validate_and_cannot_override_checkpoints() {
 }
 
 #[test]
-fn default_founders_use_the_declared_random_bank() {
+fn default_founders_are_seed_specific_random_genomes() {
     let settings = SimSettings::default();
-    let bank = crate::founders::bundled();
-    assert_eq!(bank.genomes.len(), 256);
-    assert_eq!(settings.founder_genomes, bank.genomes);
-    assert_eq!(settings.founder_name, bank.name);
-    assert_eq!(bank.name, "primitive-world-random-256");
+    assert!(settings.founder_genomes.is_empty());
+    assert_eq!(settings.founder_name, "primitive-world-random");
 }
 
 #[test]
@@ -879,7 +878,7 @@ fn zero_world_mutation_law_copies_exactly_at_birth() {
 }
 
 #[test]
-fn checkpoint_rejects_corrupt_trace_and_lifetime_without_mutating_live_world() {
+fn checkpoint_rejects_corrupt_trace_and_memory_without_mutating_live_world() {
     use std::io::{Seek, SeekFrom, Write};
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
@@ -897,7 +896,7 @@ fn checkpoint_rejects_corrupt_trace_and_lifetime_without_mutating_live_world() {
         s.event_buffer.size(),
     ];
     let pos = 24
-        + serde_json::to_vec(&s.settings).unwrap().len() as u64
+        + s.checkpoint_metadata().unwrap().len() as u64
         + lengths.iter().map(|v| v + 8).sum::<u64>()
         + 8;
     let mut file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
@@ -915,21 +914,21 @@ fn checkpoint_rejects_corrupt_trace_and_lifetime_without_mutating_live_world() {
         bytemuck::cast_slice::<AgentGpu, u8>(&before),
         bytemuck::cast_slice::<AgentGpu, u8>(&after)
     );
-    // A corrupt lifetime must be rejected before it can feed future selector records.
-    let life_pos = 24
-        + serde_json::to_vec(&s.settings).unwrap().len() as u64
+    // Nonfinite recurrent memory must be rejected before changing live buffers.
+    let memory_pos = 24
+        + s.checkpoint_metadata().unwrap().len() as u64
         + 8
-        + std::mem::offset_of!(AgentGpu, life) as u64;
+        + std::mem::offset_of!(AgentGpu, hidden) as u64;
     let mut file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
     file.seek(SeekFrom::Start(pos)).unwrap();
     file.write_all(&0f32.to_le_bytes()).unwrap();
-    file.seek(SeekFrom::Start(life_pos)).unwrap();
-    file.write_all(&999u32.to_le_bytes()).unwrap();
+    file.seek(SeekFrom::Start(memory_pos)).unwrap();
+    file.write_all(&f32::NAN.to_le_bytes()).unwrap();
     drop(file);
     assert!(
         s.load_checkpoint(&q, &path)
             .unwrap_err()
-            .contains("life record")
+            .contains("body checkpoint")
     );
     assert_eq!(s.tick, 1);
     assert_eq!(
@@ -986,14 +985,7 @@ fn step(s: &mut Simulation, d: &wgpu::Device, q: &wgpu::Queue, n: u32) {
 fn scene(d: &wgpu::Device, q: &wgpu::Queue) -> Simulation {
     let mut s = Simulation::new(d, q, 91);
     s.settings.population = 0;
-    // Isolated physics fixtures disable the new brain economy so their expected
-    // reserve deltas remain about the body rule under test.
-    s.settings.brain_node_cost = 0.0;
-    s.settings.brain_edge_cost = 0.0;
-    s.settings.genome_copy_cost = 0.0;
     s.settings.mutation_probability = 0.0;
-    s.settings.node_mutation_rate = 0.0;
-    s.settings.edge_mutation_rate = 0.0;
     s.settings.resource_regeneration = 0.0;
     s.settings.evolving_landscape = false;
     s.reset(q);
@@ -1014,12 +1006,11 @@ fn body(pos: [f32; 2]) -> AgentGpu {
         generation: 1,
         target: MAX_AGENTS,
         lineage_id: 1,
-        brain_nodes: DEFAULT_NODES as u32,
         ..Default::default()
     }
 }
 fn fixed(action: usize, motion: [f32; 2]) -> [f32; GENOME_SIZE] {
-    let mut g = crate::brain::blank(DEFAULT_NODES);
+    let mut g = crate::brain::blank();
     g[OUTPUT_BIAS + action] = 2.0;
     g[OUTPUT_BIAS + 6] = motion[0];
     g[OUTPUT_BIAS + 7] = motion[1];
@@ -1029,9 +1020,7 @@ fn fixed(action: usize, motion: [f32; 2]) -> [f32; GENOME_SIZE] {
     }
     g
 }
-fn put(s: &Simulation, q: &wgpu::Queue, slot: usize, mut a: AgentGpu, g: &[f32; GENOME_SIZE]) {
-    a.brain_nodes = g[0] as u32;
-    a.brain_edges = g[1] as u32;
+fn put(s: &Simulation, q: &wgpu::Queue, slot: usize, a: AgentGpu, g: &[f32; GENOME_SIZE]) {
     for b in &s.agent_buffers {
         q.write_buffer(
             b,
@@ -1054,11 +1043,11 @@ fn temp(name: &str) -> std::path::PathBuf {
 
 #[test]
 fn layout_and_cli_contract() {
-    assert_eq!(GENOME_SIZE, 1686);
-    assert_eq!(std::mem::size_of::<AgentGpu>(), 544);
+    assert_eq!(GENOME_SIZE, 1188);
+    assert_eq!(std::mem::size_of::<AgentGpu>(), 184);
     assert_eq!(std::mem::size_of::<PerceptionGpu>(), 400);
-    assert_eq!(std::mem::size_of::<DecisionGpu>(), 1024);
-    assert_eq!(std::mem::size_of::<SelectionOutput>(), 1976);
+    assert_eq!(std::mem::size_of::<DecisionGpu>(), 568);
+    assert_eq!(std::mem::size_of::<SelectionOutput>(), 1160);
     assert_eq!(std::mem::size_of::<SimParams>(), 112);
     assert!(MAX_AGENTS as usize * GENOME_SIZE * 4 <= 256 * 1024 * 1024);
     for flag in [
@@ -1083,8 +1072,7 @@ fn recurrent_cpu_gpu_parity_and_observer_isolation() {
     let mut a = body([602.0, 902.0]);
     a.hidden = [0.1; HIDDEN];
     let mut g = crate::brain::random_genome(&mut 7351);
-    g[GATE_BIAS..GATE_BIAS + DEFAULT_NODES].fill(0.5);
-    g[0] = HIDDEN as f32;
+    g[GATE_BIAS..GATE_BIAS + HIDDEN].fill(0.5);
     g[GATE_BIAS + HIDDEN - 1] = 0.8;
     crate::brain::add_edge(&mut g, INPUTS - 1, HIDDEN - 1, 0.7);
     crate::brain::add_edge(&mut g, INPUTS + HIDDEN - 1, HIDDEN - 1, 0.4);
@@ -1436,9 +1424,9 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v6-variable-brain");
+    assert_eq!(MODEL_ID, "primitive-v8-population-search");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
-    assert_eq!(crate::founders::bundled().version, 7);
+    assert_eq!(crate::founders::bundled().version, 8);
 }
 #[test]
 fn nonfinite_controller_output_is_contained() {
@@ -1640,6 +1628,7 @@ fn headless_extinction_stops_without_waiting_for_the_report_or_tick_limit() {
         let args: Vec<String> = [
             "world",
             "--headless",
+            "--single-world",
             "--population",
             population,
             "--metabolic-cost",
@@ -1808,26 +1797,15 @@ fn family_diagnostics_count_juvenile_feeding_maturity_and_terminal_flow() {
 }
 
 #[test]
-fn sparse_mutation_cpu_gpu_parity_and_capacity() {
+fn fixed_parameter_mutation_cpu_gpu_parity() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     s.settings.mutation_probability = 0.4;
     s.settings.mutation_magnitude = 8.0;
-    s.settings.node_mutation_rate = 0.25;
-    s.settings.edge_mutation_rate = 0.25;
     s.update_params(&q);
     let mut all = Vec::new();
     for i in 0..256 {
-        let mut g = match i % 4 {
-            0 => crate::brain::blank(1),
-            1 => crate::brain::blank(HIDDEN),
-            _ => crate::brain::random_genome(&mut (i as u32)),
-        };
-        if i % 4 == 1 {
-            for e in 0..MAX_EDGES {
-                crate::brain::add_edge(&mut g, e % INPUTS, e / INPUTS, 0.0);
-            }
-        }
+        let g = crate::brain::random_genome(&mut (i as u32));
         all.extend(g);
     }
     q.write_buffer(&s.genome_buffer, 0, bytemuck::cast_slice(&all));
@@ -1853,7 +1831,6 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
     pass.dispatch(&mut e, 0, 4, 1);
     q.submit(Some(e.finish()));
     let actual = read::<f32>(&d, &q, &s.genome_buffer, 256 * GENOME_SIZE);
-    let mut changes = std::collections::HashSet::new();
     for (i, (parent, child)) in all
         .chunks_exact(GENOME_SIZE)
         .zip(actual.chunks_exact(GENOME_SIZE))
@@ -1862,67 +1839,50 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
         let mut expected = parent.to_vec();
         crate::brain::mutate(&mut expected, i as u32 * 7919, &s.settings);
         crate::brain::validate(child).unwrap();
-        assert_eq!(
-            &expected[..EDGE_BASE],
-            &child[..EDGE_BASE],
-            "metadata/bias mismatch at seed {i}"
-        );
         for (x, y) in expected.iter().zip(child) {
             near(*x, *y);
         }
-        changes.insert((
-            (child[0] as i32 - parent[0] as i32).signum(),
-            (child[1] as i32 - parent[1] as i32).signum(),
-        ));
-    }
-    for change in [(1, 1), (-1, -1), (0, 1), (0, -1)] {
-        assert!(changes.contains(&change), "{changes:?}");
+        assert_ne!(parent, child);
     }
 }
 
 #[test]
-fn brain_upkeep_and_child_copy_cost_charge_actual_structure() {
+fn fixed_brain_birth_cost_inheritance_and_memory_reset() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
-    s.settings.metabolic_cost = 0.0;
-    s.settings.brain_node_cost = 0.01;
-    s.settings.brain_edge_cost = 0.005;
-    s.settings.genome_copy_cost = 0.02;
-    let mut g = fixed(5, [0.0; 2]);
-    crate::brain::add_edge(&mut g, 0, 0, 0.0);
+    s.settings.metabolic_cost = 0.1;
+    let g = fixed(5, [0.0; 2]);
     let mut a = body([602.0, 902.0]);
     a.food = 0.0;
+    a.hidden = [0.8; HIDDEN];
     put(&s, &q, 0, a, &g);
     step(&mut s, &d, &q, 1);
     let agents = s.agent_snapshot(&d, &q).unwrap();
-    let child = agents
+    let (slot, child) = agents
         .iter()
-        .find(|b| b.alive != 0 && b.ancestry_depth == 1)
+        .enumerate()
+        .find(|(_, b)| b.alive != 0 && b.ancestry_depth == 1)
         .unwrap();
-    let upkeep = g[0] * s.settings.brain_node_cost + g[1] * s.settings.brain_edge_cost;
-    let copy = crate::brain::encoded_size(child.brain_nodes as usize, child.brain_edges as usize)
-        as f32
-        * s.settings.genome_copy_cost;
     near(
         a.energy - agents[0].energy,
-        upkeep + child.energy + 10.0 + copy,
+        s.settings.metabolic_cost + child.energy + 0.2 * s.settings.reproduction_cost,
     );
     assert_eq!(child.hidden, [0.0; HIDDEN]);
-    assert_eq!(
-        child.brain_edges, 1,
-        "Zero weight still occupies a paid connection"
-    );
-
-    // Body investment alone fits, but copied structure does not.
+    let genes = read::<f32>(&d, &q, &s.genome_buffer, (slot + 1) * GENOME_SIZE);
+    assert_eq!(&genes[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE], &g);
+    // Rejected birth spends only ordinary upkeep and never publishes a child genome.
     let mut s = scene(&d, &q);
-    s.settings.genome_copy_cost = 10.0;
+    a.energy = 20.0;
     put(&s, &q, 0, a, &g);
     step(&mut s, &d, &q, 1);
     assert_eq!(s.metrics(&d, &q).unwrap().living, 1);
-    let genes = read::<f32>(&d, &q, &s.genome_buffer, 2 * GENOME_SIZE);
-    assert!(genes[GENOME_SIZE..].iter().all(|v| *v == 0.0));
     near(
         s.agent_snapshot(&d, &q).unwrap()[0].energy,
         a.energy - s.settings.metabolic_cost,
+    );
+    assert!(
+        read::<f32>(&d, &q, &s.genome_buffer, 2 * GENOME_SIZE)[GENOME_SIZE..]
+            .iter()
+            .all(|v| *v == 0.0)
     );
 }

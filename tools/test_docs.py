@@ -25,7 +25,7 @@ class DocumentationTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertNotIn("C:/Users/", readme)
         self.assertIn("cargo run --release", readme)
-        self.assertIn("New Game and Load Game both use round-based evolution", readme)
+        self.assertIn("New Game and Load Game both retain evolution across worlds", readme)
         self.assertNotIn("--watch-loop", readme)
 
 

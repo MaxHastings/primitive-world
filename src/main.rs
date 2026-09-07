@@ -1,25 +1,17 @@
 mod brain;
-mod candidate_pool;
 mod controls;
 mod environment;
+mod evolution;
 mod experiments;
 mod family_observer;
 mod founders;
 mod headless;
 mod inspection;
 mod journey_observer;
-mod life_record;
-mod live_rounds;
 mod model;
-mod neural_selector;
 mod play_files;
 mod playback;
 mod renderer;
-mod reproduction_archive;
-mod save_files;
-mod selector_comparison;
-mod selector_rounds;
-mod selector_run;
 mod session;
 mod simulation;
 mod survivor_observer;
@@ -72,7 +64,7 @@ struct AppState {
     ticks_last_second: u32,
     ticks_window_accumulated: u32,
     living_agents: u32,
-    food_eaten: u32,
+    food_eaten: u64,
     starvation_deaths: u32,
     age_deaths: u32,
     births: u32,
@@ -95,7 +87,6 @@ struct AppState {
     pending_batch: Option<playback::PendingBatch>,
     gpu_tick_ms: Option<f32>,
     gpu_timing: Option<GpuTiming>,
-    rounds: Option<live_rounds::Viewer>,
     last_autosave: Instant,
 }
 
@@ -283,7 +274,6 @@ impl AppState {
             pending_batch: None,
             gpu_tick_ms: None,
             gpu_timing,
-            rounds: None,
             last_autosave: Instant::now(),
         };
         state.refresh_saves();
@@ -340,7 +330,7 @@ impl AppState {
             self.living_agents,
             MAX_AGENTS,
             self.render_fps,
-            self.rounds.as_ref().map_or(1, |r| r.world_number()),
+            self.simulation.progress.world,
             playback::SPEED_LABELS[self.speed_index],
             self.ticks_last_second as f32 / playback::BASE_TPS as f32,
             if self.paused { " | PAUSED" } else { "" }
@@ -656,13 +646,6 @@ fn main() {
         std::process::exit(2);
     }
     let args: Vec<_> = std::env::args().collect();
-    if args.iter().any(|a| a == "--train-loop") {
-        if let Err(error) = selector_run::run(&args) {
-            eprintln!("{error}");
-            std::process::exit(1);
-        }
-        return;
-    }
     if args.iter().any(|a| a == "--headless") {
         if let Err(error) = headless::run(&args) {
             eprintln!("{error}");

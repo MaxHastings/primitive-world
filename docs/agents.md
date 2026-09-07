@@ -5,31 +5,27 @@ same implementation in interactive and headless worlds.
 
 ## Computation and memory
 
-Fresh genomes contain four recurrent units and 144 explicit connections.
-Each has eight randomly selected sensory connections, four recurrent inputs,
-four candidate-to-gate inputs, and connections to all 20 outputs. There are no
-semantic node roles. Inheritance can change the graph within 1–64 units and
-0–512 connections; the 108 senses and 20 actuator outputs stay fixed.
+All brains contain eight fixed recurrent units, 108 senses, and 20 outputs.
+Dense sensory-to-candidate, previous-state-to-candidate, candidate-to-gate, and
+state-to-output matrices plus biases total 1,188 inherited float32 parameters.
+Eight units keep memory and gates compact without assigning semantic node roles.
+This size is an implementation choice, not a measured evolutionary optimum.
 
 Candidates use tanh(sensory projection + previous-state projection + bias).
 Gates use a linear projection of candidate values plus bias, clamped to [0,1].
 Each next state is `(1-gate)*previous + gate*candidate`. Zero retains exactly,
-one replaces, intermediate values blend. Outputs are linear projections of the
-next state. Sparse edges explicitly encode each projection; missing edges do
-no work. Gates have no mandatory positive bias or forgetting floor.
+one replaces, and intermediate values blend. Outputs project the next state.
+Fresh gate biases center on .5; inherited parameters may close gates completely.
+No mandatory forgetting floor is imposed.
 
-Structure and parameters stay fixed during life. Child state starts empty.
-World mutation rules can duplicate/delete a unit, insert/delete a connection,
-and perturb actual parameters at reproduction. Duplication copies incoming
-structure and splits outgoing weights, including self loops and gates, so it
-preserves the old computation before subsequent mutation. Deletion removes
-incident edges. There is no online optimizer or intelligence reward.
+Structure and parameters stay fixed during life. Birth and cross-world founding
+reset recurrent state. Ordinary parameter mutation applies at paid reproduction
+and to next-world variants. The shared mutation law is not a brain output.
+There is no node/edge mutation, online optimizer, or authored action reward.
 
-Upkeep is 0.001 energy per unit and 0.00002 per connection per tick by default.
-Every encoded connection costs upkeep even at zero weight. A disconnected unit
-still exists and costs energy. Reproduction additionally costs 0.001 per logical
-encoded value: `2 + 2*units + 20 + 3*connections`. Unused GPU allocation is
-zero padding, never inherited dormant material and never charged.
+Body and brain upkeep are covered by metabolism (.06 energy/tick by default).
+Construction is covered by the fixed .2 times reproduction-cost overhead. There
+is no separate connection upkeep or genome-length copying charge.
 
 ## Inputs (zero-based)
 
@@ -102,23 +98,16 @@ It is not a viability rescue: metabolism and digestion continue.
 
 ## Initialization and inheritance
 
-Default founders are 256 reproducible random genomes, cycled across fresh bodies.
-There is no food-seeking template, reproductive threshold template, favored
-action bias, or suppression of social actions. Input weights start uniform in
-[-.25,.25], recurrent weights/state biases and gate weights/biases in [-.35,.35],
-and output weights/biases in [-.5,.5]. These exchangeable numerical scales are
-authored assumptions. The seed is 0x184a2321 with the LCG in src/brain.rs.
+Default founders each receive a seed-specific random genome. Sensory weights start
+uniformly in [-.1,.1]; other weights and biases start in [-.35,.35]. Gate biases
+receive an additional .5, giving [.15,.85]. These are numerical initial conditions,
+not authored food-seeking or reproduction policies. Random does not mean competent.
 
---random-founders instead gives each initial body an independently generated
-genome using the environment seed. --founders loads an explicitly named bank
-without additional initialization noise. Invalid banks fail, never fall back.
+`--founders` imports an explicitly named current-format bank without initialization
+noise. It repeats across founding positions; invalid data fails without fallback.
 
-Birth inheritance and [between-world evolution](evolution.md) are distinct.
-The native loop samples up to 256 individuals per world, including founders and
-descendants, and retains their factual lifetime records and exact genomes. A
-separate selector uses completed lifetime records to choose founding copies for
-matched trials. It learns from natural world duration; the candidate pool refreshes
-between rounds independently of reward. Founding copies are unmutated. Mutation
-occurs at ordinary in-world births, and body state and memories reset between worlds.
-
-The bundled bank contains untrained random graphs. Random does not mean competent.
+Paid births copy the parent's fixed genome with the world-controlled mutation
+probability and magnitude, default .02 and .03. Every newborn starts with fresh
+body state and zero memory. Between worlds, [population selection](evolution.md)
+compares complete founding groups. Later biological generations affect world
+duration, but their genomes are not directly copied into subsequent founding groups.

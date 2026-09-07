@@ -16,10 +16,6 @@ pub struct SampledBody {
     pub age: f32,
     pub energy: f32,
     pub food: f32,
-    pub brain_nodes: u32,
-    pub brain_edges: u32,
-    pub node_change: i32,
-    pub edge_change: i32,
     /// None means the source did not record an individual observation tick.
     pub observed_tick: Option<u32>,
 }
@@ -146,10 +142,6 @@ pub fn observe_cached(
                     age: a.age,
                     energy: a.energy,
                     food: a.food,
-                    brain_nodes: a.brain_nodes,
-                    brain_edges: a.brain_edges,
-                    node_change: a.node_change,
-                    edge_change: a.edge_change,
                     observed_tick: Some(sim.tick),
                 }
             })

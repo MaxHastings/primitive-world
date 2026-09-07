@@ -22,7 +22,6 @@ pub struct UiState {
     pub name: String,
     pub seed: u32,
     pub setup: simulation::SimSettings,
-    pub evolution: live_rounds::Config,
     pub has_world: bool,
     pub saves: Vec<experiments::SavedExperiment>,
     pub library_notice: String,
@@ -44,7 +43,6 @@ impl UiState {
             name: "My first evolution".into(),
             seed: 1,
             setup: simulation::SimSettings::default(),
-            evolution: live_rounds::Config::default(),
             has_world: command_line_world,
             saves: Vec::new(),
             library_notice: String::new(),
@@ -166,8 +164,7 @@ fn draw_home(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                         if large_button(ui, "New Game", "Start with random, untrained brains") {
                             *action = Action::NewGame;
                         }
-                        if large_button(ui, "Load Game", "Resume your saved evolution and selector")
-                        {
+                        if large_button(ui, "Load Game", "Resume your saved world") {
                             *action = Action::LoadGame;
                         }
                         ui.add_space(14.0);
@@ -196,13 +193,8 @@ fn draw_new(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                 heading(ui, "New Game", "Fresh brains. Your own evolutionary line.");
                 ui.label("Experiment name");
                 ui.add(egui::TextEdit::singleline(&mut state.ui.name).desired_width(380.0));
-                ui.label("Evolution runs in rounds. The selector tests several populations before refreshing its pool.");
-                egui::CollapsingHeader::new("Evolution setup").show(ui, |ui| {
-                    ui.add(egui::Slider::new(&mut state.ui.evolution.compositions, 2..=8).text("Populations per batch"));
-                    ui.add(egui::Slider::new(&mut state.ui.evolution.environments, 2..=8).text("Matched environments"));
-                    ui.add(egui::Slider::new(&mut state.ui.evolution.batches, 1..=16).text("Batches per round"));
-                    ui.add(egui::Slider::new(&mut state.ui.evolution.retention, 1..=16).text("Pool retention in rounds"));
-                });
+                ui.label("Founding populations compete on how long their worlds stay populated.");
+                ui.small("Current population and candidate face the same environment. Living worlds are never cut short.");
                 egui::CollapsingHeader::new("World setup").show(ui, |ui| {
                     ui.add(egui::DragValue::new(&mut state.ui.seed).prefix("Seed "));
                     ui.add(
@@ -227,7 +219,7 @@ fn draw_new(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                 ui.add_space(16.0);
                 if ui
                     .add(
-                        egui::Button::new("Start evolution")
+                        egui::Button::new("Start world")
                             .fill(egui::Color32::from_rgb(57, 117, 78)),
                     )
                     .clicked()
@@ -263,11 +255,7 @@ fn draw_load(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                 ui.text_edit_singleline(&mut state.ui.import_path);
             }
             ui.add_space(18.0);
-            heading(
-                ui,
-                "Load Game",
-                "Continue your saved round-based evolution.",
-            );
+            heading(ui, "Load Game", "Continue your saved world.");
             if !state.ui.library_notice.is_empty() {
                 ui.colored_label(egui::Color32::YELLOW, &state.ui.library_notice);
             }
@@ -289,7 +277,6 @@ fn draw_load(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                                 saved.record.tick,
                                 saved.record.living
                             ));
-                            ui.small(saved.record.rounds.position());
                             ui.small(format!(
                                 "{} · {} ticks in your experiment",
                                 saved.record.origin, saved.record.total_ticks
@@ -328,10 +315,7 @@ fn draw_play(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                     egui::Label::new(egui::RichText::new(name).strong()).truncate(),
                 )
                 .on_hover_text(name);
-                if let Some(rounds) = &state.rounds {
-                    ui.small(format!("Round {}", rounds.training.round))
-                        .on_hover_text(rounds.position());
-                }
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("Save").clicked() {
                         *action = Action::Save;
@@ -446,22 +430,63 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
         "Life in this world",
         "Population and history at a glance.",
     );
-    if let Some(rounds) = &state.rounds {
-        ui.strong(rounds.position());
-        ui.small(if rounds.training.comparison.is_none() {
-            "The initial world is collecting lifetime records. Selection begins after natural extinction."
-        } else { "Every population faces the same environments. Learning happens after the whole batch finishes." });
-        if let Some(last) = &rounds.last_batch {
-            ui.collapsing("Last completed comparison", |ui| {
-                if let Some(rows) = last["duration_ticks"].as_array() {
-                    for (i, row) in rows.iter().enumerate() {
-                        ui.label(format!("Population {}: {} ticks", i + 1, row));
-                    }
-                }
-            });
-        }
-        ui.separator();
+
+    let p = &state.simulation.progress;
+    ui.strong(format!("World {}", p.world));
+    let evaluating = match p.phase {
+        evolution::Phase::Incumbent => "Current population",
+        evolution::Phase::Challenger => "Candidate",
+    };
+    ui.label(format!(
+        "Comparison {} · {evaluating} #{}",
+        p.comparison,
+        p.population_id()
+    ));
+    if let Some(b) = &p.baseline {
+        ui.small(format!(
+            "Current population lasted {} ticks on this same seed. Candidate must last longer.",
+            b.duration
+        ));
+        ui.small(format!(
+            "Candidate founders: {} unchanged, {} mutated, {} fresh random",
+            state.simulation.settings.population - p.mutated_founders - p.random_founders,
+            p.mutated_founders,
+            p.random_founders
+        ));
+    } else {
+        ui.small(
+            "Establishing the current population's duration on this comparison's environment.",
+        );
     }
+    if let Some(o) = &p.completed {
+        ui.small(format!("Natural extinction after {} ticks", o.duration));
+    } else {
+        ui.small("World still in progress: no completed score. Biological evolution continues.");
+    }
+    ui.small(format!(
+        "{} candidates accepted · only completed world duration decides",
+        p.accepted_challengers
+    ));
+    ui.collapsing("Completed worlds", |ui| {
+        ui.small(
+            "Recent 64 worlds. Feeding, births and generations are observations, not rewards.",
+        );
+        for o in p.history.iter().rev() {
+            let result = match o.challenger_accepted {
+                Some(true) => " · candidate accepted",
+                Some(false) => " · current population kept",
+                None => " · baseline",
+            };
+            ui.small(format!(
+                "World {} · population #{} · seed {} · {} ticks{}",
+                o.world, o.population_id, o.seed, o.duration, result
+            ));
+            ui.small(format!(
+                "{} births · generation {} · {:.1} food collected / {:.1} digested",
+                o.births, o.maximum_generation, o.food_collected, o.food_ingested
+            ));
+        }
+    });
     egui::Grid::new("world_stats")
         .num_columns(2)
         .striped(true)
@@ -472,20 +497,7 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
             ui.label("Births");
             ui.strong(state.births.to_string());
             ui.end_row();
-            if let Some(rounds) = &state.rounds {
-                ui.label("Candidate pool");
-                ui.strong(format!("{} / 256", rounds.pool_size()));
-                ui.end_row();
-                ui.label("Incoming candidates");
-                ui.strong(rounds.training.intake.len().to_string());
-                ui.end_row();
-                ui.label("Selector updates");
-                ui.strong(rounds.training.learner().updates.to_string());
-                ui.end_row();
-                ui.label("Completed trials");
-                ui.strong(rounds.training.learner().completed_worlds.to_string());
-                ui.end_row();
-            }
+
             ui.label("Tick");
             ui.strong(state.simulation.tick.to_string());
             ui.end_row();
@@ -508,8 +520,8 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
     }
     if let Some(x) = &state.evolution_snapshot {
         ui.small(format!(
-            "{} lineages · maximum ancestry {} · mean {:.2}",
-            x.unique_lineages, x.maximum_ancestry_depth, x.mean_ancestry_depth
+            "{} individual identities (not genetic diversity) · maximum ancestry {} · mean {:.2}",
+            x.individual_identities, x.maximum_ancestry_depth, x.mean_ancestry_depth
         ));
     }
 }

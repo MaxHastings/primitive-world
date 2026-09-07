@@ -13,8 +13,8 @@ from pathlib import Path
 import numpy as np
 
 
-N, H, G = 16384, 64, 1686
-OUTPUT_BIAS, EDGE_BASE = 130, 150
+N, H, G = 16384, 8, 1188
+OUTPUT_BIAS, OUTPUT_BASE = 16, 1028
 ACTIONS = ["none", "collect", "transfer", "force", "emit", "reproduce"]
 
 
@@ -33,33 +33,20 @@ AGENT = dtype([
     ('moved','f4',2),('lineage_id','u4',()),('parent_lineage','u4',()),
     ('birth_tick','u4',()),('birth_parent_slot','u4',()),('ancestry_depth','u4',()),
     ('lifetime_births','u4',()),('distance_travelled','f4',()),('founder_family','u4',()),
-    ('hidden','f4',H),('brain_nodes','u4',()),('brain_edges','u4',()),('node_change','i4',()),('edge_change','i4',())])
+    ('hidden','f4',H),('lived_ticks','u4',()),('lifetime_padding','u4',())])
 DECISION = dtype([
-    ('scores','f4',6),('selected_action','u4',()),('score_padding','u4',()),
+    ('scores','f4',6),('selected_action','u4',()),('evaluated','u4',()),
     ('movement','f4',2),('amount','f4',()),('payload','f4',()),('target','u4',()),
     ('target_generation','u4',()),('invalid','u4',()),('body_padding','u4',()),
-    ('force','f4',2),('brain_nodes','u4',()),('brain_edges','u4',()),('hidden','f4',H),('update_gates','f4',H),('inputs','f4',108)])
+    ('force','f4',2),('hidden','f4',H),('update_gates','f4',H),('inputs','f4',108)])
 
 
 def action_readout(genomes):
     out = np.zeros((len(genomes), 6, H+1), dtype=np.float64)
-    for i, g in enumerate(genomes):
-        n, count = int(g[0]), int(g[1])
-        assert 1 <= n <= H and 0 <= count <= 512 and g[0] == n and g[1] == count
-        assert np.isfinite(g).all()
-        assert (np.abs(g[2:EDGE_BASE]) <= 4).all()
-        assert (g[2+n:66] == 0).all() and (g[66+n:130] == 0).all()
-        out[i,:,H] = g[OUTPUT_BIAS:OUTPUT_BIAS+6]
-        seen = set()
-        for src, dst, weight in g[EDGE_BASE:EDGE_BASE+count*3].reshape(-1,3):
-            s, d = int(src), int(dst)
-            assert src == s and dst == d and 0 <= s < 108+n and abs(weight) <= 4
-            assert 0 <= d < n or (s >= 108 and (H <= d < H+n or 2*H <= d < 2*H+20))
-            assert (s,d) not in seen
-            seen.add((s,d))
-            if 2*H <= d < 2*H+6:
-                out[i,d-2*H,s-108] = weight
-        assert (g[EDGE_BASE+count*3:] == 0).all()
+    assert genomes.shape[1] == G
+    assert np.isfinite(genomes).all() and (np.abs(genomes) <= 4).all()
+    out[:,:,:H] = genomes[:,OUTPUT_BASE:OUTPUT_BASE+6*H].reshape(-1,6,H)
+    out[:,:,H] = genomes[:,OUTPUT_BIAS:OUTPUT_BIAS+6]
     return out
 
 
@@ -69,7 +56,7 @@ def suppression(genomes):
     out = action_readout(genomes)
     result = {}
     for action in [2,3,4]:
-        # For h in [-1,1]^64, min(score_rival-score_action) = db - sum(abs(dw)).
+        # For h in [-1,1]^8, min(score_rival-score_action) = db - sum(abs(dw)).
         delta = out[:,:6,:] - out[:,action:action+1,:]
         lower = delta[:,:,H] - np.abs(delta[:,:,:H]).sum(axis=2)
         lower[:,action] = -np.inf
@@ -86,16 +73,18 @@ def suppression(genomes):
 
 def audit(path):
     raw = path.read_bytes()
-    assert raw[:12] == b'PRIMWORLD018', 'Expected primitive-world checkpoint 18'
+    assert raw[:12] == b'PRIMWORLD022', 'Expected primitive-world checkpoint 22'
     seed,tick,size = struct.unpack_from('<III',raw,12)
-    settings = json.loads(raw[24:24+size]); pos=24+size; buffers=[]
-    expected=[N*416,512*512*4,512*512*4,512*512*32,128,65536*40,N*400,N*1024,N*G*4]
+    metadata = json.loads(raw[24:24+size]); settings = metadata["settings"]; pos=24+size; buffers=[]
+    population_bytes = settings['population'] * G * 4
+    expected=[N*184,512*512*4,512*512*4,512*512*32,128,65536*40,N*400,N*568,N*G*4,
+              population_bytes, population_bytes if metadata['progress']['phase']=='challenger' else 0]
     for length in expected:
         actual=struct.unpack_from('<Q',raw,pos)[0]; pos+=8
         assert actual == length, (actual,length)
         buffers.append(memoryview(raw)[pos:pos+actual]); pos+=actual
     assert pos == len(raw), 'Truncated or trailing checkpoint data'
-    assert AGENT.itemsize==416 and DECISION.itemsize==1024
+    assert AGENT.itemsize==184 and DECISION.itemsize==568
     agents=np.frombuffer(buffers[0],dtype=AGENT)
     stats=np.frombuffer(buffers[4],dtype='<u4').astype(np.uint64)
     decisions=np.frombuffer(buffers[7],dtype=DECISION)
@@ -116,7 +105,7 @@ def audit(path):
     founders=np.asarray(settings.pop('founder_genomes'),dtype=np.float32)
     result={
         'checkpoint':str(path.resolve()),'checkpoint_sha256':hashlib.sha256(raw).hexdigest(),
-        'model':'primitive-v6-variable-brain','checkpoint_schema':18,'seed':seed,'tick':tick,
+        'model':'primitive-v8-population-search','checkpoint_schema':22,'seed':seed,'tick':tick,
         'settings_without_genomes':settings,'living':len(slots),
         'births':int(stats[3]),'starvation_deaths':int(stats[1]),'age_deaths':int(stats[2]),
         'emissions':int(stats[9]),'completed_transfers':int(stats[4]),'completed_force':int(stats[5]),

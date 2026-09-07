@@ -3,14 +3,14 @@
 ## Bounded headless world
 
 ```sh
-cargo run --release -- --headless --random-founders --seed 42 --ticks 200000 --sample 1024 --output reports/seed42.json
+cargo run --release -- --headless --single-world --seed 42 --ticks 200000 --sample 1024 --output reports/seed42.json
 ```
 
 `--ticks` is an additional tick budget, including when resuming a checkpoint.
 The run ends at its horizon or extinction; extinction is detected within a GPU
 batch of at most 32 ticks. A bounded diagnostic is not the unlimited visible loop.
 Choose new output files. Reports include the build/model, settings, sampled
-history, ancestry and architecture distributions, and an explicit termination reason.
+history, ancestry, and an explicit termination reason.
 
 Optional `--families` adds read-only founder-family accounting for fresh worlds
 of at most 200,000 ticks. It does not rank founders or train the brains.
@@ -20,7 +20,7 @@ inside the world. See `cargo run --release -- --help` for the complete interface
 ## Individual journeys
 
 ```sh
-cargo run --release -- --headless --checkpoint path/to/world.checkpoint --ticks 16384 --sample 1024 --journeys reports/journeys.jsonl --journey-sample 32 --output reports/journey-world.json
+cargo run --release -- --headless --single-world --checkpoint path/to/world.checkpoint --ticks 16384 --sample 1024 --journeys reports/journeys.jsonl --journey-sample 32 --output reports/journey-world.json
 ```
 
 This is a separate continuation of a save, not an observer attached to an already
@@ -45,54 +45,12 @@ Optional Python 3.11+ tools:
 python tools/analyze_departures.py reports/journeys.jsonl --metabolic-cost 0.06 --movement-cost 0.01 --output reports/departures.json
 ```
 
-Supply the actual checkpoint costs. These range estimates omit brain upkeep,
-which varies by individual, and remain optimistic bounds rather than full budgets.
+Supply the actual checkpoint costs, including metabolism for body and brain.
+Range estimates remain optimistic bounds rather than full budgets.
 The tool uses only the standard library. `tools/audit_checkpoint_communication.py`
 additionally requires NumPy (`python -m pip install -r tools/requirements.txt`).
 It audits checkpoint counters and provable action suppression; it does not
 establish that communication helps receivers or that unsuppressed actions occur.
-
-## Controlled capability comparisons
-
-The opt-in GPU test `run_registered_comparison` evaluates a frozen population in
-fresh, matched worlds. A registered JSON plan contains physical `settings`, a
-`horizon` (1–32,768 ticks), a positive `sample` interval, `provenance`, and `trials`.
-Settings must contain 256 founder genomes. Each trial specifies a unique file-safe
-`id`, `seed`, `rotation` (0–3), `replicate`, and `condition`:
-
-- `evolved`: the plan’s genomes with the complete controller.
-- `random`: the bundled random genomes with the complete controller.
-- `no_memory`: the evolved genomes with previous private state zeroed for both
-  recurrent feedback and gated retention on every decision.
-  Previous-action and physical-feedback inputs remain available.
-- `no_signals`: the evolved genomes with neighbor signal payload/presence inputs
-  masked. Neighbor bodies remain visible; emission costs and other physics remain.
-- `simple`: a fixed random walker that collects and reproduces when mature,
-  recovered, and at 75 energy. It uses movement effort 0.5, changes heading every
-  128 ticks, collects amount 1, and invests amount 0.5 in reproduction. This
-  diagnostic policy does not use food cues or evolve its behavior.
-
-All conditions start with identical physical bodies for a given seed/orientation;
-brain metadata and its structural costs follow the chosen genome bank.
-The experiment changes decisions only in the test executable; ordinary play has
-no diagnostic controller switch. Save the plan before inspecting outcomes and
-use multiple seeds and repeats. Keep the full plan, source provenance, and reports
-locally; founder genes and private checkpoint paths do not belong in source control.
-
-In PowerShell, using a prepared plan and a new output directory:
-
-```powershell
-$env:PRIMITIVE_EXPERIMENT_PLAN = 'reports/comparison/plan.json'
-$env:PRIMITIVE_EXPERIMENT_OUTPUT = 'reports/comparison/trials'
-cargo test --release run_registered_comparison -- --ignored --nocapture --test-threads=1
-```
-
-Reports include population history, food acquisition, births, action counters,
-and total agent-ticks. Extinction is detected within 31 extra ticks; worlds alive
-at the horizon are censored. GPU repeat variation must be considered when
-interpreting treatment differences. A memory-removal effect shows dependence on
-recurrence, not necessarily long-term recall; signal sends alone do not demonstrate
-useful communication. A fixed walker is one explicit baseline, not an optimal one.
 
 ## Measure tick throughput
 
@@ -101,8 +59,8 @@ cargo test --release profile_tick_throughput -- --ignored --nocapture --test-thr
 ```
 
 This manual diagnostic prints the GPU/driver, batch throughput for worlds starting
-with 32 and 4,096 bodies, the cost of taking full survivor snapshots every small
-batch, the current telemetry/archive path, and individual GPU pass timestamps.
+with 32, 1,000 and 4,096 bodies, the cost of taking full survivor snapshots every small
+batch, the current telemetry path, and individual GPU pass timestamps.
 Each throughput case resets the same seeded world and warms up for 32 ticks;
 populations can change during the following 512 ticks. Per-pass timings are from
 one subsequent tick, not an average. Rendering and Windows event-loop waits are
@@ -123,8 +81,7 @@ The standard-library tool incrementally archives complete game receipts and thei
 checks archive bytes against source SHA-256 values, and leaves originals alone.
 It never controls the viewer, changes difficulty, restarts a run, or deletes old
 files. It is a one-shot command, not a scheduler; the viewer itself handles its
-five-minute autosaves. Incomplete `.partial` saves are ignored. Headless training
-states use a different layout; preserve their directories and referenced checkpoints together.
+five-minute autosaves. Incomplete `.partial` saves are ignored. Headless evolution saves a complete checkpoint directly with --save-checkpoint.
 
 Checkpoint header/layout validation is not a GPU semantic load test. ZIP archives
 are local copies, not off-device protection. Keep space available, copy valuable

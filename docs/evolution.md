@@ -1,202 +1,102 @@
-# Evolution, without a behavior checklist
+# Evolution across worlds
 
-The default viewer and headless runner share one round-based evolution engine.
-New Game starts it automatically; Load Game restores its complete training state.
-Only new-model saves are accepted. There is no older execution or save protocol.
+The goal is longer populated worlds through feeding, survival, reproduction and
+continued ecological generations. The only selection score is the number of
+biological ticks from founding through natural extinction. Feeding, births and
+ancestry are observations, never added rewards.
 
-## Within a world
+## One current population and one candidate
 
-Brains choose actions and continuous outputs from local senses and private state.
-Structure and weights stay fixed during life. A birth can duplicate or delete
-one generic recurrent unit, insert or delete a connection, and perturb encoded
-parameters. Default probabilities per birth are 4% for duplication, 4% for
-deletion, 8% for connection insertion, and 8% for removal; these are mutually
-exclusive structural proposals. A blocked proposal at the capacity or minimum
-is a no-op, not a retry. Equal proposal rates do not guarantee equal accepted
-changes or a flat distribution of architecture sizes.
+1. Evaluate the current founding population in a seeded world until natural extinction.
+2. Make a candidate from that saved founding group. Reset the same environment,
+   body positions, starting resources, ages and physical settings, and evaluate it.
+3. Accept the candidate only if its world lasts strictly longer. A tie or shorter
+   world keeps the complete current founding population.
+4. Start the next comparison with a fresh seed and evaluate the current population again.
 
-After the structural proposal, each actual bias/weight has a 2% chance of a
-uniform ±0.03 perturbation, clipped to [-4,4]. New edge weights use that same
-magnitude and bounds. Mutation settings are visible world rules, with no neural
-outputs controlling them. Parent state is unchanged; child memory starts empty.
-Useful behavior can spread when its carriers leave descendants.
+A comparison is two complete worlds, not a timed training round. A world that
+continues reproducing can run indefinitely. Pause, saving, a headless tick budget,
+or the integer tick-capacity guard never count as extinction or a losing score.
+GPU batches can finish up to 31 empty ticks after extinction; those ticks count
+as executed work but do not increase the recorded world duration.
 
-Each unit and encoded connection costs upkeep, and copying the child's actual
-genome adds to the reproduction bill. Four units is the fresh starting size,
-one is the minimum, and 64 units / 512 connections is the allocation ceiling.
-There is no reward for growing and no success-triggered growth rule.
+The same seed controls geography, weather and starting bodies in each pair. GPU
+competition can still vary trajectories. One paired seed is a deliberately small
+comparison, not proof of general improvement. Moving to a fresh seed can produce
+shorter worlds even after a candidate has won an earlier comparison.
 
-Inside organisms there is no loss function, survival reward buffer, action-use bonus, or requirement
-to communicate, fight, cooperate, or migrate. In-world reproduction is chosen and
-must be paid for. Extinction is allowed.
+## What is inherited
 
-## Selection and lifetime records
+The saved founding group is the genotype being selected, including each founder
+position's genome and the group's mixture and multiplicities. Default New Game
+and headless runs create one seed-specific random genome per founding body.
+An explicitly imported current-format bank repeats across founding positions.
 
-The separate selector receives only factual lifetime measurements: action counts,
-food and energy flows, movement, local observations, reproduction, and death
-causes. Missing observations are explicit. Genomes, brain sizes, identities,
-archive age, source-world labels, and authored fitness scores never enter its
-input API. Stored genomes are opaque material for exact copying after selection.
+Each candidate copies the full current founding group. It mutates uniformly
+selected 5% of positions (floor, minimum one). Every fourth candidate also replaces
+1% of positions with fresh random genomes (floor, minimum one). These positions
+are disjoint; a one-founder exploratory candidate is entirely random. Other
+positions remain unchanged. There is no identity ranking, genetic clustering,
+novelty score or separate learned selector.
 
-The population model uses a shared 16-unit encoder, two attention blocks, and a
-sequential decoder conditioned on the pool and previously selected copies. The
-individual control is a learned linear scorer on the same measurements. Uniform
-selection is the untrained control. Learned policies retain uniform exploration
-and behavior-independent composition exploration. Useful combinations are not
-guaranteed to be learned.
+Parameter mutation uses the world settings, default probability .02 and magnitude
+.03, bounded to [-4,4]. For candidate construction only, if all mutation draws leave
+a selected genome unchanged, one parameter is nudged toward zero by the configured
+magnitude where that change is representable; otherwise it is counted unchanged.
+Setting either mutation
+setting to zero disables parameter changes; periodic random exploration remains.
+Births keep the ordinary mutation rule without the candidate fallback.
 
-`life-reservoir-v3` measures every individual's lifetime on the GPU and retains up
-to 256 individuals through one identity-hash sampling opportunity per individual,
-including founders and early deaths. It does not rank behavior. Selected founding
-copies receive fresh bodies and reset recurrent memory. Mutation occurs only at
-ordinary births; founding slots are shuffled independently of selection order.
+**Within-world descendant genomes are not directly copied into future founding
+groups.** Their inherited mutations, feeding and reproduction affect the world's
+survival duration and therefore selection of the group that founded them. This
+keeps successful population combinations intact rather than selecting isolated
+survivors. It selects founding groups capable of sustaining an evolving ecology;
+it does not archive every useful mutation that appears later within that ecology.
 
-## Training in rounds
+Fresh founders and biological newborns retain their existing different endowments.
+All new bodies start with zero recurrent memory. Founding is initialization, not a
+paid birth. Biological births still require maturity, energy, recovery and a slot.
+Weights are fixed during each life; gated private state changes every tick.
 
-A round holds one candidate pool fixed across several learning batches. Each batch
-proposes multiple founding populations and runs each on the same environment
-seeds. Only when every world in the batch has naturally ended does world duration
-update the selector. Other populations on each matched seed supply the comparison
-baseline. The next batch uses the updated selector and the same pool. A failed
-population cannot erase the alternatives being tested.
+## State and progress
 
-```sh
-cargo run --release -- --train-loop runs/rounds-42 --rounds 8 --random-founders --seed 42 --ticks 200000
-```
+The overview names the current population or candidate, comparison number,
+matched baseline duration, founder changes, and accepted candidates. A bounded
+history retains the latest 64 completed worlds, with seed, population and parent
+population IDs, exact duration, births, highest ancestry generation (founders are
+zero), collected food, digested food and the comparison result. These are not
+claims of genetic diversity or intelligence.
 
-Without `--candidate-pool`, an initial world runs naturally to extinction to supply
-the first pool; it earns no selector reward. Alternatively, supply a completed
-`candidates.archive.json` or a round trial's `.archive.json`. Round training rejects
-live archives and records of externally removed organisms. It does not invent
-missing histories or accept a genome-only bank as measured evidence.
+Checkpoints preserve current bodies, hidden memory, all live genomes, ecology,
+traces, counters, the complete current/candidate founding groups, paired baseline,
+completed outcome, history, provenance and search RNG. Saving at extinction before
+advancing is valid; resuming cannot score that world twice. Derived indexes and
+terrain are rebuilt. Manual ecological intervention makes a world ineligible for
+population comparison. Read-only diagnostic observers do not alter eligibility.
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `--rounds N` | 8 in headless mode | Total rounds, 1-100000; viewer runs until stopped |
-| `--batches-per-round N` | 3 | Batches before pool refresh, 1-1000 |
-| `--compositions N` | 3 | Populations per batch, 2-32 |
-| `--comparison-seeds A,B,...` | `11,22` | 2-32 distinct matched training seeds |
-| `--pool-retention N` | 4 | Maximum selectable rounds per record, 1-16 |
-| `--ticks N` | 2000 | Total GPU tick budget, including the initial world |
-| `--selector-policy` | `population` | `population`, `individual`, or `uniform` |
-| `--selector-model PATH` | Fresh weights | Import weights into a new experiment |
-| `--selector-frozen` | Off | Evaluate without weight updates |
+There is one current model, `primitive-v8-population-search`: checkpoint 22,
+game receipt 4, founder bank 8. Noncurrent files are rejected, never converted,
+executed through a compatibility path, overwritten or deleted.
 
-Defaults mean 18 experimental worlds per round: three batches of three populations
-in two environments. The seed list stays fixed throughout training. Evaluation
-must use separate seeds and pools. Controls use the same trial structure,
-retention rules, and declared simulation budget.
+The viewer saves on explicit Save, menu, close and every five minutes of changed
+state. Saves remain append-only; no automatic deletion. A default checkpoint is
+roughly 115–120 MB depending on phase. At twelve autosaves/hour, allow roughly
+1.4 GB/hour, plus explicit saves. A crash can lose progress since the last save,
+including completed worlds. Raw headless checkpoints are written when requested.
 
-### Pool renewal
-
-At each round boundary, remove the oldest `ceil(pool_size / retention)` records
-and all records whose age reaches the retention limit. Admit up to
-`ceil(256 / retention)` new records from that round's experimental worlds. At full
-capacity with retention four, this replaces 64 of 256 records. Small pools can grow
-as candidates become available, or remain below capacity if there are too few
-distinct individuals. No synthetic padding copies are added.
-
-Sampling allocates one candidate per contributing world before allocating second
-candidates, and so on. Random world order resolves indivisible remainders; unused
-allowances from small worlds go to other worlds. Individuals within each world
-have random sampling order. A short failed world has the same admission opportunity
-as a long one. Neither the selector nor world duration decides retention. The
-incoming reservoir is bounded to the next refresh allowance regardless of trial
-count or world length.
-
-Selecting copies never renews an old record's admission date. A new organism that
-actually lives in another world can contribute its own new record, even with an
-identical genome. Provenance includes round, batch, population, seed, and local
-identity, so separate worlds cannot accidentally merge matching local IDs.
-Measurements and opaque genomes share one ordered mapping through replay and refresh.
-
-### Pausing and resuming
-
-A tick budget or five-minute save point pauses the current world. It receives no
-extinction reward, the batch receives no partial update, and the pool stays fixed.
-Use a **new** output directory for resume:
+## Command line
 
 ```sh
-cargo run --release -- --train-loop runs/rounds-42-resumed --round-resume runs/rounds-42/round-state.json --ticks 200000
+cargo run --release -- --headless --seed 42 --ticks 200000 --sample 1024 --output reports/evolution.json --save-checkpoint reports/evolution.checkpoint
+cargo run --release -- --headless --checkpoint reports/evolution.checkpoint --ticks 200000 --output reports/continued.json --save-checkpoint reports/continued.checkpoint
 ```
 
-State preserves the pool, incoming sampling tickets and RNG, proposals, completed
-durations, weights and optimizer, and current physical checkpoint. Resume cannot
-override experiment settings. A completed experiment is final; importing
-`selector.json` starts a separate experiment with those weights.
+Headless mode defaults to the same population loop as the viewer. `--ticks` is
+an additional execution budget across worlds. `--sample` controls reporting,
+not selection. A living world at the budget remains unscored. Existing output
+paths are refused; checkpoint settings cannot be overridden.
 
-`round-training.json` reports progress, compute use, policy, hardware, settings,
-and the current comparison. Per-batch reports contain copy counts, raw durations,
-and paired differences. Trial archives and complete/advanced state receipts retain
-source mappings. `work-*.state.json` provides recovery points. Completion receipts
-can resume around the learner update without applying credit twice. The final
-state retains the final pool without refreshing into an additional round.
-
-Keep states with the checkpoint paths they reference. Paths are absolute; moving
-only a JSON file does not relocate its checkpoint. `selector.json` alone is not
-resumable training state. The backup helper preserves complete game receipts and their checkpoints.
-
-Round training states use format 2; retained pools use format 1. Selector weights
-use format 4. Game receipts use format 2 with an embedded viewer snapshot in format
-1; physical checkpoints use format 20. Older saves and weights are rejected, not
-converted. Physical rules and genome encoding are unchanged.
-
-## Single comparison batches
-
-For a single fixed-pool matched batch, use `--single-batch`:
-
-```sh
-cargo run --release -- --train-loop runs/matched --single-batch --candidate-pool runs/rounds-42/bootstrap.archive.json --comparison-seeds 101,202 --compositions 3 --ticks 200000
-cargo run --release -- --train-loop runs/matched-resumed --comparison-resume runs/matched/comparison-state.json --ticks 200000
-```
-
-The default viewer runs rounds without a predetermined round count. Headless
-`--train-loop` defaults to eight rounds and stops or pauses at its compute budget.
-Viewer saves embed the current archive and training state beside a relative
-checkpoint filename; headless resume states reference their paused checkpoint.
-
-## Evaluation
-
-Training reports do not establish improvement. Compare learned and uniform policies
-with equal simulation budgets and matching initial sources/settings. Repeat across
-independent training seeds. Separately test frozen models on unseen candidate
-pools and disjoint environment seeds:
-
-```sh
-python tools/benchmark_selector.py --exe target/release/primitive_world.exe --pool runs/held-out/bootstrap.archive.json --population-model runs/rounds-42/selector.json --output reports/selector-comparison --seeds 101 202 303 --ticks 20000
-```
-
-An optional `--individual-model` supplies a separately trained linear scorer.
-Omitting a model uses an untrained policy; a missing named file is an error.
-Reports retain each completed duration and mark unfinished trials as null. Means
-and paired differences are available only for complete batches. The tick limit is
-a total compute budget, not a separate survival horizon for each world. Resume
-unfinished batches before comparing their means. Evaluation worlds must not feed training.
-
-Engineering checks cover fixed pools, failed proposals, equal-world admission,
-record expiration, genome/record alignment, gradients, natural extinction, and
-resume across credit and refresh boundaries. These establish mechanics, not
-learned improvement or sustained evolutionary progress.
-
-## Ancestry and evidence
-
-The inspector’s ancestry depth counts births inside the current world. Across-world
-ancestry can be reconstructed through `founder_family`, sampled source bodies,
-and the candidate pool and selected-slot mappings in saved round states. Adding each world’s maximum depth is wrong:
-the deepest family may not be the one that was carried forward. External exact
-copies should be reported separately from biological births.
-
-Longer survival is one observation, not proof of better brains. Track population,
-births, successful feeding, recovery after bottlenecks, and completed journeys.
-Action selection and successful execution are different measurements. Emission
-does not establish useful communication; displacement does not establish cooperation.
-
-For a comparison, freeze both an earlier and a later bank, evaluate them on the
-same held-out seeds/settings and orientations, and report all results, including
-extinctions and runs still alive at the evaluation horizon. Evaluation worlds must
-not seed training. Changing difficulty mid-run is a valid play experiment, but it
-breaks a simple before/after learning comparison.
-
-The public tree does not ship an allegedly “smartest” bank. Share an interesting
-gene pool explicitly with its model, source, settings, and limitations. Preserve
-the source checkpoint if you want to preserve the whole experience.
+`--headless --single-world` explicitly selects bounded diagnostics, stopping at
+extinction or its horizon. Family, journey, survivor and famine options require
+that mode. They are observation/intervention tools, not a second evolution engine.

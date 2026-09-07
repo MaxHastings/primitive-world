@@ -11,17 +11,19 @@ A small artificial-life sandbox with no script for how to survive.
 
 </details>
 
-Watch tiny neural-network agents find food, reproduce, exchange signals, move one
-another, and sometimes go extinct. Food patches shift. Families inherit brains whose structure can grow, shrink, and change. In evolution mode, a separate lifetime-record selector chooses the next founding population
-and learns from its world duration without closing the window.
+Watch neural agents find food, reproduce, exchange signals and move one another.
+They inherit fixed gated recurrent brains. A saved founding population and a
+sparsely mutated candidate face the same environment. Only a strictly longer
+completed world replaces the current population. There is no learned selector.
 
-Primitive World is an experimental, local GPU
-simulation—not a claim of general intelligence or guaranteed cooperation.
+The objective is worlds staying populated through continued ecological generations.
+Random brains can fail quickly; selecting longer worlds does not establish
+intelligence or cooperation.
 
 ## Play
 
 Install Rust **1.93.1 or newer** and use a GPU/driver that supports wgpu compute.
-Windows is locally tested; other platforms need verification. No Python, account,
+Windows is the local build platform; this revision has static verification only. No Python, account,
 model download, or server is required to play.
 
 ```sh
@@ -31,33 +33,30 @@ cargo run --release
 On Windows, you can also double-click `Play.cmd`. It builds the current source
 before opening it. The window shows the application version and world status.
 
-**New Game and Load Game both use round-based evolution.** No special flag is
-needed. Start a new game, choose its world rules, and watch the initial world
-collect lifetime records. The selector then tries several founding populations
-on matched environments, learns after each completed batch, and refreshes its
-bounded candidate pool between rounds. One failed population cannot erase its
-alternatives.
+**New Game and Load Game both retain evolution across worlds.** Fresh founders
+have seed-specific random brains. Each paired comparison preserves the current
+founding group unless its candidate produces a longer world. Candidates change
+5% of founder positions; every fourth candidate also introduces 1% fresh random
+brains. Memory gates, near/far regional senses and sector targeting stay active.
+Within-world descendants affect world duration; their genomes are not directly
+archived into the next founding group. See the precise [inheritance rule](docs/evolution.md).
 
-Defaults: three populations per batch, two environments, three batches per round,
-and four-round retention. The viewer shows the current round, batch, population,
-environment, pool size, and selector updates. Pause, speed controls, inspection,
-saving, and loading work throughout. World rules stay fixed for fair comparisons.
-
-For a command-line start in the viewer:
+For the same evolutionary loop without rendering:
 
 ```sh
-cargo run --release -- --random-founders --seed 42 --view-speed 16x
+cargo run --release -- --headless --seed 42 --ticks 200000 --sample 1024 --output reports/evolution.json --save-checkpoint reports/evolution.checkpoint
 ```
 
-For the same training engine without a viewer:
+Resume with new output paths:
 
 ```sh
-cargo run --release -- --train-loop runs/my-rounds --rounds 8 --random-founders --seed 42 --ticks 200000
+cargo run --release -- --headless --checkpoint reports/evolution.checkpoint --ticks 200000 --output reports/continued.json --save-checkpoint reports/continued.checkpoint
 ```
 
-Tick budgets pause unfinished headless work. See [training and resume](docs/evolution.md#training-in-rounds).
-Only saves from this round-based model can be loaded; there is no conversion of
-older experiments.
+Tick budgets pause headless work. The viewer saves automatically and exposes
+pause, MAX speed, inspection, and load controls. See [evolution](docs/evolution.md)
+for the selection rule and [performance](docs/performance.md) for clearly labelled earlier measurements and current limits.
+Only the current save format loads. Noncurrent data is rejected without conversion or deletion.
 
 **Expect early failures.** Random neural weights are not a competent starter
 policy, nor random action sampling. Some agents repeat ineffective actions.
@@ -68,7 +67,7 @@ Selection takes generations, and improvement is not guaranteed.
 - Start at 1x and click an agent to inspect its real inputs, energy, and decisions.
 - Speed up to watch generations, population collapses, and recoveries.
 - Choose physical costs and food growth in New Game to test evolution under pressure.
-- Save and return to the same trial, candidate pool, and selector state.
+- Save and return to the same world, current/candidate founding groups, and search RNG state.
 - Watch whether departures from depleted food lead to feeding and offspring elsewhere.
 
 Space pauses; WASD/arrows pan; mouse wheel zooms; Home fits the world; L changes
@@ -76,20 +75,14 @@ the information lens. See the [play guide](docs/play.md) for saving and resuming
 
 ## What evolves?
 
-Fresh agents start with **four generic recurrent units**. Their sparse brains can
-inherit duplicated or deleted units and connections, within a 1–64 unit and
-512-connection capacity. Every encoded unit and connection costs energy; copying
-a larger genome costs more at birth. Zero activity does not waive the bill.
+Every brain has **eight gated recurrent units, 108 inputs, and 20 outputs**:
+1,188 inherited weights and biases. Structure is fixed. Parameters mutate at
+paid births and when making next-world variants; they stay fixed during a life.
+Private recurrent memory changes each tick and starts at zero in every new body.
 
-The sensory field and body remain local: near/far food and body counts, the
-nearest neighbor in each compass sector, six actions, and continuous movement.
-Structure and weights stay fixed during life; private memory changes and resets
-at birth. Mutation follows shared world rules. Survival and paid reproduction
-determine which lineages remain. There is no complexity reward, growth schedule,
-authored vocabulary, or handwritten destination planner.
-
-A tiny successful lineage is as welcome as a larger one. Watch what develops;
-use the inspector and optional diagnostics when something invites a closer look.
+Sensing and interactions are local. Body and brain upkeep share the metabolic
+cost; fixed reproduction overhead covers construction. No structure upkeep,
+copy-length tax, brain-controlled mutation, or online weight optimizer remains.
 
 ## Learn more
 

@@ -132,23 +132,26 @@ impl AppState {
         if self.pending_batch.is_some() {
             return;
         }
-        if self.living_agents == 0 && self.rounds.is_some() {
+        if self.living_agents == 0 {
+            self.step_requested = false;
             self.service_completed_world();
             return;
         }
-        let mut ticks = if self.step_requested {
+        let ticks = if self.step_requested {
             self.step_requested = false;
             1
         } else {
             self.scheduler.take(now, self.speed_index)
-        };
-        if self.rounds.is_some() {
-            let bounded = ticks.min(32 - self.simulation.tick % 32);
-            if self.speed_index != 8 {
-                self.scheduler.credit += f64::from(ticks - bounded);
-            }
-            ticks = bounded;
         }
+        .min(model::MAX_WORLD_TICKS.saturating_sub(self.simulation.tick));
+
+        if self.simulation.tick >= model::MAX_WORLD_TICKS {
+            self.paused = true;
+            self.file_status =
+                "World tick capacity reached. Save is available; this is not an extinction.".into();
+            return;
+        }
+
         if ticks == 0 {
             return;
         }
@@ -243,7 +246,7 @@ impl AppState {
         let u32_at =
             |offset: usize| bytemuck::pod_read_unaligned::<u32>(&mapped[offset..offset + 4]);
         self.living_agents = u32_at(0);
-        self.food_eaten = u32_at(4);
+        self.food_eaten = u64::from(u32_at(4)) + (u64::from(u32_at(60)) << 32);
         self.starvation_deaths = u32_at(8);
         self.age_deaths = u32_at(12);
         self.births = u32_at(16);
@@ -286,12 +289,7 @@ impl AppState {
         );
         self.ticks_window_accumulated = self.ticks_window_accumulated.saturating_add(pending.ticks);
         self.world_revision = self.world_revision.saturating_add(1);
-        if let Some(rounds) = &mut self.rounds {
-            rounds.training.executed_ticks = rounds
-                .training
-                .executed_ticks
-                .saturating_add(u64::from(pending.ticks));
-        }
+
         if let Some(experiment) = &mut self.experiment {
             experiment.total_ticks = experiment.total_ticks.saturating_add(pending.ticks as u64);
         }
@@ -308,22 +306,26 @@ impl AppState {
     }
 
     fn service_completed_world(&mut self) {
-        if self.rounds.is_some() && self.living_agents == 0 {
+        if self.living_agents == 0 && self.simulation.progress.completed.is_none() {
+            match self.simulation.complete_world(&self.device, &self.queue) {
+                Ok(()) => self.world_revision = self.world_revision.saturating_add(1),
+                Err(e) => {
+                    self.paused = true;
+                    self.file_status = format!("Population comparison paused: {e}");
+                    return;
+                }
+            }
+        }
+        if self.living_agents == 0 && !self.paused {
             let result = (|| -> Result<(), String> {
-                // The checkpoint and full state are durable before credit or refresh.
-                self.file_status = self.save_experiment()?;
-                self.rounds.as_mut().unwrap().advance(
-                    &mut self.simulation,
-                    &self.device,
-                    &self.queue,
-                )?;
+                self.simulation.advance_world(&self.device, &self.queue)?;
                 self.world_revision = self.world_revision.saturating_add(1);
                 self.clear_world_observers();
                 self.refresh_metrics()?;
-                self.file_status = self.save_experiment()?;
-                if self.rounds.as_ref().unwrap().training.completed {
-                    self.paused = true;
-                }
+                self.file_status = format!(
+                    "World {}: {:?} population evaluation",
+                    self.simulation.progress.world, self.simulation.progress.phase
+                );
                 Ok(())
             })();
             if let Err(e) = result {

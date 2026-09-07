@@ -14,11 +14,29 @@ from run_io import save_state, exclusive_run
 
 def checkpoint_bytes():
     settings = b"{}"
-    return (b"PRIMWORLD020" + struct.pack("<III", 42, 128, len(settings))
-            + settings + b"".join(struct.pack("<Q", 4) + b"data" for _ in range(9)))
+    return (b"PRIMWORLD022" + struct.pack("<III", 42, 128, len(settings))
+            + settings + b"".join(struct.pack("<Q", 4) + b"data" for _ in range(11)))
 
 
 class BackupTests(unittest.TestCase):
+    def test_fixed_brain_checkpoint_and_receipt_are_backed_up(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = root / "run"
+            run.mkdir()
+            metadata = b'{"settings":{},"progress":{"world":2}}'
+            data = (b"PRIMWORLD022" + struct.pack("<III", 42, 128, len(metadata))
+                    + metadata + b"".join(struct.pack("<Q", 4) + b"data" for _ in range(11)))
+            (run / "save.checkpoint").write_bytes(data)
+            (run / "save-1.json").write_text(json.dumps(dict(
+                version=4, model="primitive-v8-population-search", world=2,
+                checkpoint="save.checkpoint", seed=42, tick=128)))
+            with redirect_stdout(StringIO()):
+                backup_run.run(run, root / "backup")
+            latest = json.loads((root / "backup" / "latest.json").read_text())
+            self.assertEqual(latest["full_checkpoints_backed_up"], 1)
+            self.assertEqual((run / "save.checkpoint").read_bytes(), data)
+
     def test_previous_checkpoint_models_are_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "old.checkpoint"
@@ -66,7 +84,7 @@ class BackupTests(unittest.TestCase):
             source = checkpoints / "save.checkpoint"
             source.write_bytes(checkpoint_bytes())
             (checkpoints / "unfinished.partial").write_bytes(b"incomplete")
-            (run / "save-100.json").write_text(json.dumps(dict(version=2,rounds=dict(version=1),checkpoint="save.checkpoint",seed=42,tick=128)))
+            (run / "save-100.json").write_text(json.dumps(dict(version=4,model="primitive-v8-population-search",checkpoint="save.checkpoint",seed=42,tick=128)))
             backup = root / "backup"
             with redirect_stdout(StringIO()):
                 backup_run.run(run, backup)
@@ -76,12 +94,12 @@ class BackupTests(unittest.TestCase):
             self.assertEqual(len(list((backup / "archives").glob("*.zip"))), 1)
             self.assertEqual(source.read_bytes(), checkpoint_bytes())
 
-    def test_incomplete_round_receipt_is_deferred(self):
+    def test_incomplete_current_receipt_is_deferred(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             run = root / "run"
             run.mkdir()
-            (run / "save-100.json").write_text(json.dumps(dict(version=2,rounds=dict(version=1),checkpoint="missing.checkpoint",seed=42,tick=128)))
+            (run / "save-100.json").write_text(json.dumps(dict(version=4,model="primitive-v8-population-search",checkpoint="missing.checkpoint",seed=42,tick=128)))
             with redirect_stdout(StringIO()):
                 backup_run.run(run,root/"backup")
             latest=json.loads((root/"backup"/"latest.json").read_text())
@@ -95,7 +113,7 @@ class BackupTests(unittest.TestCase):
             run.mkdir()
             (run / "save.checkpoint").write_bytes(checkpoint_bytes()[:15])
             (run / "save-100.json").write_text(json.dumps(dict(
-                version=2, rounds=dict(version=1), checkpoint="save.checkpoint",
+                version=4, model="primitive-v8-population-search", checkpoint="save.checkpoint",
                 seed=42, tick=128)))
             with redirect_stdout(StringIO()):
                 backup_run.run(run, root / "backup")
@@ -107,10 +125,10 @@ class BackupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             with exclusive_run(root):
-                save_state(root, {"round": 1})
+                save_state(root, {"world": 1})
             with exclusive_run(root):
-                save_state(root, {"round": 2})
-            self.assertEqual(json.loads((root / "summary.json").read_text()), {"round": 2})
+                save_state(root, {"world": 2})
+            self.assertEqual(json.loads((root / "summary.json").read_text()), {"world": 2})
             self.assertFalse((root / "summary.next.json").exists())
 
 

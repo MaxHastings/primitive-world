@@ -16,18 +16,9 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
             s.agent.generation,
             s.agent.ancestry_depth
         ));
-        let settings = &state.simulation.settings;
-        ui.small(format!(
-            "Brain upkeep {:.5}/tick · genome construction {:.4}",
-            s.agent.brain_nodes as f32 * settings.brain_node_cost
-                + s.agent.brain_edges as f32 * settings.brain_edge_cost,
-            crate::brain::encoded_size(s.agent.brain_nodes as usize, s.agent.brain_edges as usize)
-                as f32
-                * settings.genome_copy_cost
-        ));
         ui.label(format!(
-            "Energy {:.2} · inventory {:.3} · age {:.0}",
-            s.agent.energy, s.agent.food, s.agent.age
+            "Energy {:.2} · inventory {:.3} · age {:.0} · lived {} ticks",
+            s.agent.energy, s.agent.food, s.agent.age, s.agent.lived_ticks
         ));
         ui.label(format!(
             "Position {:.1}, {:.1} · fixed compass sensors",
@@ -56,8 +47,9 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
                 s.decision.force
             ));
             ui.small(format!(
-                "Brain: {} units · {} connections · birth change {:+} / {:+}",
-                s.agent.brain_nodes, s.agent.brain_edges, s.agent.node_change, s.agent.edge_change
+                "Fixed brain: {} memory units, {} inherited parameters",
+                model::HIDDEN,
+                model::GENOME_SIZE
             ));
             ui.collapsing("Surrounding sensory field", |ui| {
                 ui.label(format!("Underfoot {:.3}", s.perception.resource_here));
@@ -101,13 +93,7 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
                 }
             });
             ui.collapsing("Internal recurrent state", |ui| {
-                for (i, v) in s
-                    .agent
-                    .hidden
-                    .iter()
-                    .take(s.agent.brain_nodes as usize)
-                    .enumerate()
-                {
+                for (i, v) in s.agent.hidden.iter().enumerate() {
                     ui.small(format!(
                         "{i}: {v:.4} · update {:.3}",
                         s.decision.update_gates[i]
@@ -168,11 +154,15 @@ pub fn history(ui: &mut egui::Ui, state: &mut AppState) {
 pub fn physics(ui: &mut egui::Ui, state: &mut AppState) {
     ui.collapsing("World rules", |ui| {
         let s = &state.simulation.settings;
-        ui.small("Rules stay fixed so every population gets a fair comparison. Configure a New Game to change them.");
+        ui.small("Configure a New Game to change world rules.");
+        ui.small("Saves keep all revisions (~115–120 MB each at 1,000 founders); autosave every five minutes. No automatic deletion.");
         ui.label(format!("Founding bodies: {}", s.population));
         ui.label(format!("Food regeneration: {:.3}", s.resource_regeneration));
-        ui.label(format!("Metabolism: {:.3} · movement cost: {:.3}", s.metabolic_cost, s.movement_energy_cost));
-        ui.label(format!("Brain upkeep: {:.4} per unit · {:.5} per connection", s.brain_node_cost, s.brain_edge_cost));
+        ui.label(format!(
+            "Metabolism: {:.3} · movement cost: {:.3}",
+            s.metabolic_cost, s.movement_energy_cost
+        ));
+        ui.small("Metabolism includes brain upkeep. Reproduction overhead includes construction.");
     });
 }
 

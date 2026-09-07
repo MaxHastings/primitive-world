@@ -8,7 +8,7 @@ pub(crate) struct Compute {
     pipeline: wgpu::ComputePipeline,
     groups: Vec<wgpu::BindGroup>,
     #[cfg(test)]
-    timing: Option<(wgpu::QuerySet, u32)>,
+    pub(crate) timing: Option<(wgpu::QuerySet, u32)>,
 }
 fn pair<'a>(f: impl Fn(usize) -> Vec<&'a wgpu::Buffer>) -> Vec<Vec<&'a wgpu::Buffer>> {
     (0..2).map(f).collect()
@@ -153,6 +153,9 @@ fn readback(device: &wgpu::Device, size: u64) -> wgpu::Buffer {
     })
 }
 pub struct Simulation {
+    device: wgpu::Device,
+    pub search: crate::evolution::Search,
+    pub progress: crate::evolution::Progress,
     pub settings: SimSettings,
     pub seed: u32,
     pub tick: u32,
@@ -167,7 +170,6 @@ pub struct Simulation {
     pub params_buffer: wgpu::Buffer,
     pub alive_count_buffer: wgpu::Buffer,
     pub family_observer: Option<crate::family_observer::FamilyObserver>,
-    pub reproduction_archive: Option<crate::reproduction_archive::Archive>,
     pub(crate) active_indices: wgpu::Buffer,
     birth_dispatch: wgpu::Buffer,
     birth_flags: wgpu::Buffer,
@@ -175,7 +177,7 @@ pub struct Simulation {
     fertility_buffer: wgpu::Buffer,
     terrain_buffer: wgpu::Buffer,
     terrain_epoch: u32,
-    death_stats_buffer: wgpu::Buffer,
+    pub(crate) death_stats_buffer: wgpu::Buffer,
     event_buffer: wgpu::Buffer,
     summary_buffer: wgpu::Buffer,
     tick_params_buffer: wgpu::Buffer,
@@ -197,7 +199,7 @@ impl Simulation {
             MAX_AGENTS as u64 * GENOME_SIZE as u64 * 4
                 <= u64::from(device.limits().max_storage_buffer_binding_size)
                     .min(device.limits().max_buffer_size),
-            "GPU storage limit below V6 variable-brain genome budget"
+            "GPU storage limit below the fixed-brain genome budget"
         );
         let genome_buffer = buffer(
             device,
@@ -468,18 +470,6 @@ impl Simulation {
                 }),
             ),
         );
-        add!(
-            "record_life",
-            "../shaders/record_life.wgsl",
-            "main",
-            "rwru",
-            pair(|s| vec![
-                &agent_buffers[1 - s],
-                &agent_buffers[s],
-                &perception_buffer,
-                &params_buffer
-            ])
-        );
         for entry in ["clear", "propose", "resolve"] {
             let name = format!("interact_{entry}");
             add!(
@@ -619,6 +609,9 @@ impl Simulation {
             pair(|s| vec![&agent_buffers[s], &intervention_params_buffer])
         );
         let mut sim = Self {
+            device: device.clone(),
+            search: crate::evolution::Search::default(),
+            progress: crate::evolution::Progress::initial(seed),
             settings: SimSettings::default(),
             seed,
             tick: 0,
@@ -633,7 +626,6 @@ impl Simulation {
             params_buffer,
             alive_count_buffer,
             family_observer: None,
-            reproduction_archive: None,
             decision_buffer,
             active_indices,
             birth_dispatch,
@@ -656,14 +648,39 @@ impl Simulation {
         sim
     }
     pub fn reset(&mut self, queue: &wgpu::Queue) {
-        self.reproduction_archive = None;
-        self.family_observer = None;
-        self.settings.validate().expect("valid reset settings");
-        queue.write_buffer(
+        self.reset_with_genomes(queue, None);
+    }
+    pub(crate) fn reset_with_genomes(&mut self, queue: &wgpu::Queue, founders: Option<&[f32]>) {
+        // Clear unused storage on the GPU; upload only the founding population.
+        let mut clear = self.device.create_command_encoder(&Default::default());
+        for buffer in [
             &self.genome_buffer,
-            0,
-            bytemuck::cast_slice(&build_genomes(self.seed, &self.settings)),
-        );
+            &self.event_buffer,
+            &self.death_stats_buffer,
+            &self.perception_buffer,
+            &self.decision_buffer,
+        ] {
+            clear.clear_buffer(buffer, 0, None);
+        }
+        queue.submit(Some(clear.finish()));
+        self.family_observer = None;
+        self.progress = crate::evolution::Progress::initial(self.seed);
+        self.settings.validate().expect("valid reset settings");
+        let random;
+        let genes = match founders {
+            Some(g) => g,
+            None => {
+                random = build_genomes(self.seed, &self.settings);
+                &random
+            }
+        };
+        if !genes.is_empty() {
+            queue.write_buffer(&self.genome_buffer, 0, bytemuck::cast_slice(genes));
+        }
+        self.search = crate::evolution::Search {
+            incumbent: genes.to_vec(),
+            challenger: Vec::new(),
+        };
         let data = build_agents(self.seed, &self.settings);
         for b in &self.agent_buffers {
             queue.write_buffer(b, 0, bytemuck::cast_slice(&data));
@@ -699,19 +716,14 @@ impl Simulation {
             &self.terrain_buffer,
             0,
             bytemuck::cast_slice(&crate::environment::rotate_grid(
-                build_terrain_pair(self.seed, 0, self.settings.habitat_contrast),
+                terrain_pair(
+                    &habitat,
+                    &build_habitat_at(self.seed, 1, self.settings.habitat_contrast),
+                ),
                 RESOURCE_GRID as usize,
                 self.settings.environment_rotation,
             )),
         );
-        for b in [
-            &self.event_buffer,
-            &self.death_stats_buffer,
-            &self.perception_buffer,
-            &self.decision_buffer,
-        ] {
-            queue.write_buffer(b, 0, &vec![0; b.size() as usize]);
-        }
         self.tick = 0;
         self.current_buffer = 0;
         self.terrain_epoch = 0;
@@ -741,6 +753,10 @@ impl Simulation {
         ticks: u32,
     ) {
         assert!(ticks <= 32);
+        assert!(
+            ticks <= MAX_WORLD_TICKS.saturating_sub(self.tick),
+            "World tick capacity reached; save without scoring extinction"
+        );
         if ticks == 0 {
             return;
         }
@@ -803,11 +819,7 @@ impl Simulation {
             self.scan(e, "birth", MAX_AGENTS);
             self.dispatch(e, "birth_compact", 0, groups, 1);
             self.passes["birth"].dispatch_indirect(e, d, &self.birth_dispatch);
-            self.dispatch(e, "record_life", d, groups, 1);
             self.dispatch(e, "release", d, groups, 1);
-            if let Some(archive) = &self.reproduction_archive {
-                archive.encode(e, d);
-            }
             if let Some(observer) = &self.family_observer {
                 observer.encode(e, d);
             }
@@ -904,6 +916,7 @@ impl Simulation {
         radius: f32,
         delta: f32,
     ) {
+        queue.write_buffer(&self.death_stats_buffer, 30 * 4, bytemuck::bytes_of(&1u32));
         queue.write_buffer(
             &self.intervention_params_buffer,
             0,
@@ -932,6 +945,7 @@ impl Simulation {
         center: [f32; 2],
         radius: f32,
     ) {
+        queue.write_buffer(&self.death_stats_buffer, 30 * 4, bytemuck::bytes_of(&1u32));
         queue.write_buffer(
             &self.intervention_params_buffer,
             0,
@@ -1001,7 +1015,7 @@ fn params_for(tick: u32, s: &SimSettings, seed: u32) -> SimParams {
         agent_count: MAX_AGENTS,
         tick,
         time_and_costs: [
-            s.brain_edge_cost,
+            0.0,
             s.resource_regeneration,
             s.movement_energy_cost,
             s.metabolic_cost,
@@ -1010,14 +1024,14 @@ fn params_for(tick: u32, s: &SimSettings, seed: u32) -> SimParams {
             s.consume_amount,
             s.conversion_efficiency,
             s.heterogeneity,
-            s.genome_copy_cost,
+            0.0,
         ],
         sensor_and_padding: [s.sensor_radius, s.maturity_age, 0.0, s.reproduction_cost],
         physical: [
             f32::from(s.force_enabled),
             f32::from(s.communication_enabled),
             s.motor_response_gain,
-            s.brain_node_cost,
+            0.0,
         ],
         lifecycle: [
             seed,
@@ -1025,12 +1039,7 @@ fn params_for(tick: u32, s: &SimSettings, seed: u32) -> SimParams {
             s.environment_rotation,
             u32::from(s.evolving_landscape),
         ],
-        mutation: [
-            s.mutation_probability,
-            s.mutation_magnitude,
-            s.node_mutation_rate,
-            s.edge_mutation_rate,
-        ],
+        mutation: [s.mutation_probability, s.mutation_magnitude, 0.0, 0.0],
     }
 }
 fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
@@ -1044,12 +1053,6 @@ fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
                 ],
                 WORLD_SIZE,
                 s.environment_rotation,
-            ),
-            life: crate::life_record::LifeRecord::initial(
-                65.0,
-                if i < s.population { 2.0 } else { 0.0 },
-                0,
-                0,
             ),
             energy: 65.0,
             food: if i < s.population { 2.0 } else { 0.0 },
@@ -1065,36 +1068,21 @@ fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
             founder_family: if s.founder_genomes.is_empty() {
                 i
             } else {
-                s.founder_index(i as usize) as u32
-            },
-            brain_nodes: if i >= s.population {
-                0
-            } else if s.founder_genomes.is_empty() {
-                DEFAULT_NODES as u32
-            } else {
-                s.founder_genomes[s.founder_index(i as usize)][0] as u32
-            },
-            brain_edges: if i >= s.population {
-                0
-            } else if s.founder_genomes.is_empty() {
-                (DEFAULT_NODES * 8 + 2 * DEFAULT_NODES * DEFAULT_NODES + OUTPUTS * DEFAULT_NODES)
-                    as u32
-            } else {
-                s.founder_genomes[s.founder_index(i as usize)][1] as u32
+                (i as usize % s.founder_genomes.len()) as u32
             },
             ..Default::default()
         })
         .collect()
 }
 fn build_genomes(seed: u32, s: &SimSettings) -> Vec<f32> {
-    let mut genes = vec![0.0; MAX_AGENTS as usize * GENOME_SIZE];
+    let mut genes = vec![0.0; s.population as usize * GENOME_SIZE];
     let mut rng = seed ^ 0x184a2321;
     for i in 0..s.population as usize {
         let row = &mut genes[i * GENOME_SIZE..(i + 1) * GENOME_SIZE];
         if s.founder_genomes.is_empty() {
             row.copy_from_slice(&random_genome(&mut rng));
         } else {
-            row.copy_from_slice(&s.founder_genomes[s.founder_index(i)]);
+            row.copy_from_slice(&s.founder_genomes[i % s.founder_genomes.len()]);
         }
     }
     genes
@@ -1106,10 +1094,13 @@ fn build_habitat(seed: u32, contrast: f32) -> Vec<f32> {
 fn build_terrain_pair(seed: u32, epoch: u32, contrast: f32) -> Vec<[f32; 4]> {
     let a = build_habitat_at(seed, epoch, contrast);
     let b = build_habitat_at(seed, epoch.wrapping_add(1), contrast);
+    terrain_pair(&a, &b)
+}
+fn terrain_pair(a: &[f32], b: &[f32]) -> Vec<[f32; 4]> {
     let ma = (a.iter().sum::<f32>() / a.len() as f32).max(0.001);
     let mb = (b.iter().sum::<f32>() / b.len() as f32).max(0.001);
     a.iter()
-        .zip(&b)
+        .zip(b)
         .map(|(a, b)| [*a, *b, *a / ma, *b / mb])
         .collect()
 }
@@ -1167,36 +1158,53 @@ fn build_habitat_at(seed: u32, epoch: u32, contrast: f32) -> Vec<f32> {
         };
     }
     let mut habitat = vec![0.0f32; (RESOURCE_GRID * RESOURCE_GRID) as usize];
-    for y in 0..RESOURCE_GRID {
-        for x in 0..RESOURCE_GRID {
-            let xf = (x as f32 + 0.5) / RESOURCE_GRID as f32;
-            let yf = (y as f32 + 0.5) / RESOURCE_GRID as f32;
-            // Smooth domain warping and edge detail avoid perfect circles and pixel noise.
-            let wx = xf + (terrain_noise(xf * 7.0, yf * 7.0, seed) - 0.5) * 0.045;
-            let wy = yf + (terrain_noise(xf * 7.0, yf * 7.0, seed ^ 7919) - 0.5) * 0.045;
-            let edge = (terrain_noise(xf * 35.0, yf * 35.0, seed ^ 1237) - 0.5) * 0.3;
-            let mut value = 0.0f32;
-            for p in &patches {
-                let dx = wx - p[0];
-                let dy = wy - p[1];
-                let u = (dx * p[4] + dy * p[5]) / p[2];
-                let v = (-dx * p[5] + dy * p[4]) / (p[2] * p[3]);
-                let distance = u.hypot(v) + edge;
-                let t = ((1.2 - distance) / 1.2).clamp(0.0, 1.0);
-                let patch = t * t * (3.0 - 2.0 * t) * p[6];
-                value = value.max(patch);
-            }
-            let shift = epoch as f32 * 0.025;
-            let broad = terrain_noise(xf * 3.3 + shift, yf * 3.3 + shift, seed ^ 991) * 0.55
-                + terrain_noise(xf * 7.1 + shift, yf * 7.1, seed ^ 1777) * 0.30
-                + terrain_noise(xf * 15.3, yf * 15.3 + shift, seed ^ 3137) * 0.15;
-            // The lower shoulder provides low-yield forage between peaks;
-            // the nonlinear upper shoulder preserves rich hubs.
-            let t = ((value * 0.8 + broad * 0.35 - 0.22) / 0.78).clamp(0.0, 1.0);
-            let shoulder = t * t * (3.0 - 2.0 * t);
-            habitat[(y * RESOURCE_GRID + x) as usize] = shoulder * 0.78 + t * 0.22;
+    let workers = std::thread::available_parallelism()
+        .map_or(1, usize::from)
+        .min(8);
+    let rows = (RESOURCE_GRID as usize).div_ceil(workers);
+    std::thread::scope(|scope| {
+        for (chunk_index, chunk) in habitat
+            .chunks_mut(rows * RESOURCE_GRID as usize)
+            .enumerate()
+        {
+            let patches = &patches;
+            scope.spawn(move || {
+                for (local_y, row) in chunk.chunks_mut(RESOURCE_GRID as usize).enumerate() {
+                    let y = chunk_index * rows + local_y;
+                    for x in 0..RESOURCE_GRID {
+                        let xf = (x as f32 + 0.5) / RESOURCE_GRID as f32;
+                        let yf = (y as f32 + 0.5) / RESOURCE_GRID as f32;
+                        // Smooth domain warping and edge detail avoid perfect circles and pixel noise.
+                        let wx = xf + (terrain_noise(xf * 7.0, yf * 7.0, seed) - 0.5) * 0.045;
+                        let wy =
+                            yf + (terrain_noise(xf * 7.0, yf * 7.0, seed ^ 7919) - 0.5) * 0.045;
+                        let edge = (terrain_noise(xf * 35.0, yf * 35.0, seed ^ 1237) - 0.5) * 0.3;
+                        let mut value = 0.0f32;
+                        for p in patches {
+                            let dx = wx - p[0];
+                            let dy = wy - p[1];
+                            let u = (dx * p[4] + dy * p[5]) / p[2];
+                            let v = (-dx * p[5] + dy * p[4]) / (p[2] * p[3]);
+                            let distance = u.hypot(v) + edge;
+                            let t = ((1.2 - distance) / 1.2).clamp(0.0, 1.0);
+                            let patch = t * t * (3.0 - 2.0 * t) * p[6];
+                            value = value.max(patch);
+                        }
+                        let shift = epoch as f32 * 0.025;
+                        let broad = terrain_noise(xf * 3.3 + shift, yf * 3.3 + shift, seed ^ 991)
+                            * 0.55
+                            + terrain_noise(xf * 7.1 + shift, yf * 7.1, seed ^ 1777) * 0.30
+                            + terrain_noise(xf * 15.3, yf * 15.3 + shift, seed ^ 3137) * 0.15;
+                        // The lower shoulder provides low-yield forage between peaks;
+                        // the nonlinear upper shoulder preserves rich hubs.
+                        let t = ((value * 0.8 + broad * 0.35 - 0.22) / 0.78).clamp(0.0, 1.0);
+                        let shoulder = t * t * (3.0 - 2.0 * t);
+                        row[x as usize] = shoulder * 0.78 + t * 0.22;
+                    }
+                }
+            });
         }
-    }
+    });
     // Contrast changes food distribution, not its mean or the body's costs.
     let mean = habitat.iter().sum::<f32>() / habitat.len() as f32;
     for value in &mut habitat {
@@ -1249,15 +1257,21 @@ pub fn live_source(source: &str, binding: u32) -> String {
     assert_eq!(source.matches("let i=id.x;").count(), 1);
     format!(
         "@group(0) @binding({binding}) var<storage,read> live_slots:array<u32>;\n{}",
-        source.replace(
-            "let i=id.x;",
-            "if(id.x>=live_slots[3]){return;}let i=live_slots[4u+id.x];"
-        )
+        source
+            .replace(
+                "@workgroup_size(64)",
+                "@workgroup_size(LIVE_WORKGROUP_SIZE)"
+            )
+            .replace(
+                "let i=id.x;",
+                "if(id.x>=live_slots[3]){return;}let i=live_slots[4u+id.x];"
+            )
     )
 }
 
 pub fn shader_source(source: &str) -> String {
     let constants = [
+        ("LIVE_WORKGROUP_SIZE", LIVE_WORKGROUP_SIZE),
         ("INPUT_COUNT", INPUTS),
         ("HIDDEN_COUNT", HIDDEN),
         ("OUTPUT_COUNT", OUTPUTS),
@@ -1265,8 +1279,10 @@ pub fn shader_source(source: &str) -> String {
         ("NODE_BIAS", NODE_BIAS),
         ("GATE_BIAS", GATE_BIAS),
         ("OUTPUT_BIAS", OUTPUT_BIAS),
-        ("EDGE_BASE", EDGE_BASE),
-        ("MAX_EDGES", MAX_EDGES),
+        ("INPUT_BASE", INPUT_BASE),
+        ("RECURRENT_BASE", RECURRENT_BASE),
+        ("GATE_BASE", GATE_BASE),
+        ("OUTPUT_BASE", OUTPUT_BASE),
         ("FORCE_OUTPUT", FORCE_OUTPUT),
     ]
     .map(|(name, value)| format!("const {name}:u32={value}u;"))

@@ -5,30 +5,26 @@ and general adaptation are unverified capabilities.
 
 ## Build and data formats
 
-- Application version: 0.7.1.
-- Candidate archive: `life-reservoir-v3`; selector weights format 4; training format 2; game receipts format 2.
-- Model identifier in reports and exported banks: `primitive-v6-variable-brain`.
-- Checkpoint format: 20 (factual lifetime records and explicit founder slots); older formats need their matching executable.
-- Founder-bank format: 7.
-- GPU genome storage: about 105.4 MiB in one storage binding, plus world/render buffers.
+- Application version: 0.9.0.
+- Model: `primitive-v8-population-search`.
+- Checkpoint format: 22, including founding populations, paired outcomes/history and search RNG.
+- Founder-bank format: 8; game receipts: 4.
+- Genome allocation: 74.25 MiB for 16,384 bodies, plus world/render buffers.
 
-Data-format numbers identify storage contracts, independently of the application
-version. V6's sparse graph, larger state capacity, world mutation law, and structural
-costs change the genome and storage contracts. V5 and earlier banks/checkpoints
-are rejected explicitly; they are not converted.
+These identities are separate from application version. Noncurrent files remain
+untouched and are rejected; no compatibility execution or conversion is provided.
+Regional sensing and gated memory are preserved. Dense coincident populations
+still have quadratic neighbor work. See [performance](performance.md) for measurements.
 
-Start a fresh experiment for V6. Old experiment files remain untouched and can
-be used with their matching older executable; there is no genome conversion.
-The prior V5 source is preserved at the `primitive-v5-pre-cutover` branch.
-Food integration and exact nearest-sector selection retain their existing costs.
-Dense coincident populations have quadratic neighbor-scan work; performance
-measurements must state population and spatial arrangement.
+The population-search integration is checked by formatting, compilation and static
+review only. No new tests, simulation experiments, playback session or performance
+benchmark was run after the user requested code-only verification.
 
 ## Before publishing a GitHub release
 
 - Confirm the owner’s license choice and include that license in source/archives.
 - Run the checks in [CONTRIBUTING.md](../CONTRIBUTING.md), including the full GPU
-  suite and checkpoint compatibility on a supported machine.
+  suite and current-format checkpoint loading on a supported machine.
 - Verify play, checkpoint loading, smooth extinction transitions, and autosaves
   on the exact release executable. Code tests do not replace a visual release check.
 - Include an authentic screenshot or short recording from the release build,

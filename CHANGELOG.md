@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.0 — founding-population selection
+
+- Compare complete founding populations by completed world duration on matched seeds; keep the current population on ties or failed candidates.
+- Preserve founding combinations with sparse parameter mutation and occasional random exploration. Later descendants affect outcomes but are not directly archived.
+- Remove individual-lifetime retention and obsolete selection/capability paths. Keep fixed gated brains, regional senses, ecology and GPU/playback optimizations.
+- Align default desktop/headless evolution; bounded diagnostics require `--single-world`.
+- Persist current/candidate founding groups, paired state and 64-world history in checkpoint 22 / receipt 4, model `primitive-v8-population-search`. No migration or compatibility execution.
+- Verification for this change is compilation, formatting, lint and static shader/source review only; no new runtime tests or performance experiments.
+
+## 0.8.0
+
+- Fixed eight-unit gated recurrent brains with inherited weight mutation; retain all regional senses and sector targets.
+- Replace learned founder selection and round/pool training with explicit longest-lifetime selection and mutated next-world founders.
+- Include retained parents and restart RNG in checkpoint 21; reject incompatible saves explicitly.
+- Fold brain upkeep and copying into metabolism and fixed birth overhead.
+- Keep independent GPU playback and active-slot scans; reduce reset uploads and duplicate terrain computation.
+
+
 ## Round-based lifetime-record selection
 
 - Add bounded, resumable training rounds: matched populations learn across repeated

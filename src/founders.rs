@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FounderBank {
     pub version: u32,
     pub model: String,
@@ -20,14 +21,15 @@ impl FounderBank {
     pub fn validate(&self) -> Result<(), String> {
         let compatible_model = self.model == crate::model::MODEL_ID;
         if self.version != FOUNDER_BANK_VERSION || !compatible_model || self.genomes.is_empty() {
-            return Err("Expected a nonempty Primitive World founder bank in format 7".into());
+            return Err("Expected a nonempty Primitive World founder bank in format 8; noncurrent banks are rejected".into());
         }
         validate_genomes(&self.genomes)
     }
 }
 
-/// Reproducible random founder bank shared by default worlds.
+/// Reproducible random fixture used only by existing wiring checks.
 /// Random weights with no hand-written behavior; no claim of established viability.
+#[cfg(test)]
 pub fn bundled() -> &'static FounderBank {
     static BANK: std::sync::OnceLock<FounderBank> = std::sync::OnceLock::new();
     BANK.get_or_init(|| {
@@ -59,7 +61,6 @@ pub fn validate_genomes(genomes: &[Vec<f32>]) -> Result<(), String> {
 impl Simulation {
     pub fn use_random_founders(&mut self) {
         self.settings.founder_genomes.clear();
-        self.settings.founder_slots.clear();
         self.settings.founder_name = "primitive-world-random".into();
     }
     pub fn load_founders(&mut self, path: &Path) -> Result<(), String> {
@@ -69,7 +70,6 @@ impl Simulation {
         bank.validate()?;
         self.settings.founder_name = bank.name;
         self.settings.founder_genomes = bank.genomes;
-        self.settings.founder_slots.clear();
         Ok(())
     }
 
@@ -129,9 +129,9 @@ mod tests {
 
     fn bank(model: &str) -> FounderBank {
         serde_json::from_value(serde_json::json!({
-            "version": 7, "model": model, "name": "test-pool",
+            "version": 8, "model": model, "name": "test-pool",
             "source_seed": 42, "source_tick": 128,
-            "genomes": [crate::brain::blank(crate::model::DEFAULT_NODES).to_vec()]
+            "genomes": [crate::brain::blank().to_vec()]
         }))
         .unwrap()
     }
@@ -142,10 +142,7 @@ mod tests {
         let before = serde_json::to_value(&bank).unwrap();
         bank.validate().unwrap();
         assert_eq!(serde_json::to_value(&bank).unwrap(), before);
-        assert_eq!(
-            bank.genomes,
-            vec![crate::brain::blank(crate::model::DEFAULT_NODES).to_vec()]
-        );
+        assert_eq!(bank.genomes, vec![crate::brain::blank().to_vec()]);
         assert_eq!(bundled().model, crate::model::MODEL_ID);
     }
 

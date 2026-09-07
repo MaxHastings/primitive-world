@@ -1,4 +1,4 @@
-//! Desktop lifecycle for the single round-based evolution model.
+//! Desktop lifecycle for the fixed-brain evolutionary loop.
 use crate::*;
 use std::path::Path;
 
@@ -15,7 +15,7 @@ impl AppState {
                 self.ui.saves = saves;
                 self.ui.library_notice = if invalid > 0 {
                     format!(
-                        "Skipped {invalid} incompatible or incomplete saves. This model uses round-based evolution saves."
+                        "Skipped {invalid} incompatible or incomplete saves. Only current-format saves are listed."
                     )
                 } else {
                     String::new()
@@ -27,25 +27,19 @@ impl AppState {
     pub(crate) fn save_experiment(&mut self) -> Result<String, String> {
         self.complete_batch(true);
         if self.experiment.is_none() {
-            return Err("No active round experiment to save".into());
+            return Err("No active world to save".into());
         }
         if self.saved_revision == Some(self.world_revision) {
             return Ok("All progress saved".into());
         }
-        let rounds = self
-            .rounds
-            .as_ref()
-            .ok_or("No round evolution state")?
-            .snapshot(&self.simulation, &self.device, &self.queue)?;
         let experiment = self.experiment.as_ref().unwrap();
-        let position = rounds.position();
-        let path = experiment.save(&self.simulation, &self.device, &self.queue, rounds)?;
+        let path = experiment.save(&self.simulation, &self.device, &self.queue)?;
         self.checkpoint_path = path.to_string_lossy().into_owned();
         self.last_autosave = Instant::now();
         self.saved_revision = Some(self.world_revision);
         Ok(format!(
-            "Saved {} · {} · tick {}",
-            experiment.name, position, self.simulation.tick
+            "Saved {} at tick {}",
+            experiment.name, self.simulation.tick
         ))
     }
     pub(crate) fn open_menu(&mut self) {
@@ -70,12 +64,7 @@ impl AppState {
         self.step_requested = false;
         Ok(())
     }
-    fn activate_experiment(
-        &mut self,
-        experiment: experiments::Experiment,
-        rounds: live_rounds::Viewer,
-    ) -> Result<(), String> {
-        self.rounds = Some(rounds);
+    fn activate_experiment(&mut self, experiment: experiments::Experiment) -> Result<(), String> {
         self.experiment = Some(experiment);
         self.world_revision = 0;
         self.saved_revision = None;
@@ -97,7 +86,7 @@ impl AppState {
         self.births = m.events[3];
         self.starvation_deaths = m.events[1];
         self.age_deaths = m.events[2];
-        self.food_eaten = m.events[0];
+        self.food_eaten = (m.food_ingested * 1000.0) as u64;
         self.interaction_stats = m.events[4..8].try_into().unwrap();
         self.history.push_back(m);
         Ok(())
@@ -110,22 +99,16 @@ impl AppState {
         self.prepare_replacement()?;
         let experiment = experiments::create(
             &self.ui.name,
-            "Round-based evolution · random, untrained brains",
+            "World-duration population search · random, untrained brains",
         )?;
         self.simulation.settings = self.ui.setup.clone();
         self.simulation.use_random_founders();
         self.simulation.seed = self.ui.seed;
         self.simulation.reset(&self.queue);
-        let rounds = live_rounds::Viewer::new(
-            &mut self.simulation,
-            &self.device,
-            &self.queue,
-            &self.ui.evolution,
-        )?;
-        self.activate_experiment(experiment, rounds)?;
+        self.activate_experiment(experiment)?;
         self.paused = false;
         self.file_status =
-            "Initial world running. Its lifetime records will seed the selector's first round."
+            "Incumbent world running. Founding populations compete on completed world duration."
                 .into();
         Ok(())
     }
@@ -133,25 +116,15 @@ impl AppState {
         &mut self,
         saved: experiments::SavedExperiment,
     ) -> Result<(), String> {
-        saved
-            .record
-            .rounds
-            .validate_world(saved.record.seed, saved.record.tick)?;
-        let expected = saved.record.rounds.expected_settings()?;
         self.prepare_replacement()?;
-        self.simulation.load_round_checkpoint(
+        self.simulation.load_game_checkpoint(
             &self.queue,
             std::fs::File::open(saved.checkpoint()).map_err(|e| e.to_string())?,
-            Some((saved.record.seed, saved.record.tick, saved.record.living)),
-            &expected,
+            (saved.record.seed, saved.record.tick, saved.record.living),
+            saved.record.world,
         )?;
         let experiment = saved.experiment();
-        let rounds =
-            saved
-                .record
-                .rounds
-                .restore(&mut self.simulation, &self.device, &self.queue)?;
-        self.activate_experiment(experiment, rounds)
+        self.activate_experiment(experiment)
     }
     pub(crate) fn import_checkpoint(&mut self, path: &Path) -> Result<(), String> {
         self.load_experiment(experiments::read_record(path)?)
@@ -160,15 +133,11 @@ impl AppState {
         if let Some(i) = args.iter().position(|a| a == "--load-game") {
             return self.import_checkpoint(Path::new(&args[i + 1]));
         }
-        let experiment =
-            experiments::create("New evolution", "Round-based evolution · command line")?;
-        let rounds = live_rounds::Viewer::new(
-            &mut self.simulation,
-            &self.device,
-            &self.queue,
-            &self.ui.evolution,
+        let experiment = experiments::create(
+            "New evolution",
+            "World-duration population search · command line",
         )?;
-        self.activate_experiment(experiment, rounds)?;
+        self.activate_experiment(experiment)?;
         self.paused = false;
         Ok(())
     }
