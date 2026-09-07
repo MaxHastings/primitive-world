@@ -27,8 +27,20 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  // Fixed construction cost is checked first. Stream parameters directly into the
  // disjoint child slot, avoiding a full private genome array for each GPU lane.
  var mutation_rng=p.rng^ci^params.tick;
+ let scale=sqrt(mutation_temperature(&mutation_rng));
+ let mutation_probability=clamp(params.mutation.x*scale,0.0,1.0);
+ let mutation_magnitude=max(params.mutation.y*scale,0.000001);
+ var changed=false;
  for(var k=0u;k<GENOME_SIZE;k++){
-  genomes[ci*GENOME_SIZE+k]=mutate_parameter(genomes[pi*GENOME_SIZE+k],&mutation_rng,params.mutation);
+  let old=genomes[pi*GENOME_SIZE+k];
+  let next=mutate_parameter(old,&mutation_rng,mutation_probability,mutation_magnitude);
+  changed=changed || next!=old;genomes[ci*GENOME_SIZE+k]=next;
+ }
+ if(!changed){
+  let k=min(u32(mutation_draw(&mutation_rng)*f32(GENOME_SIZE)),GENOME_SIZE-1u);
+  let old=genomes[pi*GENOME_SIZE+k];let direction=select(-1.0,1.0,mutation_draw(&mutation_rng)>=0.5);
+  let next=clamp(old+direction*mutation_magnitude,-4.0,4.0);
+  genomes[ci*GENOME_SIZE+k]=select(next,clamp(old-direction*mutation_magnitude,-4.0,4.0),next==old);
  }
  child.alive=1u;child.rng=hash_u32(p.rng^ci^params.tick);child.generation=agents[ci].generation+1u;
  child.target_id=INVALID;

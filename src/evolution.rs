@@ -6,6 +6,9 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 pub const HISTORY_LIMIT: usize = 64;
+pub const DESCENDANT_FOUNDER_PERCENT: usize = 10;
+/// Keep a small, direction-agnostic novelty stream available to selection.
+pub const RANDOM_FOUNDER_PERCENT: usize = 5;
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Phase {
@@ -21,6 +24,10 @@ pub struct Outcome {
     pub parent_population_id: Option<u64>,
     pub phase: Phase,
     pub seed: u32,
+    /// Symmetry-preserving environment orientation used by this world.
+    pub environment_rotation: u32,
+    /// Environmental/action age at this world's tick zero; duration stays local.
+    pub environment_start_age: u32,
     pub duration: u32,
     pub births: u32,
     pub maximum_generation: u32,
@@ -38,9 +45,14 @@ pub struct Progress {
     pub incumbent_id: u64,
     pub incumbent_parent_id: Option<u64>,
     pub accepted_challengers: u64,
+    /// Candidate genomes based on uniformly sampled terminal descendants.
     pub descendant_founders: u32,
-    pub mutated_founders: u32,
-    pub random_founders: u32,
+    /// Adaptive environmental age at which every subsequent matched pair begins.
+    pub environment_age_floor: u32,
+    /// A promoted challenger remains alive in its winning world. Its eventual
+    /// extinction starts a fresh hard-environment comparison, never an unfair
+    /// challenger trial against its easier pre-promotion run.
+    pub live_winner: bool,
     pub baseline: Option<Outcome>,
     pub completed: Option<Outcome>,
     pub history: Vec<Outcome>,
@@ -56,8 +68,8 @@ impl Progress {
             incumbent_parent_id: None,
             accepted_challengers: 0,
             descendant_founders: 0,
-            mutated_founders: 0,
-            random_founders: 0,
+            environment_age_floor: 0,
+            live_winner: false,
             baseline: None,
             completed: None,
             history: Vec::new(),
@@ -82,6 +94,8 @@ impl Progress {
                 || o.population_id == 0
                 || o.duration == 0
                 || o.duration > MAX_WORLD_TICKS
+                || o.environment_start_age > MAX_WORLD_TICKS
+                || o.environment_rotation > 3
                 || o.maximum_generation > o.births
                 || o.population_id > o.comparison.saturating_add(1)
                 || (o.phase == Phase::Incumbent && o.population_id > o.comparison)
@@ -100,11 +114,8 @@ impl Progress {
             || self.incumbent_id == 0
             || self.incumbent_id > self.comparison
             || self.accepted_challengers >= self.comparison
-            || self
-                .descendant_founders
-                .saturating_add(self.mutated_founders)
-                .saturating_add(self.random_founders)
-                > population
+            || self.environment_age_floor > MAX_WORLD_TICKS / 2
+            || self.descendant_founders > population
             || self.history.len() > HISTORY_LIMIT
             || self.history.iter().any(bad)
             || self.history.windows(2).any(|w| w[0].world >= w[1].world)
@@ -126,10 +137,7 @@ impl Progress {
             return Err("Incomplete population search history".into());
         }
         match (&self.phase, &self.baseline) {
-            (Phase::Incumbent, None)
-                if self.descendant_founders == 0
-                    && self.mutated_founders == 0
-                    && self.random_founders == 0 => {}
+            (Phase::Incumbent, None) if self.descendant_founders == 0 => {}
             (Phase::Challenger, Some(b))
                 if !bad(b)
                     && b.seed == seed
@@ -188,6 +196,16 @@ fn next(rng: &mut u32) -> u32 {
     *rng = rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
     *rng
 }
+
+/// Keep an incumbent/challenger pair matched, then rotate the ecology for the
+/// next independent comparison. Rotation changes the world, never the brain
+/// inputs, so a fixed heading is not rewarded by one map orientation forever.
+fn next_comparison_rotation(current: u32, phase: Phase, live_winner: bool) -> u32 {
+    match phase {
+        Phase::Incumbent if !live_winner => current,
+        _ => (current + 1) % 4,
+    }
+}
 fn proposal(
     incumbent: &[f32],
     descendants: &[f32],
@@ -198,62 +216,45 @@ fn proposal(
     debug_assert_eq!(descendants.len() % GENOME_SIZE, 0);
     let mut result = incumbent.to_vec();
     let mut slots: Vec<_> = (0..population).collect();
-    // Preserve combinations and multiplicities; perturb uniformly chosen positions.
+    // Preserve combinations and multiplicities; uniformly choose which inherited
+    // sources come from terminal descendants before mutating every founder.
     for i in (1..population).rev() {
         let j = ((u64::from(next(&mut p.rng)) * (i + 1) as u64) >> 32) as usize;
         slots.swap(i, j);
     }
-    let random = if p.comparison.is_multiple_of(4) {
-        (population / 100).max(1)
-    } else {
-        0
-    };
     // A completed world's descendants are sampled without an individual score.
-    // They occupy the ordinary 5% variation budget, so a candidate still changes
-    // only a sparse part of the current population.
-    let variation = (population / 20).max(1).min(population - random);
+    // Some remain unchanged as viability anchors; the rest of the candidate is
+    // supplied by fresh random genomes or continuously mutated incumbent
+    // sources.
+    let descendant_limit = (population * DESCENDANT_FOUNDER_PERCENT / 100).max(1);
     let descendant = descendants.len() / GENOME_SIZE;
-    let carried = descendant.min(variation);
-    let mutated = if settings.mutation_probability > 0.0 && settings.mutation_magnitude > 0.0 {
-        variation - carried
-    } else {
-        0
-    };
-    p.random_founders = random as u32;
+    let carried = descendant.min(descendant_limit);
     p.descendant_founders = carried as u32;
-    p.mutated_founders = mutated as u32;
-    for &slot in slots.iter().take(random) {
-        result[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE]
-            .copy_from_slice(&brain::random_genome(&mut p.rng));
-    }
     for (&slot, genome) in slots
         .iter()
-        .skip(random)
         .take(carried)
         .zip(descendants.chunks_exact(GENOME_SIZE))
     {
         result[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE].copy_from_slice(genome);
     }
-    for &slot in slots.iter().skip(random + carried).take(mutated) {
+    // Preserve sampled terminal descendants as viable anchors. Their selection
+    // is uniform over surviving ancestry, not an individual fitness score.
+    let random_limit = (population * RANDOM_FOUNDER_PERCENT / 100).max(1);
+    let random_count = random_limit.min(population.saturating_sub(carried));
+    for &slot in slots.iter().skip(carried).take(random_count) {
+        let genome = brain::random_genome(&mut p.rng);
+        result[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE].copy_from_slice(&genome);
+    }
+    // The remaining inherited sources receive the ordinary continuous mutation
+    // law. No source is scored by heading, behavior, or individual outcome.
+    for &slot in slots.iter().skip(carried + random_count) {
         let g = &mut result[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE];
-        let original = &incumbent[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE];
-        brain::mutate(g, next(&mut p.rng), settings);
-        // A proposal labelled mutated must differ, including near parameter bounds.
-        if g == original {
-            let start = next(&mut p.rng) as usize % GENOME_SIZE;
-            for offset in 0..GENOME_SIZE {
-                let k = (start + offset) % GENOME_SIZE;
-                let step = settings.mutation_magnitude;
-                let changed = (g[k] + if g[k] > 0.0 { -step } else { step }).clamp(-4.0, 4.0);
-                if changed != g[k] {
-                    g[k] = changed;
-                    break;
-                }
-            }
-            if g == original {
-                p.mutated_founders -= 1;
-            }
-        }
+        brain::mutate(
+            g,
+            next(&mut p.rng),
+            BASE_MUTATION_PROBABILITY,
+            BASE_MUTATION_MAGNITUDE,
+        );
     }
     result
 }
@@ -294,8 +295,7 @@ fn promote_challenger_if_outlived(
     progress.phase = Phase::Incumbent;
     progress.baseline = None;
     progress.descendant_founders = 0;
-    progress.mutated_founders = 0;
-    progress.random_founders = 0;
+    progress.live_winner = true;
     search.incumbent = std::mem::take(&mut search.challenger);
     Ok(true)
 }
@@ -415,6 +415,8 @@ impl Simulation {
             parent_population_id: self.progress.parent_id(),
             phase: self.progress.phase,
             seed: self.seed,
+            environment_rotation: self.settings.environment_rotation,
+            environment_start_age: self.environment_start_age,
             duration: counters[18],
             births: counters[3],
             maximum_generation: counters[23],
@@ -444,30 +446,41 @@ impl Simulation {
             .ok_or("Comparison counter overflow")?;
         let mut p = self.progress.clone();
         let population = self.settings.population as usize;
-        let random = if p.comparison.is_multiple_of(4) {
-            (population / 100).max(1)
-        } else {
-            0
-        };
-        let descendant_limit = (population / 20)
-            .max(1)
-            .min(population.saturating_sub(random));
-        let descendants = if p.phase == Phase::Incumbent {
+        let descendant_limit = (population * DESCENDANT_FOUNDER_PERCENT / 100).max(1);
+        let descendants = if p.phase == Phase::Incumbent && !p.live_winner {
             self.sample_terminal_descendants(d, q, descendant_limit, &mut p.rng)?
         } else {
             Vec::new()
         };
         let outcome = p.completed.take().ok_or("Missing world outcome")?;
+        let next_environment_rotation =
+            next_comparison_rotation(self.settings.environment_rotation, p.phase, p.live_winner);
         let mut search = std::mem::take(&mut self.search);
+        let next_environment_start_age;
         match p.phase {
             Phase::Incumbent => {
-                search.challenger =
-                    proposal(&search.incumbent, &descendants, &self.settings, &mut p);
-                p.baseline = Some(outcome);
-                p.phase = Phase::Challenger;
-                // Same seed, body locations, ages, resources and physical laws.
+                if p.live_winner {
+                    // A living challenger was already accepted. The next
+                    // world still starts from the same fresh environment age.
+                    p.live_winner = false;
+                    p.descendant_founders = 0;
+                    self.seed = next(&mut p.rng);
+                    next_environment_start_age = 0;
+                } else {
+                    search.challenger =
+                        proposal(&search.incumbent, &descendants, &self.settings, &mut p);
+                    p.baseline = Some(outcome);
+                    p.phase = Phase::Challenger;
+                    // Same seed, body locations, ages, resources and physical laws.
+                    next_environment_start_age = p
+                        .baseline
+                        .as_ref()
+                        .expect("new baseline")
+                        .environment_start_age;
+                }
             }
             Phase::Challenger => {
+                let _ = p.baseline.as_ref().ok_or("Missing paired baseline")?;
                 if outcome.challenger_accepted == Some(true) {
                     search.incumbent = std::mem::take(&mut search.challenger);
                     p.incumbent_parent_id = Some(p.incumbent_id);
@@ -480,21 +493,22 @@ impl Simulation {
                 p.phase = Phase::Incumbent;
                 p.baseline = None;
                 p.descendant_founders = 0;
-                p.mutated_founders = 0;
-                p.random_founders = 0;
                 self.seed = next(&mut p.rng);
+                next_environment_start_age = 0;
             }
         }
         p.world = world;
+        self.settings.environment_rotation = next_environment_rotation;
         self.settings.founder_genomes.clear();
         self.settings.founder_name = "world-duration population search".into();
         let founders = match p.phase {
             Phase::Incumbent => &search.incumbent,
             Phase::Challenger => &search.challenger,
         };
-        self.reset_with_genomes(q, Some(founders));
+        self.reset_with_genomes_at(q, Some(founders), next_environment_start_age);
         self.search = search;
         self.progress = p;
+        self.update_params(q);
         Ok(())
     }
 }
@@ -504,13 +518,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn challenger_can_carry_a_terminal_descendant_without_an_individual_score() {
-        let mut settings = SimSettings {
+    fn challenger_mutates_incumbent_sources_and_preserves_descendant_anchor() {
+        let settings = SimSettings {
             population: 20,
             ..Default::default()
         };
-        settings.mutation_probability = 0.0;
-        settings.mutation_magnitude = 0.0;
         let incumbent = vec![0.0; settings.population as usize * GENOME_SIZE];
         let descendants = vec![1.0; GENOME_SIZE];
         let mut progress = Progress::initial(7);
@@ -518,23 +530,25 @@ mod tests {
         let challenger = proposal(&incumbent, &descendants, &settings, &mut progress);
 
         assert_eq!(progress.descendant_founders, 1);
-        assert_eq!(progress.mutated_founders, 0);
-        assert_eq!(progress.random_founders, 0);
+        assert!(
+            challenger
+                .chunks_exact(GENOME_SIZE)
+                .all(|genome| genome != &incumbent[..GENOME_SIZE])
+        );
         assert_eq!(
             challenger
                 .chunks_exact(GENOME_SIZE)
-                .filter(|genome| *genome == descendants.as_slice())
+                .filter(|genome| genome.iter().all(|value| *value > 0.5))
                 .count(),
-            1
+            1,
+            "one terminal descendant must remain a viable inherited anchor"
         );
     }
 
     #[test]
-    fn challenger_uses_mutation_when_no_descendant_is_available() {
+    fn challenger_varies_every_incumbent_founder_when_no_descendant_is_available() {
         let settings = SimSettings {
             population: 20,
-            mutation_probability: 1.0,
-            mutation_magnitude: 0.5,
             ..Default::default()
         };
         let incumbent = vec![0.0; settings.population as usize * GENOME_SIZE];
@@ -543,8 +557,48 @@ mod tests {
         let challenger = proposal(&incumbent, &[], &settings, &mut progress);
 
         assert_eq!(progress.descendant_founders, 0);
-        assert_eq!(progress.mutated_founders, 1);
-        assert_ne!(challenger, incumbent);
+        assert!(
+            challenger
+                .chunks_exact(GENOME_SIZE)
+                .all(|genome| genome != &incumbent[..GENOME_SIZE])
+        );
+    }
+
+    #[test]
+    fn terminal_descendant_sources_are_preserved_as_uniform_viable_anchors() {
+        let settings = SimSettings {
+            population: 100,
+            ..Default::default()
+        };
+        let incumbent = vec![0.0; settings.population as usize * GENOME_SIZE];
+        let descendants = vec![1.0; GENOME_SIZE * 10];
+        let mut progress = Progress::initial(7);
+        let challenger = proposal(&incumbent, &descendants, &settings, &mut progress);
+
+        assert_eq!(progress.descendant_founders, 10);
+        assert_eq!(
+            challenger
+                .chunks_exact(GENOME_SIZE)
+                .filter(|genome| genome.iter().all(|value| *value == 1.0))
+                .count(),
+            10
+        );
+    }
+
+    #[test]
+    fn every_new_world_uses_a_fresh_environment_age() {
+        let mut progress = Progress::initial(7);
+        assert_eq!(progress.environment_age_floor, 0);
+        progress.environment_age_floor = 100_000;
+        progress.environment_age_floor = 0;
+        assert_eq!(progress.environment_age_floor, 0);
+    }
+
+    #[test]
+    fn comparison_rotation_keeps_pairs_matched_and_changes_between_pairs() {
+        assert_eq!(next_comparison_rotation(2, Phase::Incumbent, false), 2);
+        assert_eq!(next_comparison_rotation(2, Phase::Challenger, false), 3);
+        assert_eq!(next_comparison_rotation(3, Phase::Incumbent, true), 0);
     }
 
     #[test]
@@ -560,6 +614,8 @@ mod tests {
             parent_population_id: None,
             phase: Phase::Incumbent,
             seed: 7,
+            environment_rotation: 0,
+            environment_start_age: 0,
             duration: 10,
             births: 0,
             maximum_generation: 0,

@@ -159,9 +159,21 @@ pub fn physics(ui: &mut egui::Ui, state: &mut AppState) {
         ui.label(format!("Founding bodies: {}", s.population));
         ui.label(format!("Food regeneration: {:.3}", s.resource_regeneration));
         ui.label(format!(
-            "Metabolism: {:.3} · movement cost: {:.3}",
-            s.metabolic_cost, s.movement_energy_cost
+            "Metabolism: .010 → {:.3} over {} ticks · movement cost: {:.3}",
+            s.metabolic_cost, s.metabolic_ramp_ticks, s.movement_energy_cost
         ));
+        ui.small(format!(
+            "Social actions: {}",
+            if s.social_actions_enabled {
+                format!(
+                    "unlock progressively after the {}-tick survival bootstrap",
+                    s.metabolic_ramp_ticks
+                )
+            } else {
+                "disabled".into()
+            }
+        ));
+        ui.small("Food patches start broader and recede to their normal footprint by the ramp cap.");
         ui.small("Metabolism includes brain upkeep. Reproduction overhead includes construction.");
     });
 }

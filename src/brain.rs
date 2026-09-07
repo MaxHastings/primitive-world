@@ -32,13 +32,36 @@ pub fn validate(g: &[f32]) -> Result<(), String> {
     }
     Ok(())
 }
-pub fn mutate(g: &mut [f32], seed: u32, settings: &SimSettings) {
+/// Apply one individual, continuously scaled mutation. The temperature is
+/// log-uniform, so most variation stays local while rare genomes take a larger
+/// step. This exact draw order is shared with the birth shader.
+pub fn mutate(g: &mut [f32], seed: u32, base_probability: f32, base_magnitude: f32) {
+    assert!(!g.is_empty());
     let mut rng = seed;
-    for value in g {
-        if draw(&mut rng) < settings.mutation_probability {
-            *value = (*value + (draw(&mut rng) * 2.0 - 1.0) * settings.mutation_magnitude)
-                .clamp(-4.0, 4.0);
+    let temperature = MUTATION_TEMPERATURE_MIN
+        * (MUTATION_TEMPERATURE_MAX / MUTATION_TEMPERATURE_MIN).powf(draw(&mut rng));
+    let scale = temperature.sqrt();
+    let probability = (base_probability * scale).clamp(0.0, 1.0);
+    let magnitude = (base_magnitude * scale).max(0.000_001);
+    let mut changed = false;
+    for value in g.iter_mut() {
+        if draw(&mut rng) < probability {
+            let next = (*value + (draw(&mut rng) * 2.0 - 1.0) * magnitude).clamp(-4.0, 4.0);
+            changed |= next != *value;
+            *value = next;
         }
+    }
+    if !changed {
+        let index = (draw(&mut rng) * g.len() as f32) as usize % g.len();
+        let direction = if draw(&mut rng) < 0.5 { -1.0 } else { 1.0 };
+        let value = g[index];
+        let next = (value + direction * magnitude).clamp(-4.0, 4.0);
+        g[index] = if next == value {
+            (value - direction * magnitude).clamp(-4.0, 4.0)
+        } else {
+            next
+        };
+        debug_assert_ne!(g[index], value);
     }
 }
 /// Test fixtures address connections by their logical endpoints.
@@ -97,22 +120,24 @@ pub fn evaluate(
 mod tests {
     use super::*;
     #[test]
-    fn inheritance_mutation_is_bounded_reproducible_and_optional() {
+    fn inheritance_mutation_is_bounded_reproducible_and_never_exact() {
         let parent = random_genome(&mut 17);
         let mut child = parent;
-        let mut settings = SimSettings {
-            mutation_probability: 0.0,
-            ..Default::default()
-        };
-        mutate(&mut child, 9, &settings);
-        assert_eq!(child, parent);
-        settings.mutation_probability = 1.0;
-        settings.mutation_magnitude = 8.0;
-        mutate(&mut child, 9, &settings);
+        mutate(
+            &mut child,
+            9,
+            BASE_MUTATION_PROBABILITY,
+            BASE_MUTATION_MAGNITUDE,
+        );
         validate(&child).unwrap();
         assert_ne!(child, parent);
         let mut again = parent;
-        mutate(&mut again, 9, &settings);
+        mutate(
+            &mut again,
+            9,
+            BASE_MUTATION_PROBABILITY,
+            BASE_MUTATION_MAGNITUDE,
+        );
         assert_eq!(again, child);
         assert!(validate(&vec![0.0; 1686]).is_err());
         child[0] = f32::NAN;

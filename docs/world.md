@@ -11,14 +11,15 @@ The numeric constants below are declared modeling choices, not discovered laws.
 | Food / spatial cells | 512² vegetation cells / 256² neighbor cells |
 | Capacity | 16,384 GPU body slots, not a target population |
 | Reserves | Up to 100 energy and 8 carried food |
-| Body upkeep / movement | .06 energy/tick; .01 energy per actual voluntary distance |
-| Brain upkeep | Included in the .06 metabolic cost |
+| Body upkeep / movement | .01 energy/tick at world start, rising linearly to .06 by tick 50,000; .01 energy per actual voluntary distance |
+| Brain upkeep | Included in the time-varying metabolic cost |
 | Genome construction | Included in fixed reproduction overhead (.2 times B) |
 | Movement | Adult maximum 1.2 units/tick; juvenile speed .6–1 of adult through age 400 |
 | Collection | Requested, at most .025 food × amount/tick, limited by stock/capacity |
 | Digestion | Automatic, at most .1 carried food/tick; 8 energy/food, energy-headroom limited |
 | Local contact | Transfer and force require a currently valid target within 6 units |
 | Signal | One scalar emission per chosen emit action, .02 energy; no target/cooldown |
+| Social-action availability | Transfer, force and signal logits unlock by effective environment age 50,000; collection and reproduction are available from effective age 0 |
 | Reproduction | Chosen, age at least 400; 240-tick recovery; paid energy investment |
 | Aging | Death at a freshly sampled maximum age of 9,000–11,000 ticks |
 | Sensing / state | Radius 24, eight sectors and two distance bands, nearest body per sector, eight gated recurrent values |
@@ -100,10 +101,16 @@ must balance births against starvation, aging and contact-actor exhaustion.
 ## Ecology and environment controls
 
 Seeded hubs, irregular low-yield regions, barren gaps, weather, seasonal growth,
-soil recovery and harvest depletion create the ecological environment. Resource
-geography interpolates keyframes every 8,192 ticks; hub reseeding occurs every
-third keyframe. First major transition is 16,384–24,576, then repeats every 24,576
-ticks. These are gradual transitions, not instantaneous food teleports.
+soil recovery and harvest depletion create the ecological environment. The same
+patches begin 100% wider and smoothly recede to their ordinary footprint by tick
+50,000; no second food layer is added. From tick 50,000 to 250,000, those same
+normal-sized patches migrate progressively faster and farther. From 250,000 to
+500,000, the same normalized habitat progressively fragments into smaller food pockets while
+its keyframe mean is preserved. From 500,000 to 750,000, regional lean seasons
+grow stronger: scarcity in one region coincides with abundance elsewhere. All
+three pressures cap at their interval endpoints. Resource geography interpolates
+keyframes every 8,192 ticks, so relocations remain gradual rather than food
+teleports.
 
 Habitat contrast in [0,1] mixes geography with its spatial mean: zero is uniform
 distribution, one the complete patch/gap field. Total mean habitat is preserved,
@@ -112,14 +119,20 @@ does not imply equal carrying capacity or guarantee easy founding.
 
 Environment rotation applies quarter-turns to initial positions and the entire
 habitat/weather history. It is never a brain input. These two controls change the
-environment, not the body or weights. Normal play uses contrast 1; no progressive
-difficulty escalator or population rescue occurs inside it. Optional manual
+environment, not the body or weights. Normal play uses contrast 1; the capped
+post-bootstrap pressures are mobility, fragmentation, and regional seasonality,
+not a reward or population rescue. Optional manual
 interventions are user experiments; record them when comparing outcomes.
+
+An evolution run does not retain an earned environmental age floor. Every new
+world and every matched challenger starts at effective environment age zero, so
+terrain, weather, metabolism, and action availability all restart from the same
+baseline. Agent ages and survival duration also begin at zero.
 
 ## Persistence, observation, and limits
 
-Checkpoints use format 24; founder banks use format 9. The fixed
-primitive-v10-live-winner-search model rejects older layouts without rewriting them.
+Checkpoints use format 37; founder banks use format 13. The fixed
+primitive-v24-delayed-social-fresh-worlds model rejects older layouts without rewriting them.
 Checkpoints preserve settings, bodies, genomes, food, soil, event counters,
 controller traces, current/candidate founding groups, paired outcomes/history and search RNG. Derived indexing/terrain is rebuilt after load. Loading
 validates before mutating the world. Save/export refuses existing destinations.

@@ -13,7 +13,7 @@ A small artificial-life sandbox with no script for how to survive.
 
 Watch neural agents find food, reproduce, exchange signals and move one another.
 They inherit fixed gated recurrent brains. A saved founding population and a
-sparsely mutated candidate face the same environment. A candidate becomes the
+continuously varied candidate face the same environment. A candidate becomes the
 current population as soon as it is still alive beyond the incumbent's natural
 extinction time, and its living world keeps running. There is no learned selector.
 
@@ -36,12 +36,14 @@ before opening it. The window shows the application version and world status.
 
 **New Game and Load Game both retain evolution across worlds.** Fresh founders
 have seed-specific random brains. Each paired comparison preserves the current
-founding group unless its candidate produces a longer world. Candidates change
-5% of founder positions; every fourth candidate also introduces 1% fresh random
-brains. Memory gates, near/far regional senses and sector targeting stay active.
-After a natural extinction, a sparse uniform sample of that world's terminal
-descendant genomes can seed the next candidate. The candidate still has to win
-the matched whole-world longevity comparison. See the precise [inheritance rule](docs/evolution.md).
+founding group unless its candidate produces a longer world. Every candidate
+founder inherits an incumbent or terminal-descendant genome, then receives its
+own continuously scaled mutation; no founder is copied unchanged or reset to a
+fresh random brain. Memory gates, near/far regional senses and sector targeting
+stay active. After a natural extinction, a sparse uniform sample of that world's
+terminal descendant genomes can supply inherited sources for the next candidate.
+The candidate still has to win the matched whole-world longevity comparison. See
+the precise [inheritance rule](docs/evolution.md).
 
 For the same evolutionary loop without rendering:
 

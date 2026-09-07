@@ -159,6 +159,9 @@ pub struct Simulation {
     pub settings: SimSettings,
     pub seed: u32,
     pub tick: u32,
+    /// Environment/action time at this world's tick zero. This is separate
+    /// from tick so every world's survival duration is measured from zero.
+    pub environment_start_age: u32,
     pub current_buffer: usize,
     pub(crate) genome_buffer: wgpu::Buffer,
     pub agent_buffers: [wgpu::Buffer; 2],
@@ -615,6 +618,7 @@ impl Simulation {
             settings: SimSettings::default(),
             seed,
             tick: 0,
+            environment_start_age: 0,
             current_buffer: 0,
             genome_buffer,
             agent_buffers,
@@ -648,9 +652,14 @@ impl Simulation {
         sim
     }
     pub fn reset(&mut self, queue: &wgpu::Queue) {
-        self.reset_with_genomes(queue, None);
+        self.reset_with_genomes_at(queue, None, 0);
     }
-    pub(crate) fn reset_with_genomes(&mut self, queue: &wgpu::Queue, founders: Option<&[f32]>) {
+    pub(crate) fn reset_with_genomes_at(
+        &mut self,
+        queue: &wgpu::Queue,
+        founders: Option<&[f32]>,
+        environment_start_age: u32,
+    ) {
         // Clear unused storage on the GPU; upload only the founding population.
         let mut clear = self.device.create_command_encoder(&Default::default());
         for buffer in [
@@ -685,7 +694,27 @@ impl Simulation {
         for b in &self.agent_buffers {
             queue.write_buffer(b, 0, bytemuck::cast_slice(&data));
         }
-        let habitat = build_habitat(self.seed, self.settings.habitat_contrast);
+        self.environment_start_age = environment_start_age;
+        let environment_epoch = environment_start_age / 8192;
+        let terrain_a = build_habitat_at(
+            self.seed,
+            environment_epoch,
+            self.settings.habitat_contrast,
+            self.settings.metabolic_ramp_ticks,
+        );
+        let terrain_b = build_habitat_at(
+            self.seed,
+            environment_epoch + 1,
+            self.settings.habitat_contrast,
+            self.settings.metabolic_ramp_ticks,
+        );
+        let terrain_phase = (environment_start_age % 8192) as f32 / 8192.0;
+        let terrain_blend = terrain_phase * terrain_phase * (3.0 - 2.0 * terrain_phase);
+        let habitat: Vec<_> = terrain_a
+            .iter()
+            .zip(&terrain_b)
+            .map(|(a, b)| a + (b - a) * terrain_blend)
+            .collect();
         let food = crate::environment::rotate_grid(
             build_resources(&habitat),
             RESOURCE_GRID as usize,
@@ -716,24 +745,26 @@ impl Simulation {
             &self.terrain_buffer,
             0,
             bytemuck::cast_slice(&crate::environment::rotate_grid(
-                terrain_pair(
-                    &habitat,
-                    &build_habitat_at(self.seed, 1, self.settings.habitat_contrast),
-                ),
+                terrain_pair(&terrain_a, &terrain_b),
                 RESOURCE_GRID as usize,
                 self.settings.environment_rotation,
             )),
         );
         self.tick = 0;
         self.current_buffer = 0;
-        self.terrain_epoch = 0;
+        self.terrain_epoch = environment_epoch;
         self.update_params(queue);
     }
     pub fn update_params(&self, queue: &wgpu::Queue) {
         queue.write_buffer(
             &self.params_buffer,
             0,
-            bytemuck::bytes_of(&params_for(self.tick, &self.settings, self.seed)),
+            bytemuck::bytes_of(&params_for(
+                self.tick,
+                self.tick.saturating_add(self.environment_start_age),
+                &self.settings,
+                self.seed,
+            )),
         );
     }
     fn dispatch(&self, e: &mut wgpu::CommandEncoder, name: &str, group: usize, x: u32, y: u32) {
@@ -761,17 +792,31 @@ impl Simulation {
             return;
         }
         let ps: Vec<_> = (0..ticks)
-            .map(|n| params_for(self.tick + n, &self.settings, self.seed))
+            .map(|n| {
+                let tick = self.tick + n;
+                params_for(
+                    tick,
+                    tick.saturating_add(self.environment_start_age),
+                    &self.settings,
+                    self.seed,
+                )
+            })
             .collect();
         queue.write_buffer(&self.tick_params_buffer, 0, bytemuck::cast_slice(&ps));
         let groups = MAX_AGENTS.div_ceil(64);
         for offset in 0..ticks {
-            let epoch = self.tick / 8192;
+            let environment_tick = self.tick.saturating_add(self.environment_start_age);
+            let epoch = environment_tick / 8192;
             if self.terrain_epoch != epoch && self.settings.evolving_landscape {
                 let staging = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("terrain update"),
                     contents: bytemuck::cast_slice(&crate::environment::rotate_grid(
-                        build_terrain_pair(self.seed, epoch, self.settings.habitat_contrast),
+                        build_terrain_pair(
+                            self.seed,
+                            epoch,
+                            self.settings.habitat_contrast,
+                            self.settings.metabolic_ramp_ticks,
+                        ),
                         RESOURCE_GRID as usize,
                         self.settings.environment_rotation,
                     )),
@@ -1008,7 +1053,37 @@ impl Simulation {
         Some(result)
     }
 }
-fn params_for(tick: u32, s: &SimSettings, seed: u32) -> SimParams {
+pub(crate) fn metabolic_cost_at(tick: u32, s: &SimSettings) -> f32 {
+    if s.metabolic_ramp_ticks == 0 {
+        return s.metabolic_cost;
+    }
+    let progress = (tick.min(s.metabolic_ramp_ticks) as f32) / s.metabolic_ramp_ticks as f32;
+    METABOLIC_START_COST + (s.metabolic_cost - METABOLIC_START_COST) * progress
+}
+
+pub(crate) const MOBILITY_START_TICK: u32 = 50_000;
+pub(crate) const MOBILITY_CAP_TICK: u32 = 250_000;
+pub(crate) const FRAGMENTATION_CAP_TICK: u32 = 500_000;
+pub(crate) const SEASONALITY_CAP_TICK: u32 = 750_000;
+
+fn pressure_between(age: u32, start: u32, end: u32) -> f32 {
+    debug_assert!(start < end);
+    (age.saturating_sub(start).min(end - start) as f32) / (end - start) as f32
+}
+
+/// The effective environment age controls only deterministic ecology. Every
+/// pressure ramps smoothly to one and remains capped thereafter. Each world
+/// starts from age zero; no earned floor carries pressure between worlds.
+pub(crate) fn ecological_pressures(age: u32) -> [f32; 4] {
+    [
+        pressure_between(age, MOBILITY_START_TICK, MOBILITY_CAP_TICK),
+        pressure_between(age, MOBILITY_CAP_TICK, FRAGMENTATION_CAP_TICK),
+        pressure_between(age, FRAGMENTATION_CAP_TICK, SEASONALITY_CAP_TICK),
+        0.0,
+    ]
+}
+
+fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> SimParams {
     SimParams {
         world_size: WORLD_SIZE,
         resource_grid_size: RESOURCE_GRID,
@@ -1018,28 +1093,36 @@ fn params_for(tick: u32, s: &SimSettings, seed: u32) -> SimParams {
             0.0,
             s.resource_regeneration,
             s.movement_energy_cost,
-            s.metabolic_cost,
+            metabolic_cost_at(environment_tick, s),
         ],
         resource_and_noise: [
             s.consume_amount,
             s.conversion_efficiency,
             s.heterogeneity,
-            0.0,
+            f32::from(s.social_actions_enabled),
         ],
         sensor_and_padding: [s.sensor_radius, s.maturity_age, 0.0, s.reproduction_cost],
         physical: [
             f32::from(s.force_enabled),
             f32::from(s.communication_enabled),
             s.motor_response_gain,
-            0.0,
+            // The decision shader uses this duration to spread each action's
+            // availability across individual agents during the bootstrap.
+            s.metabolic_ramp_ticks as f32,
         ],
         lifecycle: [
             seed,
             s.birth_cooldown,
             s.environment_rotation,
-            u32::from(s.evolving_landscape),
+            environment_tick,
         ],
-        mutation: [s.mutation_probability, s.mutation_magnitude, 0.0, 0.0],
+        mutation: [
+            BASE_MUTATION_PROBABILITY,
+            BASE_MUTATION_MAGNITUDE,
+            f32::from(s.evolving_landscape),
+            0.0,
+        ],
+        environment: ecological_pressures(environment_tick),
     }
 }
 fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
@@ -1087,13 +1170,9 @@ fn build_genomes(seed: u32, s: &SimSettings) -> Vec<f32> {
     }
     genes
 }
-fn build_habitat(seed: u32, contrast: f32) -> Vec<f32> {
-    build_habitat_at(seed, 0, contrast)
-}
-
-fn build_terrain_pair(seed: u32, epoch: u32, contrast: f32) -> Vec<[f32; 4]> {
-    let a = build_habitat_at(seed, epoch, contrast);
-    let b = build_habitat_at(seed, epoch.wrapping_add(1), contrast);
+fn build_terrain_pair(seed: u32, epoch: u32, contrast: f32, ramp_ticks: u32) -> Vec<[f32; 4]> {
+    let a = build_habitat_at(seed, epoch, contrast, ramp_ticks);
+    let b = build_habitat_at(seed, epoch.wrapping_add(1), contrast, ramp_ticks);
     terrain_pair(&a, &b)
 }
 fn terrain_pair(a: &[f32], b: &[f32]) -> Vec<[f32; 4]> {
@@ -1105,9 +1184,28 @@ fn terrain_pair(a: &[f32], b: &[f32]) -> Vec<[f32; 4]> {
         .collect()
 }
 
-fn build_habitat_at(seed: u32, epoch: u32, contrast: f32) -> Vec<f32> {
+fn build_habitat_at(seed: u32, epoch: u32, contrast: f32, ramp_ticks: u32) -> Vec<f32> {
     let mut rng = seed ^ 0xa341_316c;
     let mut patches: Vec<[f32; 7]> = Vec::new();
+    let elapsed = epoch.saturating_mul(8192);
+    let bootstrap = if ramp_ticks == 0 {
+        0.0
+    } else {
+        1.0 - (elapsed.min(ramp_ticks) as f32) / ramp_ticks as f32
+    };
+    // After the forgiving start, territory—not total food or body costs—becomes
+    // progressively more mobile through the 250,000-tick mobility cap.
+    let migration_pressure = if ramp_ticks == 0 {
+        pressure_between(elapsed, 0, MOBILITY_CAP_TICK)
+    } else {
+        let mobility_window = MOBILITY_CAP_TICK.saturating_sub(ramp_ticks);
+        if mobility_window == 0 {
+            0.0
+        } else {
+            elapsed.saturating_sub(ramp_ticks).min(mobility_window) as f32 / mobility_window as f32
+        }
+    };
+    let fragmentation = ecological_pressures(elapsed)[1];
     for i in 0..24 {
         let mut center = [0.5; 2];
         for _ in 0..64 {
@@ -1122,11 +1220,12 @@ fn build_habitat_at(seed: u32, epoch: u32, contrast: f32) -> Vec<f32> {
                 break;
             }
         }
-        let radius = if i < 5 {
+        let base_radius = if i < 5 {
             0.075 + random01(&mut rng) * 0.04
         } else {
             0.02 + random01(&mut rng) * 0.025
         };
+        let radius = base_radius * (1.0 + bootstrap);
         let angle = random01(&mut rng) * std::f32::consts::TAU;
         patches.push([
             center[0],
@@ -1145,9 +1244,24 @@ fn build_habitat_at(seed: u32, epoch: u32, contrast: f32) -> Vec<f32> {
             p[0] = 0.06 + random01(&mut renewal) * 0.88;
             p[1] = 0.06 + random01(&mut renewal) * 0.88;
         }
+        if migration_pressure > 0.0 {
+            // Early renewals change one stable map every three keyframes. As
+            // pressure grows, blend toward a fresh destination every keyframe.
+            // Existing terrain interpolation keeps each relocation continuous.
+            let mut rapid_renewal =
+                seed ^ (i as u32).wrapping_mul(7919) ^ epoch.wrapping_mul(0x9e3779b9);
+            let next_x = 0.06 + random01(&mut rapid_renewal) * 0.88;
+            let next_y = 0.06 + random01(&mut rapid_renewal) * 0.88;
+            p[0] += (next_x - p[0]) * migration_pressure;
+            p[1] += (next_y - p[1]) * migration_pressure;
+        }
         let phase = i as f32 * 2.39996 + epoch as f32 * 0.6;
-        p[0] = (p[0] + phase.sin() * 0.035).clamp(0.03, 0.97);
-        p[1] = (p[1] + (phase * 0.73).cos() * 0.035).clamp(0.03, 0.97);
+        // Keep the same keyframe cadence while gradually increasing travel
+        // through 250k, making settled patches less dependable without
+        // teleporting food.
+        let drift = 0.035 + 0.22 * migration_pressure;
+        p[0] = (p[0] + phase.sin() * drift).clamp(0.03, 0.97);
+        p[1] = (p[1] + (phase * 0.73).cos() * drift).clamp(0.03, 0.97);
         p[2] *= 0.85 + 0.25 * (phase * 0.8).sin();
         // Some regions lapse during a renewal cycle; interpolation fades them
         // out while replacement locations grow, without instantaneous jumps.
@@ -1190,7 +1304,7 @@ fn build_habitat_at(seed: u32, epoch: u32, contrast: f32) -> Vec<f32> {
                             let patch = t * t * (3.0 - 2.0 * t) * p[6];
                             value = value.max(patch);
                         }
-                        let shift = epoch as f32 * 0.025;
+                        let shift = epoch as f32 * (0.025 + 0.18 * migration_pressure);
                         let broad = terrain_noise(xf * 3.3 + shift, yf * 3.3 + shift, seed ^ 991)
                             * 0.55
                             + terrain_noise(xf * 7.1 + shift, yf * 7.1, seed ^ 1777) * 0.30
@@ -1205,12 +1319,37 @@ fn build_habitat_at(seed: u32, epoch: u32, contrast: f32) -> Vec<f32> {
             });
         }
     });
-    // Contrast changes food distribution, not its mean or the body's costs.
+    apply_fragmentation(&mut habitat, fragmentation, epoch, seed);
     let mean = habitat.iter().sum::<f32>() / habitat.len() as f32;
+    // Contrast changes food distribution, not its mean or the body's costs.
     for value in &mut habitat {
         *value = mean + contrast * (*value - mean);
     }
     habitat
+}
+
+/// Fragment broad territory into pockets while preserving the keyframe mean.
+fn apply_fragmentation(habitat: &mut [f32], fragmentation: f32, epoch: u32, seed: u32) {
+    if fragmentation <= 0.0 {
+        return;
+    }
+    let mean = habitat.iter().sum::<f32>() / habitat.len() as f32;
+    let shift = epoch as f32 * 0.19;
+    let mut fragmented_mean = 0.0;
+    for (index, value) in habitat.iter_mut().enumerate() {
+        let x = (index % RESOURCE_GRID as usize) as f32 / RESOURCE_GRID as f32;
+        let y = (index / RESOURCE_GRID as usize) as f32 / RESOURCE_GRID as f32;
+        let noise = terrain_noise(x * 7.0 + shift, y * 7.0 - shift, seed ^ 0x5f37_59df);
+        let mask = ((noise - 0.30) / 0.40).clamp(0.0, 1.0);
+        let smooth_mask = mask * mask * (3.0 - 2.0 * mask);
+        let factor = 1.0 + fragmentation * (1.8 * smooth_mask - 0.9);
+        *value *= factor.max(0.05);
+        fragmented_mean += *value;
+    }
+    let rescale = mean / (fragmented_mean / habitat.len() as f32).max(0.000_001);
+    for value in habitat {
+        *value *= rescale;
+    }
 }
 
 fn terrain_noise(x: f32, y: f32, seed: u32) -> f32 {

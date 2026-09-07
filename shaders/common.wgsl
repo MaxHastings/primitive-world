@@ -26,7 +26,7 @@ struct Decision {
 };
 struct SimParams {
  world_size:f32,resource_grid_size:u32,agent_count:u32,tick:u32,
- time_and_costs:vec4<f32>,resource_and_noise:vec4<f32>,sensor_and_padding:vec4<f32>,physical:vec4<f32>,lifecycle:vec4<u32>,mutation:vec4<f32>,
+ time_and_costs:vec4<f32>,resource_and_noise:vec4<f32>,sensor_and_padding:vec4<f32>,physical:vec4<f32>,lifecycle:vec4<u32>,mutation:vec4<f32>,environment:vec4<f32>,
 };
 struct Ground {dropped:atomic<u32>,extracted:atomic<u32>,remainder:f32,produced:u32,
  weather_loss:u32,collected:atomic<u32>,habitat:f32,productivity:f32,};

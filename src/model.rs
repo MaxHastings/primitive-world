@@ -1,9 +1,16 @@
 //! primitive-world: fixed-frame sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
-pub const MODEL_ID: &str = "primitive-v10-live-winner-search";
-pub const FOUNDER_BANK_VERSION: u32 = 9;
-pub const CHECKPOINT_VERSION: u32 = 24;
-pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD024";
+pub const MODEL_ID: &str = "primitive-v24-delayed-social-fresh-worlds";
+pub const FOUNDER_BANK_VERSION: u32 = 13;
+pub const CHECKPOINT_VERSION: u32 = 37;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD037";
+pub const METABOLIC_START_COST: f32 = 0.01;
+pub const DEFAULT_METABOLIC_RAMP_TICKS: u32 = 50_000;
+/// Every inherited genome samples its own log-uniform multiplier in this range.
+pub const MUTATION_TEMPERATURE_MIN: f32 = 0.125;
+pub const MUTATION_TEMPERATURE_MAX: f32 = 8.0;
+pub const BASE_MUTATION_PROBABILITY: f32 = 0.02;
+pub const BASE_MUTATION_MAGNITUDE: f32 = 0.03;
 pub const MAX_AGENTS: u32 = 16_384;
 /// Reserve room for the largest permitted birth cooldown in shader tick arithmetic.
 pub const MAX_WORLD_TICKS: u32 = u32::MAX - 1_000_001;
@@ -140,6 +147,8 @@ pub struct SimParams {
     pub physical: [f32; 4],
     pub lifecycle: [u32; 4],
     pub mutation: [f32; 4],
+    /// Capped ecological pressure: extended mobility, fragmentation, seasons.
+    pub environment: [f32; 4],
 }
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
@@ -179,7 +188,9 @@ pub struct SimSettings {
     pub population: u32,
     pub resource_regeneration: f32,
     pub movement_energy_cost: f32,
+    /// The metabolism reached after the deterministic world-start ramp.
     pub metabolic_cost: f32,
+    pub metabolic_ramp_ticks: u32,
     /// Actuator sensitivity, not minimum effort or maximum body speed.
     pub motor_response_gain: f32,
     pub consume_amount: f32,
@@ -189,12 +200,13 @@ pub struct SimSettings {
     pub reproduction_cost: f32,
     pub maturity_age: f32,
     pub birth_cooldown: u32,
+    /// Enables transfer, force, and signalling as selectable controller actions.
+    /// They are enabled in the ordinary world; this is an experiment control,
+    /// never a behavior rule.
+    pub social_actions_enabled: bool,
     pub force_enabled: bool,
     pub communication_enabled: bool,
     pub evolving_landscape: bool,
-    /// Independent per-parameter birth mutation probability; not a brain output.
-    pub mutation_probability: f32,
-    pub mutation_magnitude: f32,
     pub founder_genomes: Vec<Vec<f32>>,
     pub founder_name: String,
 }
@@ -207,6 +219,7 @@ impl Default for SimSettings {
             resource_regeneration: 0.01,
             movement_energy_cost: 0.01,
             metabolic_cost: 0.06,
+            metabolic_ramp_ticks: DEFAULT_METABOLIC_RAMP_TICKS,
             motor_response_gain: 4.0,
             consume_amount: 25.0,
             conversion_efficiency: 8.0,
@@ -215,11 +228,10 @@ impl Default for SimSettings {
             reproduction_cost: 50.0,
             maturity_age: 400.0,
             birth_cooldown: 240,
+            social_actions_enabled: true,
             force_enabled: true,
             communication_enabled: true,
             evolving_landscape: true,
-            mutation_probability: 0.02,
-            mutation_magnitude: 0.03,
             founder_genomes: Vec::new(),
             founder_name: "primitive-world-random".into(),
         }
@@ -242,8 +254,6 @@ impl SimSettings {
                 self.sensor_radius,
                 self.reproduction_cost,
                 self.maturity_age,
-                self.mutation_probability,
-                self.mutation_magnitude,
             ]
             .iter()
             .any(|x| !x.is_finite() || *x < 0.0)
@@ -262,8 +272,6 @@ impl SimSettings {
             || self.habitat_contrast > 1.0
             || self.heterogeneity > 1.0
             || self.maturity_age > 11000.0
-            || self.mutation_probability > 1.0
-            || self.mutation_magnitude > 8.0
         {
             return Err("Invalid primitive-world physical settings".into());
         }

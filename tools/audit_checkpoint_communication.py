@@ -73,7 +73,7 @@ def suppression(genomes):
 
 def audit(path):
     raw = path.read_bytes()
-    assert raw[:12] == b'PRIMWORLD024', 'Expected primitive-world checkpoint 24'
+    assert raw[:12] == b'PRIMWORLD037', 'Expected primitive-world checkpoint 37'
     seed,tick,size = struct.unpack_from('<III',raw,12)
     metadata = json.loads(raw[24:24+size]); settings = metadata["settings"]; pos=24+size; buffers=[]
     population_bytes = settings['population'] * G * 4
@@ -105,7 +105,7 @@ def audit(path):
     founders=np.asarray(settings.pop('founder_genomes'),dtype=np.float32)
     result={
         'checkpoint':str(path.resolve()),'checkpoint_sha256':hashlib.sha256(raw).hexdigest(),
-        'model':'primitive-v10-live-winner-search','checkpoint_schema':24,'seed':seed,'tick':tick,
+        'model':'primitive-v24-delayed-social-fresh-worlds','checkpoint_schema':37,'seed':seed,'tick':tick,
         'settings_without_genomes':settings,'living':len(slots),
         'births':int(stats[3]),'starvation_deaths':int(stats[1]),'age_deaths':int(stats[2]),
         'emissions':int(stats[9]),'completed_transfers':int(stats[4]),'completed_force':int(stats[5]),

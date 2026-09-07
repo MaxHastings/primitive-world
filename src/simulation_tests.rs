@@ -169,7 +169,12 @@ fn environment_rotation_preserves_body_traits_and_is_not_a_controller_input() {
             expected.position = crate::environment::rotate_point(a.position, WORLD_SIZE, turns);
             assert_eq!(bytemuck::bytes_of(&expected), bytemuck::bytes_of(&b));
         }
-        assert_eq!(params_for(10, &settings, 1201).lifecycle[2], turns);
+        let params = params_for(10, 50_010, &settings, 1201);
+        assert_eq!(params.lifecycle[2], turns);
+        assert_eq!(params.lifecycle[3], 50_010);
+        assert_eq!(params.mutation[2], 1.0);
+        assert_eq!(params.environment, [0.00005, 0.0, 0.0, 0.0]);
+        near(params.time_and_costs[3], 0.06);
     }
     for shader in [
         include_str!("../shaders/decide.wgsl"),
@@ -590,10 +595,30 @@ fn dead_slot_reuse_resets_experience_and_advances_incarnation() {
     assert_eq!(bodies[0].signal_tick, 0);
     near(s.metrics(&d, &q).unwrap().dropped_food as f32, 2.0);
 }
+
 #[test]
 fn fresh_world_defaults_match_documented_physical_settings() {
     let settings = SimSettings::default();
     assert_eq!(settings.metabolic_cost, 0.06);
+    assert_eq!(settings.metabolic_ramp_ticks, 50_000);
+    near(crate::simulation::metabolic_cost_at(0, &settings), 0.01);
+    near(
+        crate::simulation::metabolic_cost_at(25_000, &settings),
+        0.035,
+    );
+    near(
+        crate::simulation::metabolic_cost_at(50_000, &settings),
+        0.06,
+    );
+    near(
+        crate::simulation::metabolic_cost_at(100_000, &settings),
+        0.06,
+    );
+    assert!(settings.social_actions_enabled);
+    assert!(settings.social_actions_enabled);
+    // The shader spreads reproduction over ticks 0–2,500, transfer over
+    // 52,500–65,000, signal over 65,000–80,000, and force over
+    // 80,000–100,000.
     assert_eq!(settings.movement_energy_cost, 0.01);
     assert_eq!(settings.motor_response_gain, 4.0);
     assert_eq!(settings.resource_regeneration, 0.01);
@@ -776,6 +801,50 @@ fn stale_targets_out_of_range_and_disabled_actions_cannot_claim() {
     };
     near(run(&s, &[intent, force])[1].food, 1.0);
 }
+
+#[test]
+fn disabled_social_actions_mask_social_logits_without_prescribing_behavior() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings.social_actions_enabled = false;
+    s.update_params(&q);
+    // Transfer has the strongest logit, but disabled social actions leave the
+    // controller's ordinary non-social options. Tied finite logits choose NONE
+    // by its ordinary lower action index; no food response is injected.
+    put(&s, &q, 0, body([602.0, 902.0]), &fixed(2, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    assert_eq!(s.agent_snapshot(&d, &q).unwrap()[0].action, 0);
+}
+
+#[test]
+fn reproduction_unlock_is_individual_gradual_and_complete_by_its_deadline() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings.metabolic_ramp_ticks = 50_000;
+    s.reset(&q);
+    let genome = fixed(5, [0.0; 2]);
+    for slot in 0..256 {
+        let mut a = body([602.0, 902.0]);
+        a.lineage_id = slot as u32 + 1;
+        put(&s, &q, slot, a, &genome);
+    }
+
+    s.tick = 1_250;
+    step(&mut s, &d, &q, 1);
+    let halfway = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 256)
+        .into_iter()
+        .filter(|decision| decision.selected_action == 5)
+        .count();
+    assert!((96..=160).contains(&halfway), "got {halfway} of 256");
+
+    s.tick = 2_500;
+    step(&mut s, &d, &q, 1);
+    let complete = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 256)
+        .into_iter()
+        .filter(|decision| decision.selected_action == 5)
+        .count();
+    assert_eq!(complete, 256);
+}
 #[test]
 fn amount_and_failed_actions_remain_controller_owned() {
     let (d, q) = gpu();
@@ -816,7 +885,6 @@ fn survivor_sample_keeps_current_child_genes_after_extinction() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let parent = fixed(5, [0.0; 2]);
-    s.settings.mutation_probability = 1.0;
     put(&s, &q, 0, body([602.0, 902.0]), &parent);
     step(&mut s, &d, &q, 1);
     let agents = s.agent_snapshot(&d, &q).unwrap();
@@ -857,10 +925,9 @@ fn survivor_sample_keeps_current_child_genes_after_extinction() {
 }
 
 #[test]
-fn zero_world_mutation_law_copies_exactly_at_birth() {
+fn birth_mutation_never_copies_a_parent_genome_exactly() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
-    // Ordinary births honor a zero world mutation law.
     let parent = fixed(5, [0.0; 2]);
     put(&s, &q, 0, body([602.0, 902.0]), &parent);
     step(&mut s, &d, &q, 1);
@@ -870,10 +937,10 @@ fn zero_world_mutation_law_copies_exactly_at_birth() {
         .position(|a| a.alive != 0 && a.ancestry_depth == 1)
         .expect("fixture must produce a child");
     let genomes = read::<f32>(&d, &q, &s.genome_buffer, MAX_AGENTS as usize * GENOME_SIZE);
-    assert_eq!(
+    assert_ne!(
         &genomes[child_slot * GENOME_SIZE..(child_slot + 1) * GENOME_SIZE],
         parent.as_slice(),
-        "zero mutation probability must permit exact copying"
+        "every inherited newborn genome must vary"
     );
 }
 
@@ -985,7 +1052,9 @@ fn step(s: &mut Simulation, d: &wgpu::Device, q: &wgpu::Queue, n: u32) {
 fn scene(d: &wgpu::Device, q: &wgpu::Queue) -> Simulation {
     let mut s = Simulation::new(d, q, 91);
     s.settings.population = 0;
-    s.settings.mutation_probability = 0.0;
+    s.settings.social_actions_enabled = true;
+    s.settings.metabolic_cost = 0.06;
+    s.settings.metabolic_ramp_ticks = 0;
     s.settings.resource_regeneration = 0.0;
     s.settings.evolving_landscape = false;
     s.reset(q);
@@ -1048,7 +1117,7 @@ fn layout_and_cli_contract() {
     assert_eq!(std::mem::size_of::<PerceptionGpu>(), 400);
     assert_eq!(std::mem::size_of::<DecisionGpu>(), 568);
     assert_eq!(std::mem::size_of::<SelectionOutput>(), 1160);
-    assert_eq!(std::mem::size_of::<SimParams>(), 112);
+    assert_eq!(std::mem::size_of::<SimParams>(), 128);
     assert!(MAX_AGENTS as usize * GENOME_SIZE * 4 <= 256 * 1024 * 1024);
     for flag in [
         "--unknown-option",
@@ -1057,6 +1126,28 @@ fn layout_and_cli_contract() {
     ] {
         assert!(crate::headless::arguments(&["world".into(), flag.into()]).is_err());
     }
+    assert!(
+        crate::headless::arguments(&["world".into(), "--comparisons".into(), "1".into(),]).is_err()
+    );
+    assert!(
+        crate::headless::arguments(&[
+            "world".into(),
+            "--headless".into(),
+            "--single-world".into(),
+            "--comparisons".into(),
+            "1".into(),
+        ])
+        .is_err()
+    );
+    assert!(
+        crate::headless::arguments(&[
+            "world".into(),
+            "--headless".into(),
+            "--comparisons".into(),
+            "2".into(),
+        ])
+        .is_ok()
+    );
     let settings = SimSettings {
         sensor_radius: f32::NAN,
         ..Default::default()
@@ -1412,8 +1503,8 @@ fn reproduction_requires_paid_energy_not_an_arbitrary_food_stockpile() {
 
 #[test]
 fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
-    let full = build_habitat_at(42, 3, 1.0);
-    let uniform = build_habitat_at(42, 3, 0.0);
+    let full = build_habitat_at(42, 3, 1.0, 0);
+    let uniform = build_habitat_at(42, 3, 0.0, 0);
     let mean = |values: &[f32]| values.iter().map(|v| *v as f64).sum::<f64>() / values.len() as f64;
     assert!(uniform.iter().all(|v| *v == uniform[0]));
     assert!((mean(&full) - mean(&uniform)).abs() < 0.00001);
@@ -1424,9 +1515,30 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v10-live-winner-search");
+    assert_eq!(MODEL_ID, "primitive-v24-delayed-social-fresh-worlds");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
-    assert_eq!(crate::founders::bundled().version, 9);
+    assert_eq!(crate::founders::bundled().version, 13);
+}
+
+#[test]
+fn ecological_pressures_ramp_in_order_then_cap() {
+    assert_eq!(ecological_pressures(50_000), [0.0; 4]);
+    assert_eq!(ecological_pressures(150_000), [0.5, 0.0, 0.0, 0.0]);
+    assert_eq!(ecological_pressures(250_000), [1.0, 0.0, 0.0, 0.0]);
+    assert_eq!(ecological_pressures(375_000), [1.0, 0.5, 0.0, 0.0]);
+    assert_eq!(ecological_pressures(500_000), [1.0, 1.0, 0.0, 0.0]);
+    assert_eq!(ecological_pressures(625_000), [1.0, 1.0, 0.5, 0.0]);
+    assert_eq!(ecological_pressures(750_000), [1.0, 1.0, 1.0, 0.0]);
+    assert_eq!(ecological_pressures(u32::MAX), [1.0, 1.0, 1.0, 0.0]);
+}
+
+#[test]
+fn fragmentation_preserves_habitat_mean() {
+    let before = build_habitat_at(42, 30, 1.0, DEFAULT_METABOLIC_RAMP_TICKS);
+    let mut after = before.clone();
+    let mean = |values: &[f32]| values.iter().map(|v| *v as f64).sum::<f64>() / values.len() as f64;
+    apply_fragmentation(&mut after, 1.0, 30, 42);
+    assert!((mean(&before) - mean(&after)).abs() < 0.00001);
 }
 #[test]
 fn nonfinite_controller_output_is_contained() {
@@ -1620,7 +1732,7 @@ fn batching_checkpoint_and_selection_preserve_state() {
 fn headless_extinction_stops_without_waiting_for_the_report_or_tick_limit() {
     for (label, population, metabolism, limit, expected_tick, reason) in [
         ("empty", "0", "0.06", "200000", 0, "extinction"),
-        ("dies", "1", "100", "200000", 32, "extinction"),
+        ("dies", "1", "100", "200000", 288, "extinction"),
         ("alive", "1", "0.06", "7", 7, "tick_limit"),
     ] {
         let report = temp(&format!("early-stop-{label}.json"));
@@ -1799,10 +1911,11 @@ fn family_diagnostics_count_juvenile_feeding_maturity_and_terminal_flow() {
 #[test]
 fn fixed_parameter_mutation_cpu_gpu_parity() {
     let (d, q) = gpu();
-    let mut s = scene(&d, &q);
-    s.settings.mutation_probability = 0.4;
-    s.settings.mutation_magnitude = 8.0;
-    s.update_params(&q);
+    let s = scene(&d, &q);
+    let mut params = params_for(s.tick, s.tick, &s.settings, s.seed);
+    params.mutation[0] = 0.4;
+    params.mutation[1] = 8.0;
+    q.write_buffer(&s.params_buffer, 0, bytemuck::bytes_of(&params));
     let mut all = Vec::new();
     for i in 0..256 {
         let g = crate::brain::random_genome(&mut (i as u32));
@@ -1837,7 +1950,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
         .enumerate()
     {
         let mut expected = parent.to_vec();
-        crate::brain::mutate(&mut expected, i as u32 * 7919, &s.settings);
+        crate::brain::mutate(&mut expected, i as u32 * 7919, 0.4, 8.0);
         crate::brain::validate(child).unwrap();
         for (x, y) in expected.iter().zip(child) {
             near(*x, *y);
@@ -1847,7 +1960,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
 }
 
 #[test]
-fn fixed_brain_birth_cost_inheritance_and_memory_reset() {
+fn birth_variation_preserves_parent_cost_and_resets_child_memory() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     s.settings.metabolic_cost = 0.1;
@@ -1869,7 +1982,16 @@ fn fixed_brain_birth_cost_inheritance_and_memory_reset() {
     );
     assert_eq!(child.hidden, [0.0; HIDDEN]);
     let genes = read::<f32>(&d, &q, &s.genome_buffer, (slot + 1) * GENOME_SIZE);
-    assert_eq!(&genes[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE], &g);
+    assert_eq!(
+        &genes[..GENOME_SIZE],
+        &g,
+        "birth must not alter the parent genome"
+    );
+    assert_ne!(
+        &genes[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE],
+        &g,
+        "every newborn must vary from its inherited genome"
+    );
     // Rejected birth spends only ordinary upkeep and never publishes a child genome.
     let mut s = scene(&d, &q);
     a.energy = 20.0;

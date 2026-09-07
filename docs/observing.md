@@ -12,6 +12,19 @@ batch of at most 32 ticks. A bounded diagnostic is not the unlimited visible loo
 Choose new output files. Reports include the build/model, settings, sampled
 history, ancestry, and an explicit termination reason.
 
+## Evolution comparisons
+
+```sh
+cargo run --release -- --headless --seed 42 --ticks 200000 --comparisons 3 --sample 4096 --output reports/evolution-seed42.json
+```
+
+`--comparisons` stops after that many completed incumbent/candidate comparisons
+(or the tick budget first). Each sample includes read-only ancestry depth and
+mean movement plus horizontal direction counts and bias (-1 all left, +1 all
+right). It also reports the local food-gradient direction and the alignment of
+movement with that gradient. These measures can expose directional lock-in and
+resource avoidance; they do not reward, penalize, or alter agents.
+
 Optional `--families` adds read-only founder-family accounting for fresh worlds
 of at most 200,000 ticks. It does not rank founders or train the brains.
 `--survivors path.json` records late living genomes without changing selection

@@ -6,6 +6,7 @@ use std::io::{Read, Write};
 struct CheckpointMetadata {
     settings: SimSettings,
     progress: crate::evolution::Progress,
+    environment_start_age: u32,
 }
 
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
@@ -46,6 +47,42 @@ pub struct EvolutionSnapshot {
     pub parent_lineages_present: u64,
     pub maximum_ancestry_depth: u32,
     pub mean_ancestry_depth: f64,
+    /// Mean last-tick voluntary displacement for living agents.
+    pub mean_velocity_x: f64,
+    pub mean_velocity_y: f64,
+    /// Direction counts use an intentionally tiny horizontal dead zone.
+    pub leftward_agents: u64,
+    pub rightward_agents: u64,
+    pub nonhorizontal_agents: u64,
+    /// -1 means all horizontally moving agents went left; +1 means all went
+    /// right; 0 means balanced or no horizontal movement.
+    pub horizontal_directional_bias: f64,
+    /// Mean normalized local food-gradient direction seen under living bodies.
+    pub mean_food_gradient_x: f64,
+    pub mean_food_gradient_y: f64,
+    /// Mean alignment of voluntary velocity with the local food gradient.
+    /// Positive values move up-gradient; negative values move away.
+    pub food_gradient_alignment: f64,
+    pub food_gradient_samples: u64,
+}
+
+fn local_food_gradient(food: &[u32], position: [f32; 2]) -> [f64; 2] {
+    let grid = RESOURCE_GRID as usize;
+    let cell_x = (position[0] / (WORLD_SIZE / RESOURCE_GRID as f32))
+        .floor()
+        .clamp(0.0, (grid - 1) as f32) as i32;
+    let cell_y = (position[1] / (WORLD_SIZE / RESOURCE_GRID as f32))
+        .floor()
+        .clamp(0.0, (grid - 1) as f32) as i32;
+    let sample = |x: i32, y: i32| -> f64 {
+        let x = x.clamp(0, grid as i32 - 1) as usize;
+        let y = y.clamp(0, grid as i32 - 1) as usize;
+        food[y * grid + x] as f64
+    };
+    [
+        sample(cell_x + 1, cell_y) - sample(cell_x - 1, cell_y),
+        sample(cell_x, cell_y + 1) - sample(cell_x, cell_y - 1),
+    ]
 }
 
 pub fn read_buffer(
@@ -110,8 +147,11 @@ impl Simulation {
     ) -> Result<EvolutionSnapshot, String> {
         let bytes = read_buffer(device, queue, &self.agent_buffers[self.current_buffer])?;
         let agents = bytemuck::cast_slice::<u8, AgentGpu>(&bytes);
+        let food_bytes = read_buffer(device, queue, &self.resource_buffer)?;
+        let food = bytemuck::cast_slice::<u8, u32>(&food_bytes);
         let mut lineages = HashSet::new();
         let mut parent_lineages = HashSet::new();
+        let mut moving_gradient_samples = 0u64;
         let mut snapshot = EvolutionSnapshot {
             tick: self.tick,
             ..Default::default()
@@ -125,12 +165,54 @@ impl Simulation {
             snapshot.maximum_ancestry_depth =
                 snapshot.maximum_ancestry_depth.max(agent.ancestry_depth);
             snapshot.mean_ancestry_depth += agent.ancestry_depth as f64;
+            snapshot.mean_velocity_x += agent.velocity[0] as f64;
+            snapshot.mean_velocity_y += agent.velocity[1] as f64;
+            let gradient = local_food_gradient(food, agent.position);
+            let gradient_length = gradient[0].hypot(gradient[1]);
+            if gradient_length > 0.0 {
+                snapshot.mean_food_gradient_x += gradient[0] / gradient_length;
+                snapshot.mean_food_gradient_y += gradient[1] / gradient_length;
+                snapshot.food_gradient_samples += 1;
+                let speed = f64::from(agent.velocity[0]).hypot(f64::from(agent.velocity[1]));
+                if speed > 0.0001 {
+                    moving_gradient_samples += 1;
+                    snapshot.food_gradient_alignment += (f64::from(agent.velocity[0])
+                        * gradient[0]
+                        + f64::from(agent.velocity[1]) * gradient[1])
+                        / (speed * gradient_length);
+                }
+            }
+            if agent.velocity[0] < -0.0001 {
+                snapshot.leftward_agents += 1;
+            } else if agent.velocity[0] > 0.0001 {
+                snapshot.rightward_agents += 1;
+            } else {
+                snapshot.nonhorizontal_agents += 1;
+            }
         }
         snapshot.individual_identities = lineages.len() as u64;
         snapshot.parent_lineages_present = parent_lineages.len() as u64;
         if snapshot.living > 0 {
             let count = snapshot.living as f64;
             snapshot.mean_ancestry_depth /= count;
+            snapshot.mean_velocity_x /= count;
+            snapshot.mean_velocity_y /= count;
+            let horizontal = snapshot.leftward_agents + snapshot.rightward_agents;
+            if horizontal > 0 {
+                snapshot.horizontal_directional_bias = (snapshot.rightward_agents as f64
+                    - snapshot.leftward_agents as f64)
+                    / horizontal as f64;
+            }
+        }
+        if snapshot.food_gradient_samples > 0 {
+            let count = snapshot.food_gradient_samples as f64;
+            snapshot.mean_food_gradient_x /= count;
+            snapshot.mean_food_gradient_y /= count;
+        }
+        if moving_gradient_samples > 0 {
+            snapshot.food_gradient_alignment /= moving_gradient_samples as f64;
+        } else {
+            snapshot.food_gradient_alignment = 0.0;
         }
         Ok(snapshot)
     }
@@ -200,6 +282,7 @@ impl Simulation {
         serde_json::to_vec(&CheckpointMetadata {
             settings: self.settings.clone(),
             progress: self.progress.clone(),
+            environment_start_age: self.environment_start_age,
         })
         .map_err(|e| e.to_string())
     }
@@ -322,6 +405,9 @@ impl Simulation {
         let metadata: CheckpointMetadata =
             serde_json::from_slice(&json).map_err(|e| e.to_string())?;
         let settings = metadata.settings;
+        if metadata.environment_start_age > MAX_WORLD_TICKS {
+            return Err("Checkpoint environment age exceeds tick capacity".into());
+        }
         metadata
             .progress
             .validate(settings.population, seed, tick)?;
@@ -413,11 +499,14 @@ impl Simulation {
         }
         for cell in data[3].chunks_exact(32) {
             let value = |i| f32::from_le_bytes(cell[i..i + 4].try_into().unwrap());
+            // Mean-preserving fragmentation can raise a local habitat multiplier
+            // slightly above one. It is finite, nonnegative model state rather
+            // than corruption; rendering clamps it while capacity uses it as a
+            // local geography multiplier.
             if [value(8), value(24), value(28)]
                 .iter()
                 .any(|v| !v.is_finite() || *v < 0.0)
                 || value(8) >= 1.0
-                || value(24) > 1.0
                 || value(28) > 1000.0
             {
                 return Err("Invalid checkpoint ground".into());
@@ -540,6 +629,7 @@ impl Simulation {
         self.settings = settings;
         self.seed = seed;
         self.tick = tick;
+        self.environment_start_age = metadata.environment_start_age;
         self.current_buffer = 0;
         self.terrain_epoch = u32::MAX;
         self.update_params(queue);

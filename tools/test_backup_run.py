@@ -14,7 +14,7 @@ from run_io import save_state, exclusive_run
 
 def checkpoint_bytes():
     settings = b"{}"
-    return (b"PRIMWORLD024" + struct.pack("<III", 42, 128, len(settings))
+    return (b"PRIMWORLD037" + struct.pack("<III", 42, 128, len(settings))
             + settings + b"".join(struct.pack("<Q", 4) + b"data" for _ in range(11)))
 
 
@@ -25,11 +25,11 @@ class BackupTests(unittest.TestCase):
             run = root / "run"
             run.mkdir()
             metadata = b'{"settings":{},"progress":{"world":2}}'
-            data = (b"PRIMWORLD024" + struct.pack("<III", 42, 128, len(metadata))
+            data = (b"PRIMWORLD037" + struct.pack("<III", 42, 128, len(metadata))
                     + metadata + b"".join(struct.pack("<Q", 4) + b"data" for _ in range(11)))
             (run / "save.checkpoint").write_bytes(data)
             (run / "save-1.json").write_text(json.dumps(dict(
-                version=4, model="primitive-v10-live-winner-search", world=2,
+                version=4, model="primitive-v24-delayed-social-fresh-worlds", world=2,
                 checkpoint="save.checkpoint", seed=42, tick=128)))
             with redirect_stdout(StringIO()):
                 backup_run.run(run, root / "backup")
@@ -84,7 +84,7 @@ class BackupTests(unittest.TestCase):
             source = checkpoints / "save.checkpoint"
             source.write_bytes(checkpoint_bytes())
             (checkpoints / "unfinished.partial").write_bytes(b"incomplete")
-            (run / "save-100.json").write_text(json.dumps(dict(version=4,model="primitive-v10-live-winner-search",checkpoint="save.checkpoint",seed=42,tick=128)))
+            (run / "save-100.json").write_text(json.dumps(dict(version=4,model="primitive-v24-delayed-social-fresh-worlds",checkpoint="save.checkpoint",seed=42,tick=128)))
             backup = root / "backup"
             with redirect_stdout(StringIO()):
                 backup_run.run(run, backup)
@@ -99,7 +99,7 @@ class BackupTests(unittest.TestCase):
             root = Path(tmp)
             run = root / "run"
             run.mkdir()
-            (run / "save-100.json").write_text(json.dumps(dict(version=4,model="primitive-v10-live-winner-search",checkpoint="missing.checkpoint",seed=42,tick=128)))
+            (run / "save-100.json").write_text(json.dumps(dict(version=4,model="primitive-v24-delayed-social-fresh-worlds",checkpoint="missing.checkpoint",seed=42,tick=128)))
             with redirect_stdout(StringIO()):
                 backup_run.run(run,root/"backup")
             latest=json.loads((root/"backup"/"latest.json").read_text())
@@ -113,7 +113,7 @@ class BackupTests(unittest.TestCase):
             run.mkdir()
             (run / "save.checkpoint").write_bytes(checkpoint_bytes()[:15])
             (run / "save-100.json").write_text(json.dumps(dict(
-                version=4, model="primitive-v10-live-winner-search", checkpoint="save.checkpoint",
+                version=4, model="primitive-v24-delayed-social-fresh-worlds", checkpoint="save.checkpoint",
                 seed=42, tick=128)))
             with redirect_stdout(StringIO()):
                 backup_run.run(run, root / "backup")

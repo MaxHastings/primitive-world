@@ -207,9 +207,14 @@ fn draw_new(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                     );
                     ui.add(
                         egui::Slider::new(&mut state.ui.setup.metabolic_cost, 0.0..=0.2)
-                            .text("Metabolic cost"),
+                            .text("Metabolic cap"),
                     );
+                    ui.small("Metabolism rises from .01; food patches recede to normal size over 50,000 ticks.");
                     ui.checkbox(&mut state.ui.setup.evolving_landscape, "Evolving geography");
+                    ui.checkbox(
+                        &mut state.ui.setup.social_actions_enabled,
+                        "Unlock social actions after the 50,000-tick survival bootstrap",
+                    );
                     ui.checkbox(&mut state.ui.setup.force_enabled, "Contact force available");
                     ui.checkbox(
                         &mut state.ui.setup.communication_enabled,
@@ -448,14 +453,8 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
             b.duration
         ));
         ui.small(format!(
-            "Candidate founders: {} unchanged, {} terminal descendants, {} mutated, {} fresh random",
-            state.simulation.settings.population
-                - p.descendant_founders
-                - p.mutated_founders
-                - p.random_founders,
-            p.descendant_founders,
-            p.mutated_founders,
-            p.random_founders
+            "Candidate founders: all {} uniquely varied; {} use terminal-descendant genomes as their inherited source",
+            state.simulation.settings.population, p.descendant_founders
         ));
     } else {
         ui.small(
@@ -502,7 +501,7 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
             ui.strong(state.births.to_string());
             ui.end_row();
 
-            ui.label("Tick");
+            ui.label("World tick");
             ui.strong(state.simulation.tick.to_string());
             ui.end_row();
             ui.label("Ticks / second");

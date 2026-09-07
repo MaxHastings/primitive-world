@@ -4,13 +4,14 @@ pub const HELP: &str = "Primitive World
 Run: primitive_world [--seed N] [--founders PATH]
 Headless: --headless --ticks N --sample N --output PATH
 Default viewer: New Game starts evolution; Load Game resumes it across worlds.
-Headless population comparisons: --headless --ticks N [--checkpoint PATH] [--save-checkpoint NEW_PATH]
+Headless population comparisons: --headless --ticks N [--comparisons N] [--checkpoint PATH] [--save-checkpoint NEW_PATH]
 Use --headless --single-world for diagnostics that stop at extinction.
   --load-game RECEIPT.json opens a saved experiment in the viewer.
 Playback: --view-fps 10|30|60 (default 30) --compute-budget 10..100 (default 100)\n  1x targets 60 ticks/second; MAX is uncapped. Budget controls work/idle time, not hardware power.\nOptions: --habitat-contrast X (0..1) --environment-rotation N (0..3)
          --population N --regeneration X --no-force --no-signals --static-landscape
-         --metabolic-cost X --movement-cost X --motor-gain X
+         --metabolic-cost X (ramp cap) --movement-cost X --motor-gain X
          --checkpoint PATH --save-checkpoint PATH --export-founders PATH
+         --comparisons N (stop after N completed incumbent/challenger comparisons)
 Headless observers:
          --families (fresh worlds, 1..200000 ticks; diagnostic only)
          --journeys PATH [--journey-sample N] (read-only sampled JSONL evidence)
@@ -52,6 +53,7 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
         "--seed",
         "--founders",
         "--ticks",
+        "--comparisons",
         "--sample",
         "--output",
         "--population",
@@ -123,6 +125,7 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
     if !out.contains_key("--headless") {
         for key in [
             "--ticks",
+            "--comparisons",
             "--sample",
             "--output",
             "--save-checkpoint",
@@ -163,6 +166,9 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
     }
     if out.contains_key("--single-world") && !out.contains_key("--headless") {
         return Err("--single-world requires --headless".into());
+    }
+    if out.contains_key("--single-world") && out.contains_key("--comparisons") {
+        return Err("--comparisons requires population-comparison headless mode".into());
     }
     if out.contains_key("--headless") && !out.contains_key("--single-world") {
         for key in [
@@ -449,7 +455,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     if let Some(path) = a.get("--save-checkpoint") {
         sim.save_checkpoint(&device, &queue, Path::new(path))?;
     }
-    let report = serde_json::json!({"schema":2,"build_version":env!("CARGO_PKG_VERSION"),"model":MODEL_ID,"checkpoint_version":CHECKPOINT_VERSION,"capacity":MAX_AGENTS,"seed":sim.seed,
+    let report = serde_json::json!({"schema":2,"build_version":env!("CARGO_PKG_VERSION"),"model":MODEL_ID,"checkpoint_version":CHECKPOINT_VERSION,"capacity":MAX_AGENTS,"seed":sim.seed,"environment_start_age":sim.environment_start_age,"earned_environment_floor":sim.progress.environment_age_floor,"effective_environment_tick":sim.tick.saturating_add(sim.environment_start_age),
   "initial_tick":initial_tick,"requested_ticks":ticks,"elapsed_ticks":sim.tick-initial_tick,"adapter":format!("{info:?}"),
   "termination_reason":if extinct {"extinction"} else if sim.tick >= MAX_WORLD_TICKS {"tick_capacity"} else {"tick_limit"},
   "extinction_detection_max_delay_ticks":31,
@@ -476,8 +482,18 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
     };
     let ticks = number("--ticks", 10000)?;
     let sample = number("--sample", 1024)?;
+    let comparisons = a
+        .get("--comparisons")
+        .map(|v| {
+            v.parse::<u64>()
+                .map_err(|_| "Invalid --comparisons".to_string())
+        })
+        .transpose()?;
     if ticks > 1_000_000 || sample == 0 {
         return Err("Ticks must be <=1000000 and sample positive".into());
+    }
+    if comparisons == Some(0) {
+        return Err("--comparisons must be positive".into());
     }
     let instance = wgpu::Instance::new(&Default::default());
     let adapter =
@@ -508,6 +524,7 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
             .unwrap_or("evolution-report.json"),
     )?;
     let initial = sim.progress.clone();
+    let initial_comparison = initial.comparison;
     let settings = sim.settings.clone();
     let mut restart_seconds = 0.0;
     let mut simulation_seconds = 0.0;
@@ -515,11 +532,18 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
     let mut history = Vec::new();
     let start = std::time::Instant::now();
     let mut living = sim.metrics(&d, &q)?.living;
-    while elapsed < ticks {
+    while elapsed < ticks
+        && comparisons.is_none_or(|target| sim.progress.comparison - initial_comparison < target)
+    {
         if living == 0 {
             let at = std::time::Instant::now();
             sim.advance_world(&d, &q)?;
             restart_seconds += at.elapsed().as_secs_f64();
+            if comparisons
+                .is_some_and(|target| sim.progress.comparison - initial_comparison >= target)
+            {
+                break;
+            }
         }
         let batch_at = std::time::Instant::now();
         let mut n = (ticks - elapsed)
@@ -548,16 +572,24 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
         }
         simulation_seconds += batch_at.elapsed().as_secs_f64();
         if living == 0 || elapsed == ticks || elapsed % sample == 0 {
-            history.push(serde_json::json!({"elapsed_ticks":elapsed,"progress":sim.progress,"metrics":sim.metrics(&d,&q)?}));
+            history.push(serde_json::json!({"elapsed_ticks":elapsed,"progress":sim.progress,"metrics":sim.metrics(&d,&q)?,"evolution":sim.evolution_snapshot(&d,&q)?}));
         }
     }
     if let Some(path) = a.get("--save-checkpoint") {
         sim.save_checkpoint(&d, &q, Path::new(path))?;
     }
-    let value = serde_json::json!({"schema":4,"model":MODEL_ID,"build_version":env!("CARGO_PKG_VERSION"),
-        "adapter":format!("{info:?}"),"requested_ticks":ticks,"elapsed_ticks":elapsed,
+    let completed_comparisons = sim.progress.comparison - initial_comparison;
+    let termination_reason = if comparisons.is_some_and(|target| completed_comparisons >= target) {
+        "comparison_limit"
+    } else if sim.tick >= MAX_WORLD_TICKS {
+        "tick_capacity"
+    } else {
+        "tick_budget"
+    };
+    let value = serde_json::json!({"schema":5,"model":MODEL_ID,"build_version":env!("CARGO_PKG_VERSION"),"environment_start_age":sim.environment_start_age,"earned_environment_floor":sim.progress.environment_age_floor,"effective_environment_tick":sim.tick.saturating_add(sim.environment_start_age),
+        "adapter":format!("{info:?}"),"requested_ticks":ticks,"requested_comparisons":comparisons,"completed_comparisons":completed_comparisons,"elapsed_ticks":elapsed,
         "wall_seconds":start.elapsed().as_secs_f64(),"restart_seconds":restart_seconds,"simulation_and_sync_seconds":simulation_seconds,"settings":settings,"initial_progress":initial,"final_progress":sim.progress,
-        "history":history,"termination_reason":if sim.tick >= MAX_WORLD_TICKS {"tick_capacity"} else {"tick_budget"},"extinction_detection_max_delay_ticks":31,
+        "history":history,"termination_reason":termination_reason,"extinction_detection_max_delay_ticks":31,
         "scope":"Founding populations compare natural survival duration on matched seeds. A living challenger is promoted immediately when it outlives its incumbent; observations are not rewards."});
     report
         .write_all(&serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?)

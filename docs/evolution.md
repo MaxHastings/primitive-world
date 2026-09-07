@@ -24,7 +24,33 @@ guard never count as extinction or a losing score. GPU batches can finish up to
 31 empty ticks after extinction; those ticks count as executed work but do not
 increase the recorded world duration.
 
-The same seed controls geography, weather and starting bodies in each pair. GPU
+At effective environment age zero, worlds begin with movement and collection only. Each additional action unlocks
+independently for an increasing, neutral hash-selected share of living bodies:
+reproduction over ticks 0–2,500. Social actions wait through the 50,000-tick
+survival bootstrap: transfer unlocks over 52,500–65,000, signals over
+65,000–80,000, and force over 80,000–100,000. At each interval's midpoint,
+roughly half of the bodies can select that action; at its end, every body can.
+The draw is stable for each body and has no connection to its energy, behavior,
+genome quality, ancestry, or success. Their ordinary food patches start 100%
+wider and recede to normal size while metabolism rises from .01 to .06. From
+50,000 to 250,000, the normal-sized food territory becomes progressively more
+mobile without changing metabolism or total normalized habitat. Habitat then
+fragments through 500,000 while
+preserving its keyframe mean; regional lean seasons strengthen through 750,000
+while moving abundance elsewhere. Each pressure then remains capped. This shared
+deterministic environmental schedule is not a reward, score, or different
+comparison condition. Every new world begins at effective environment age zero,
+so actions and ecological pressures restart from the same baseline.
+
+World duration and effective environment age both begin at zero for every
+comparison. A matched challenger shares that same fresh age with its incumbent;
+no earned environmental floor carries difficulty between worlds.
+
+The same seed controls geography, weather and starting bodies in each pair. The
+ecology orientation is held constant for the incumbent/challenger pair, then
+advances through the four quarter-turns for the next independent comparison.
+This makes a fixed world-axis policy less reusable without giving the controller
+the rotation as an input. GPU
 competition can still vary trajectories. One paired seed is a deliberately small
 comparison, not proof of general improvement. Moving to a fresh seed can produce
 shorter worlds even after a candidate has won an earlier comparison.
@@ -36,23 +62,21 @@ position's genome and the group's mixture and multiplicities. Default New Game
 and headless runs create one seed-specific random genome per founding body.
 An explicitly imported current-format bank repeats across founding positions.
 
-Each candidate copies the full current founding group. After an incumbent world
-ends naturally, a uniform sample of its terminal descendant genomes replaces up
-to 5% of founder positions (floor, minimum one). This uses the ordinary sparse
-variation budget: if a world produced fewer descendants, the remaining positions
-are parameter-mutated copies of the incumbent. Every fourth candidate also
-replaces 1% of positions with fresh random genomes (floor, minimum one). These
-positions are disjoint; a one-founder exploratory candidate is entirely random.
-Other positions remain unchanged. There is no identity ranking, genetic
+Every challenger founder inherits an existing genome and then varies from it.
+After an incumbent world ends naturally, a uniform sample of its terminal
+descendant genomes supplies up to 10% of the inherited sources (floor, minimum
+one); those sampled descendants remain unchanged as viable anchors. Up to 5% of
+the remaining sources are fresh random genomes, and the rest are mutated from
+the incumbent. Neither anchors nor immigrants use an individual score,
+direction, or authored behavior. There is no identity ranking, genetic
 clustering, novelty score or separate learned selector.
 
-Parameter mutation uses the world settings, default probability .02 and magnitude
-.03, bounded to [-4,4]. For candidate construction only, if all mutation draws leave
-a selected genome unchanged, one parameter is nudged toward zero by the configured
-magnitude where that change is representable; otherwise it is counted unchanged.
-Setting either mutation
-setting to zero disables parameter changes; periodic random exploration remains.
-Births keep the ordinary mutation rule without the candidate fallback.
+The same mutation law applies to challenger founders and paid births. Each
+inherited genome independently samples a continuous log-uniform mutation
+temperature from 1/8 to 8. That temperature scales both the chance that each
+parameter changes (base .02) and its step size (base .03), bounded to [-4,4].
+Thus most inherited brains receive slight variation while a few receive much
+larger changes. At least one parameter changes in every inherited genome.
 
 **Within-world descendant genomes are retained as potential, not automatically
 accepted, founders.** At natural extinction, each terminal descendant slot has
@@ -83,8 +107,8 @@ advancing is valid; resuming cannot score that world twice. Derived indexes and
 terrain are rebuilt. Manual ecological intervention makes a world ineligible for
 population comparison. Read-only diagnostic observers do not alter eligibility.
 
-There is one current model, `primitive-v10-live-winner-search`: checkpoint 24,
-game receipt 4, founder bank 9. Noncurrent files are rejected, never converted,
+There is one current model, `primitive-v24-delayed-social-fresh-worlds`: checkpoint 37,
+game receipt 4, founder bank 13. Noncurrent files are rejected, never converted,
 executed through a compatibility path, overwritten or deleted.
 
 The viewer saves on explicit Save, menu, close and every five minutes of changed

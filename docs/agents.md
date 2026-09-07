@@ -23,9 +23,9 @@ reset recurrent state. Ordinary parameter mutation applies at paid reproduction
 and to next-world variants. The shared mutation law is not a brain output.
 There is no node/edge mutation, online optimizer, or authored action reward.
 
-Body and brain upkeep are covered by metabolism (.06 energy/tick by default).
-Construction is covered by the fixed .2 times reproduction-cost overhead. There
-is no separate connection upkeep or genome-length copying charge.
+Body and brain upkeep begin at .01 energy/tick and rise linearly to .06 by world
+tick 50,000. Construction is covered by the fixed .2 times reproduction-cost
+overhead. There is no separate connection upkeep or genome-length copying charge.
 
 ## Inputs (zero-based)
 
@@ -106,9 +106,11 @@ not authored food-seeking or reproduction policies. Random does not mean compete
 `--founders` imports an explicitly named current-format bank without initialization
 noise. It repeats across founding positions; invalid data fails without fallback.
 
-Paid births copy the parent's fixed genome with the world-controlled mutation
-probability and magnitude, default .02 and .03. Every newborn starts with fresh
-body state and zero memory. Between worlds, [population selection](evolution.md)
-compares complete founding groups. A sparse uniform sample of terminal biological
-descendants can enter the next candidate, but only the complete candidate group's
-world duration decides whether any of those genomes carry forward.
+Paid births copy the parent's fixed genome and then apply the shared continuous
+mutation law: each inherited genome samples its own log-uniform temperature from
+1/8 to 8, scaling the .02 per-parameter chance and .03 step size. Every newborn
+therefore differs from its parent while retaining fresh body state and zero memory.
+Between worlds, [population selection](evolution.md) compares complete founding
+groups. A sparse uniform sample of terminal biological descendants can supply
+inherited sources for the next candidate, but each source is varied and only the
+complete candidate group's world duration decides what carries forward.
