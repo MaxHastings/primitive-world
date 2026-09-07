@@ -131,7 +131,7 @@ mod tests {
 
     fn bank(model: &str) -> FounderBank {
         serde_json::from_value(serde_json::json!({
-            "version": 8, "model": model, "name": "test-pool",
+            "version": 9, "model": model, "name": "test-pool",
             "source_seed": 42, "source_tick": 128,
             "genomes": [crate::brain::blank().to_vec()]
         }))

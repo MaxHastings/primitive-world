@@ -137,13 +137,16 @@ impl AppState {
             self.service_completed_world();
             return;
         }
-        let ticks = if self.step_requested {
+        let mut ticks = if self.step_requested {
             self.step_requested = false;
             1
         } else {
             self.scheduler.take(now, self.speed_index)
         }
         .min(model::MAX_WORLD_TICKS.saturating_sub(self.simulation.tick));
+        if let Some(until_win) = self.simulation.ticks_until_challenger_can_win() {
+            ticks = ticks.min(until_win);
+        }
 
         if self.simulation.tick >= model::MAX_WORLD_TICKS {
             self.paused = true;
@@ -306,6 +309,24 @@ impl AppState {
     }
 
     fn service_completed_world(&mut self) {
+        if self.living_agents != 0 {
+            match self
+                .simulation
+                .promote_challenger_if_outlived(u64::from(self.living_agents))
+            {
+                Ok(true) => {
+                    self.world_revision = self.world_revision.saturating_add(1);
+                    self.file_status =
+                        "Candidate outlived its incumbent and is now the live population.".into();
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    self.paused = true;
+                    self.file_status = format!("Evolution paused: {e}");
+                    return;
+                }
+            }
+        }
         if self.living_agents == 0 && self.simulation.progress.completed.is_none() {
             match self.simulation.complete_world(&self.device, &self.queue) {
                 Ok(()) => self.world_revision = self.world_revision.saturating_add(1),

@@ -5,8 +5,9 @@ senses, physical interactions, food, energy and paid reproduction.
 
 The objective is worlds remaining populated longer through continued ecological
 generations. Compare a current founding population and a sparsely mutated candidate
-on the same environment. Only completed world duration decides; keep the current
-population on ties or failed candidates. A continuing world is never cut short.
+on the same environment. Natural survival duration decides: promote a candidate
+the instant it outlives the incumbent, and keep its world running. A continuing
+world is never cut short.
 
 Preserve complete founding combinations and simple occasional random exploration.
 Do not add an individual-survival ranking, learned selector, reward taxonomy,

@@ -6,9 +6,9 @@ comparison and current ecology. Configure population, seed, food growth, metabol
 and available interactions before starting; the physical rules stay fixed.
 
 The overview shows whether the current population or its candidate is being
-evaluated. Both face the same environment. A candidate replaces the current
-population only after a strictly longer completed world. A living world continues
-without being scored. See [evolution](evolution.md) for inheritance and comparison.
+evaluated. Both face the same environment. A living candidate replaces the current
+population as soon as it outlives the incumbent, then continues running. See
+[evolution](evolution.md) for inheritance and comparison.
 
 ## Viewing
 
@@ -42,7 +42,7 @@ overrides it. Import a current receipt with Load Game or:
 cargo run --release -- --load-game path/to/save-123.json
 ```
 
-The current model is `primitive-v9-descendant-population-search`: receipts 4, checkpoints 23,
-founder banks 8. Noncurrent data is rejected without conversion or deletion.
+The current model is `primitive-v10-live-winner-search`: receipts 4, checkpoints 24,
+founder banks 9. Noncurrent data is rejected without conversion or deletion.
 Exports require new paths. See [headless observation](observing.md),
 [performance limits](performance.md), and the [implementation checklist](implementation-checklist.md).

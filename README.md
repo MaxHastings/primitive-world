@@ -13,8 +13,9 @@ A small artificial-life sandbox with no script for how to survive.
 
 Watch neural agents find food, reproduce, exchange signals and move one another.
 They inherit fixed gated recurrent brains. A saved founding population and a
-sparsely mutated candidate face the same environment. Only a strictly longer
-completed world replaces the current population. There is no learned selector.
+sparsely mutated candidate face the same environment. A candidate becomes the
+current population as soon as it is still alive beyond the incumbent's natural
+extinction time, and its living world keeps running. There is no learned selector.
 
 The objective is worlds staying populated through continued ecological generations.
 Random brains can fail quickly; selecting longer worlds does not establish

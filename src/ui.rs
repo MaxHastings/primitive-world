@@ -444,7 +444,7 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
     ));
     if let Some(b) = &p.baseline {
         ui.small(format!(
-            "Current population lasted {} ticks on this same seed. Candidate must last longer.",
+            "Current population lasted {} ticks on this same seed. A living candidate wins immediately when it outlasts that.",
             b.duration
         ));
         ui.small(format!(
@@ -465,10 +465,10 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
     if let Some(o) = &p.completed {
         ui.small(format!("Natural extinction after {} ticks", o.duration));
     } else {
-        ui.small("World still in progress: no completed score. Biological evolution continues.");
+        ui.small("World still in progress. Biological evolution continues; a candidate is promoted as soon as it outlives its incumbent.");
     }
     ui.small(format!(
-        "{} candidates accepted · only completed world duration decides",
+        "{} candidates accepted · natural survival duration decides",
         p.accepted_challengers
     ));
     ui.collapsing("Completed worlds", |ui| {

@@ -1424,9 +1424,9 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v9-descendant-population-search");
+    assert_eq!(MODEL_ID, "primitive-v10-live-winner-search");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
-    assert_eq!(crate::founders::bundled().version, 8);
+    assert_eq!(crate::founders::bundled().version, 9);
 }
 #[test]
 fn nonfinite_controller_output_is_contained() {

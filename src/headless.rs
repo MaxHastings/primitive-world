@@ -522,10 +522,13 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
             restart_seconds += at.elapsed().as_secs_f64();
         }
         let batch_at = std::time::Instant::now();
-        let n = (ticks - elapsed)
+        let mut n = (ticks - elapsed)
             .min(32)
             .min(sample - elapsed % sample)
             .min(MAX_WORLD_TICKS.saturating_sub(sim.tick));
+        if let Some(until_win) = sim.ticks_until_challenger_can_win() {
+            n = n.min(until_win);
+        }
         if n == 0 {
             break;
         }
@@ -540,6 +543,8 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
         elapsed += n;
         if living == 0 {
             sim.complete_world(&d, &q)?;
+        } else {
+            sim.promote_challenger_if_outlived(living)?;
         }
         simulation_seconds += batch_at.elapsed().as_secs_f64();
         if living == 0 || elapsed == ticks || elapsed % sample == 0 {
@@ -553,7 +558,7 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
         "adapter":format!("{info:?}"),"requested_ticks":ticks,"elapsed_ticks":elapsed,
         "wall_seconds":start.elapsed().as_secs_f64(),"restart_seconds":restart_seconds,"simulation_and_sync_seconds":simulation_seconds,"settings":settings,"initial_progress":initial,"final_progress":sim.progress,
         "history":history,"termination_reason":if sim.tick >= MAX_WORLD_TICKS {"tick_capacity"} else {"tick_budget"},"extinction_detection_max_delay_ticks":31,
-        "scope":"Founding populations compared by completed world duration on matched seeds. Living worlds remain unscored; observations are not rewards."});
+        "scope":"Founding populations compare natural survival duration on matched seeds. A living challenger is promoted immediately when it outlives its incumbent; observations are not rewards."});
     report
         .write_all(&serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())

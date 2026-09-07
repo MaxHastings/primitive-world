@@ -1,9 +1,9 @@
 //! primitive-world: fixed-frame sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
-pub const MODEL_ID: &str = "primitive-v9-descendant-population-search";
-pub const FOUNDER_BANK_VERSION: u32 = 8;
-pub const CHECKPOINT_VERSION: u32 = 23;
-pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD023";
+pub const MODEL_ID: &str = "primitive-v10-live-winner-search";
+pub const FOUNDER_BANK_VERSION: u32 = 9;
+pub const CHECKPOINT_VERSION: u32 = 24;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD024";
 pub const MAX_AGENTS: u32 = 16_384;
 /// Reserve room for the largest permitted birth cooldown in shader tick arithmetic.
 pub const MAX_WORLD_TICKS: u32 = u32::MAX - 1_000_001;

@@ -108,7 +108,7 @@ impl AppState {
         self.activate_experiment(experiment)?;
         self.paused = false;
         self.file_status =
-            "Incumbent world running. Founding populations compete on completed world duration."
+            "Incumbent world running. A living candidate is promoted when it outlives the incumbent."
                 .into();
         Ok(())
     }

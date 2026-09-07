@@ -10,15 +10,19 @@ ancestry are observations, never added rewards.
 1. Evaluate the current founding population in a seeded world until natural extinction.
 2. Make a candidate from that saved founding group. Reset the same environment,
    body positions, starting resources, ages and physical settings, and evaluate it.
-3. Accept the candidate only if its world lasts strictly longer. A tie or shorter
-   world keeps the complete current founding population.
-4. Start the next comparison with a fresh seed and evaluate the current population again.
+3. The instant a living candidate strictly outlasts the incumbent duration, accept
+   it. Keep its live bodies, ecology and descendant genomes running; do not reset
+   a winner merely because it has proved itself. A candidate that goes extinct at
+   or before the incumbent duration loses.
+4. When a current world later ends naturally, start its next matched comparison.
 
-A comparison is two complete worlds, not a timed training round. A world that
-continues reproducing can run indefinitely. Pause, saving, a headless tick budget,
-or the integer tick-capacity guard never count as extinction or a losing score.
-GPU batches can finish up to 31 empty ticks after extinction; those ticks count
-as executed work but do not increase the recorded world duration.
+A comparison starts with an incumbent's complete world. Its challenger has no
+time limit: it wins as soon as it is still alive beyond that recorded duration.
+A winning world continues indefinitely, including its ordinary paid births and
+mutations. Pause, saving, a headless tick budget, or the integer tick-capacity
+guard never count as extinction or a losing score. GPU batches can finish up to
+31 empty ticks after extinction; those ticks count as executed work but do not
+increase the recorded world duration.
 
 The same seed controls geography, weather and starting bodies in each pair. GPU
 competition can still vary trajectories. One paired seed is a deliberately small
@@ -53,9 +57,9 @@ Births keep the ordinary mutation rule without the candidate fallback.
 **Within-world descendant genomes are retained as potential, not automatically
 accepted, founders.** At natural extinction, each terminal descendant slot has
 the same chance to enter the next challenger; no lifespan, birth count, behavior
-or survivor score ranks it. A descendant genome carries forward only if the
-complete challenger population lasts strictly longer than the incumbent on the
-matched world. This keeps whole-population longevity as the only selector while
+or survivor score ranks it. A descendant genome carries forward only if its
+challenger population is still living beyond the incumbent's matched natural
+duration. This keeps whole-population longevity as the only selector while
 preventing a reset from discarding all evolved mutations.
 
 Fresh founders and biological newborns retain their existing different endowments.
@@ -79,8 +83,8 @@ advancing is valid; resuming cannot score that world twice. Derived indexes and
 terrain are rebuilt. Manual ecological intervention makes a world ineligible for
 population comparison. Read-only diagnostic observers do not alter eligibility.
 
-There is one current model, `primitive-v9-descendant-population-search`: checkpoint 23,
-game receipt 4, founder bank 8. Noncurrent files are rejected, never converted,
+There is one current model, `primitive-v10-live-winner-search`: checkpoint 24,
+game receipt 4, founder bank 9. Noncurrent files are rejected, never converted,
 executed through a compatibility path, overwritten or deleted.
 
 The viewer saves on explicit Save, menu, close and every five minutes of changed

@@ -1,4 +1,4 @@
-//! Two founding populations, one matched environment, completed world duration only.
+//! Two founding populations, one matched environment, natural survival only.
 use crate::{
     brain,
     model::*,
@@ -83,12 +83,10 @@ impl Progress {
                 || o.duration == 0
                 || o.duration > MAX_WORLD_TICKS
                 || o.maximum_generation > o.births
-                || o.comparison != o.world / 2 + o.world % 2
                 || o.population_id > o.comparison.saturating_add(1)
                 || (o.phase == Phase::Incumbent && o.population_id > o.comparison)
                 || (o.phase == Phase::Challenger
                     && o.population_id != o.comparison.saturating_add(1))
-                || (o.phase == Phase::Incumbent) != (o.world % 2 == 1)
                 || (o.phase == Phase::Incumbent) != o.challenger_accepted.is_none()
                 || o.parent_population_id
                     .is_some_and(|id| id == 0 || id >= o.population_id)
@@ -97,13 +95,8 @@ impl Progress {
                 || !o.food_collected.is_finite()
                 || o.food_collected < 0.0
         };
-        let expected = self
-            .comparison
-            .checked_mul(2)
-            .and_then(|w| w.checked_sub(u64::from(self.phase == Phase::Incumbent)));
         if self.comparison == 0
             || self.comparison == u64::MAX
-            || expected != Some(self.world)
             || self.incumbent_id == 0
             || self.incumbent_id > self.comparison
             || self.accepted_challengers >= self.comparison
@@ -264,7 +257,73 @@ fn proposal(
     }
     result
 }
+
+fn promote_challenger_if_outlived(
+    progress: &mut Progress,
+    search: &mut Search,
+    tick: u32,
+    living: u64,
+) -> Result<bool, String> {
+    if living == 0 || progress.phase != Phase::Challenger {
+        return Ok(false);
+    }
+    let baseline = progress
+        .baseline
+        .as_ref()
+        .ok_or("Candidate is missing its matched incumbent duration")?;
+    if tick <= baseline.duration {
+        return Ok(false);
+    }
+    if search.challenger == search.incumbent {
+        return Err("A candidate must differ from its incumbent before promotion".into());
+    }
+
+    progress.incumbent_parent_id = Some(progress.incumbent_id);
+    progress.incumbent_id = progress
+        .comparison
+        .checked_add(1)
+        .ok_or("Population identifier overflow")?;
+    progress.accepted_challengers = progress
+        .accepted_challengers
+        .checked_add(1)
+        .ok_or("Accepted challenger counter overflow")?;
+    progress.comparison = progress
+        .comparison
+        .checked_add(1)
+        .ok_or("Comparison counter overflow")?;
+    progress.phase = Phase::Incumbent;
+    progress.baseline = None;
+    progress.descendant_founders = 0;
+    progress.mutated_founders = 0;
+    progress.random_founders = 0;
+    search.incumbent = std::mem::take(&mut search.challenger);
+    Ok(true)
+}
+
+fn ticks_until_challenger_can_win(progress: &Progress, tick: u32) -> Option<u32> {
+    let baseline = progress.baseline.as_ref()?;
+    (progress.phase == Phase::Challenger && tick <= baseline.duration)
+        .then_some(baseline.duration + 1 - tick)
+}
+
 impl Simulation {
+    /// Number of ticks remaining until a living candidate can strictly outlive
+    /// its matched incumbent. Callers use this to end a GPU batch exactly at the
+    /// decision boundary, rather than detecting a winner up to 31 ticks late.
+    pub fn ticks_until_challenger_can_win(&self) -> Option<u32> {
+        ticks_until_challenger_can_win(&self.progress, self.tick)
+    }
+
+    /// Promote a candidate as soon as it has strictly outlived its matched
+    /// incumbent. Unlike natural completion, this deliberately leaves the
+    /// candidate's live bodies, descendant genomes, and ecology in place.
+    ///
+    /// Extinction therefore eliminates a population; it is not required before
+    /// a living winner can be recognized.
+    pub fn promote_challenger_if_outlived(&mut self, living: u64) -> Result<bool, String> {
+        promote_challenger_if_outlived(&mut self.progress, &mut self.search, self.tick, living)
+    }
+
     /// Uniformly sample terminal descendants before reset. This is deliberately
     /// not a survivor, birth, or behavior ranking: every terminal descendant
     /// slot has the same chance to become a founder in the next challenger.
@@ -486,5 +545,47 @@ mod tests {
         assert_eq!(progress.descendant_founders, 0);
         assert_eq!(progress.mutated_founders, 1);
         assert_ne!(challenger, incumbent);
+    }
+
+    #[test]
+    fn living_challenger_is_promoted_at_the_first_strictly_longer_tick() {
+        let mut progress = Progress::initial(7);
+        progress.world = 2;
+        progress.phase = Phase::Challenger;
+        progress.descendant_founders = 1;
+        progress.baseline = Some(Outcome {
+            world: 1,
+            comparison: 1,
+            population_id: 1,
+            parent_population_id: None,
+            phase: Phase::Incumbent,
+            seed: 7,
+            duration: 10,
+            births: 0,
+            maximum_generation: 0,
+            food_ingested: 0.0,
+            food_collected: 0.0,
+            challenger_accepted: None,
+        });
+        progress.history.push(progress.baseline.clone().unwrap());
+        let mut search = Search {
+            incumbent: vec![0.0],
+            challenger: vec![1.0],
+        };
+
+        assert_eq!(ticks_until_challenger_can_win(&progress, 10), Some(1));
+        assert!(!promote_challenger_if_outlived(&mut progress, &mut search, 10, 1).unwrap());
+        assert!(promote_challenger_if_outlived(&mut progress, &mut search, 11, 1).unwrap());
+        assert_eq!(progress.world, 2, "promotion must not reset the live world");
+        assert_eq!(progress.phase, Phase::Incumbent);
+        assert_eq!(progress.comparison, 2);
+        assert_eq!(progress.incumbent_id, 2);
+        assert_eq!(progress.incumbent_parent_id, Some(1));
+        assert_eq!(progress.accepted_challengers, 1);
+        assert!(progress.baseline.is_none());
+        assert_eq!(search.incumbent, vec![1.0]);
+        assert!(search.challenger.is_empty());
+        assert_eq!(ticks_until_challenger_can_win(&progress, 11), None);
+        progress.validate(1, 7, 11).unwrap();
     }
 }
