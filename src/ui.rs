@@ -27,8 +27,52 @@ pub struct UiState {
     pub library_notice: String,
     pub library_scan: experiments::LibraryScan,
     pub world_rect: egui::Rect,
+    pub wallpaper_controls: WallpaperControls,
     #[cfg(not(windows))]
     pub import_path: String,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum WallpaperMenu {
+    View,
+    Speed,
+    Details,
+}
+
+pub struct WallpaperControls {
+    pub hud_rect: egui::Rect,
+    pub popup_rect: egui::Rect,
+    pub lens_button: egui::Rect,
+    pub speed_button: egui::Rect,
+    pub details_button: egui::Rect,
+    pub lens_options: [egui::Rect; 10],
+    pub speed_buttons: [egui::Rect; 6],
+    pub menu: Option<WallpaperMenu>,
+}
+
+impl WallpaperControls {
+    pub fn toggle(&mut self, menu: WallpaperMenu) {
+        self.menu = if self.menu == Some(menu) {
+            None
+        } else {
+            Some(menu)
+        };
+    }
+}
+
+impl Default for WallpaperControls {
+    fn default() -> Self {
+        Self {
+            hud_rect: egui::Rect::NOTHING,
+            popup_rect: egui::Rect::NOTHING,
+            lens_button: egui::Rect::NOTHING,
+            speed_button: egui::Rect::NOTHING,
+            details_button: egui::Rect::NOTHING,
+            lens_options: [egui::Rect::NOTHING; 10],
+            speed_buttons: [egui::Rect::NOTHING; 6],
+            menu: None,
+        }
+    }
 }
 
 impl UiState {
@@ -48,6 +92,7 @@ impl UiState {
             library_notice: String::new(),
             library_scan: experiments::LibraryScan::default(),
             world_rect: egui::Rect::NOTHING,
+            wallpaper_controls: WallpaperControls::default(),
             #[cfg(not(windows))]
             import_path: String::new(),
         }
@@ -107,6 +152,10 @@ fn menu_frame() -> egui::Frame {
 
 pub fn draw(ctx: &egui::Context, state: &mut AppState) -> Action {
     let mut action = Action::None;
+    if state.wallpaper {
+        draw_wallpaper(ctx, state, &mut action);
+        return action;
+    }
     match state.ui.screen {
         Screen::Home => draw_home(ctx, state, &mut action),
         Screen::NewGame => draw_new(ctx, state, &mut action),
@@ -114,6 +163,199 @@ pub fn draw(ctx: &egui::Context, state: &mut AppState) -> Action {
         Screen::Play => draw_play(ctx, state, &mut action),
     }
     action
+}
+
+fn draw_wallpaper(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
+    state.ui.wallpaper_controls.speed_buttons = [egui::Rect::NOTHING; 6];
+    state.ui.wallpaper_controls.lens_options = [egui::Rect::NOTHING; 10];
+    egui::CentralPanel::default()
+        .frame(egui::Frame::NONE)
+        .show(ctx, |ui| {
+            state.ui.world_rect = ui.max_rect();
+            let world = ui.allocate_rect(state.ui.world_rect, egui::Sense::click());
+            if world.clicked()
+                && let Some(point) = world.interact_pointer_pos()
+            {
+                *action = Action::FoodClick(point);
+            }
+        });
+
+    let hud = egui::Area::new(egui::Id::new("wallpaper_hud_minimal"))
+        .anchor(egui::Align2::RIGHT_TOP, [-18.0, 38.0])
+        .movable(false)
+        .show(ctx, |ui| {
+            wallpaper_style(ui);
+            wallpaper_frame()
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        // Let the strip grow to fit long view names and Details.
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "World {}",
+                                state.simulation.progress.world
+                            ))
+                            .strong(),
+                        );
+                        ui.label(format!("{} alive", state.living_agents));
+                        ui.separator();
+                        let view = ui.button(Lens::from_u32(state.renderer.camera.lens).name());
+                        state.ui.wallpaper_controls.lens_button = view.rect;
+                        if view.clicked() {
+                            state.ui.wallpaper_controls.toggle(WallpaperMenu::View);
+                        }
+                        let speed = ui.button(playback::SPEED_LABELS[state.speed_index]);
+                        state.ui.wallpaper_controls.speed_button = speed.rect;
+                        if speed.clicked() {
+                            state.ui.wallpaper_controls.toggle(WallpaperMenu::Speed);
+                        }
+                        let details = ui.button("Details");
+                        state.ui.wallpaper_controls.details_button = details.rect;
+                        if details.clicked() {
+                            state.ui.wallpaper_controls.toggle(WallpaperMenu::Details);
+                        }
+                    });
+                    if !state.ui.has_world {
+                        ui.colored_label(egui::Color32::LIGHT_RED, "World did not start");
+                        ui.small(&state.file_status);
+                    }
+                })
+                .response
+                .rect
+        })
+        .inner;
+    state.ui.wallpaper_controls.hud_rect = hud;
+    state.ui.wallpaper_controls.popup_rect = egui::Rect::NOTHING;
+
+    if let Some(menu) = state.ui.wallpaper_controls.menu {
+        let popup = egui::Area::new(egui::Id::new("wallpaper_menu"))
+            .order(egui::Order::Foreground)
+            .pivot(egui::Align2::RIGHT_TOP)
+            .fixed_pos(egui::pos2(hud.right(), hud.bottom() + 6.0))
+            .movable(false)
+            .show(ctx, |ui| {
+                wallpaper_style(ui);
+                wallpaper_frame()
+                    .show(ui, |ui| {
+                        ui.set_width(210.0);
+                        match menu {
+                            WallpaperMenu::View => {
+                                ui.weak("View");
+                                for value in 0..=9 {
+                                    let choice = ui.add_sized(
+                                        [210.0, 26.0],
+                                        egui::Button::new(Lens::from_u32(value).name())
+                                            .selected(state.renderer.camera.lens == value),
+                                    );
+                                    state.ui.wallpaper_controls.lens_options[value as usize] =
+                                        choice.rect;
+                                    if choice.clicked() {
+                                        state.renderer.camera.lens = value;
+                                        state.ui.wallpaper_controls.menu = None;
+                                    }
+                                }
+                            }
+                            WallpaperMenu::Speed => {
+                                ui.weak("Playback speed");
+                                for (index, label) in playback::SPEED_LABELS[..6].iter().enumerate()
+                                {
+                                    let choice = ui.add_sized(
+                                        [210.0, 26.0],
+                                        egui::Button::new(*label)
+                                            .selected(state.speed_index == index),
+                                    );
+                                    state.ui.wallpaper_controls.speed_buttons[index] = choice.rect;
+                                    if choice.clicked() {
+                                        state.speed_index = index;
+                                        state.ui.wallpaper_controls.menu = None;
+                                    }
+                                }
+                            }
+                            WallpaperMenu::Details => {
+                                ui.weak("World details");
+                                ui.label(format!("Age: {} ticks", state.simulation.tick));
+                                if state.assisted {
+                                    ui.label("Food added by you");
+                                }
+                                if let Some(record) = state.simulation.progress.best.as_ref() {
+                                    ui.label(format!(
+                                        "Best: world {} / {} ticks",
+                                        record.world, record.duration
+                                    ));
+                                    if state.simulation.tick > record.duration {
+                                        ui.label("New survival record");
+                                    }
+                                } else {
+                                    ui.label("No completed worlds yet");
+                                }
+                                ui.add_space(4.0);
+                                ui.weak("Population history");
+                                let (rect, _) = ui.allocate_exact_size(
+                                    egui::vec2(210.0, 38.0),
+                                    egui::Sense::hover(),
+                                );
+                                let peak = state
+                                    .history
+                                    .iter()
+                                    .map(|m| m.living)
+                                    .max()
+                                    .unwrap_or(1)
+                                    .max(1) as f32;
+                                let points: Vec<_> = state
+                                    .history
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(index, metrics)| {
+                                        egui::pos2(
+                                            rect.left()
+                                                + rect.width() * index as f32
+                                                    / (state.history.len().max(2) - 1) as f32,
+                                            rect.bottom()
+                                                - rect.height() * metrics.living as f32 / peak,
+                                        )
+                                    })
+                                    .collect();
+                                if points.len() > 1 {
+                                    ui.painter().add(egui::Shape::line(
+                                        points,
+                                        egui::Stroke::new(
+                                            1.0,
+                                            egui::Color32::from_rgb(129, 163, 142),
+                                        ),
+                                    ));
+                                }
+                                ui.weak(format!(
+                                    "{} Hz / {:.1}x actual",
+                                    state.render_hz,
+                                    state.ticks_last_second as f32 / playback::BASE_TPS as f32
+                                ));
+                            }
+                        }
+                    })
+                    .response
+                    .rect
+            })
+            .inner;
+        state.ui.wallpaper_controls.popup_rect = popup;
+    }
+}
+
+fn wallpaper_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(egui::Color32::from_rgba_unmultiplied(10, 16, 22, 235))
+        .inner_margin(8)
+        .corner_radius(8.0)
+}
+
+fn wallpaper_style(ui: &mut egui::Ui) {
+    let style = ui.style_mut();
+    style.override_font_id = Some(egui::FontId::proportional(13.0));
+    style.spacing.item_spacing = egui::vec2(8.0, 4.0);
+    style.spacing.button_padding = egui::vec2(7.0, 4.0);
+    style.visuals.override_text_color = Some(egui::Color32::from_rgb(185, 197, 202));
+    style.visuals.widgets.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
+    style.visuals.widgets.inactive.bg_stroke = egui::Stroke::NONE;
+    style.visuals.selection.bg_fill = egui::Color32::from_rgb(39, 62, 53);
 }
 
 fn draw_home(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
@@ -480,9 +722,10 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
                 Some(false) => " · current population kept",
                 None => " · baseline",
             };
+            let assisted = if o.assisted { " · assisted" } else { "" };
             ui.small(format!(
-                "World {} · population #{} · seed {} · {} ticks{}",
-                o.world, o.population_id, o.seed, o.duration, result
+                "World {} · population #{} · seed {} · {} ticks{}{}",
+                o.world, o.population_id, o.seed, o.duration, result, assisted
             ));
             ui.small(format!(
                 "{} births · generation {} · {:.1} food collected / {:.1} digested",

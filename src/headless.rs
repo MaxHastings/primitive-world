@@ -1,20 +1,27 @@
-use crate::simulation::{CHECKPOINT_VERSION, MAX_AGENTS, MAX_WORLD_TICKS, MODEL_ID, Simulation};
+use crate::simulation::{
+    CHECKPOINT_VERSION, EVENT_RING_SIZE, MAX_AGENTS, MAX_WORLD_TICKS, MODEL_ID, Simulation,
+};
 use std::{collections::HashMap, io::Write, path::Path};
 pub const HELP: &str = "Primitive World
 Run: primitive_world [--seed N] [--founders PATH]
 Headless: --headless --ticks N --sample N --output PATH
 Default viewer: New Game starts evolution; Load Game resumes it across worlds.
+Wallpaper viewer: --wallpaper uses the desktop host as a native-resolution habitat.
+Windows integration: --install-startup registers wallpaper + auto-resume at login; --uninstall-startup removes it; --stop-wallpaper asks the wallpaper to save and close.
+Wallpaper startup: --resume opens the latest saved experiment, or creates one if none exists.
 Headless population comparisons: --headless --ticks N [--comparisons N] [--checkpoint PATH] [--save-checkpoint NEW_PATH]
 Use --headless --single-world for diagnostics that stop at extinction.
   --load-game RECEIPT.json opens a saved experiment in the viewer.
-Playback: --view-fps 10|30|60 (default 30) --compute-budget 10..100 (default 100)\n  1x targets 60 ticks/second; MAX is uncapped. Budget controls work/idle time, not hardware power.\nOptions: --habitat-contrast X (0..1) --environment-rotation N (0..3)
+Playback: --view-fps 10|30|60|120|144|240 (default 30; wallpaper defaults to monitor refresh) --compute-budget 10..100 (default 100)\n  1x targets 60 ticks/second; MAX is uncapped. Budget controls work/idle time, not hardware power.\nOptions: --wallpaper --habitat-contrast X (0..1) --environment-rotation N (0..3)
          --population N --regeneration X --no-force --no-signals --static-landscape
          --metabolic-cost X (ramp cap) --movement-cost X --motor-gain X
          --checkpoint PATH --save-checkpoint PATH --export-founders PATH
          --comparisons N (stop after N completed incumbent/challenger comparisons)
+         --descendant-percent N --random-percent N (headless founder mixture)
 Headless observers:
          --families (fresh worlds, 1..200000 ticks; diagnostic only)
          --journeys PATH [--journey-sample N] (read-only sampled JSONL evidence)
+         --communication-trace PATH (read-only signal emissions and receiver responses)
          --survivors PATH [--survivor-sample N] (latest nonempty living sample;
            up to 64 current genomes, founders included; period 1..1024, default 128)
          --famine-at T --restore-at T --help --version
@@ -43,8 +50,12 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
         "--no-force",
         "--no-signals",
         "--static-landscape",
+        "--wallpaper",
+        "--resume",
         "--help",
         "--version",
+        "--install-startup",
+        "--uninstall-startup",
     ];
     let valued = [
         "--load-game",
@@ -54,6 +65,8 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
         "--founders",
         "--ticks",
         "--comparisons",
+        "--descendant-percent",
+        "--random-percent",
         "--sample",
         "--output",
         "--population",
@@ -71,6 +84,7 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
         "--compute-budget",
         "--journeys",
         "--journey-sample",
+        "--communication-trace",
         "--famine-at",
         "--restore-at",
     ];
@@ -105,9 +119,9 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
     }
     if out
         .get("--view-fps")
-        .is_some_and(|v| !["10", "30", "60"].contains(&v.as_str()))
+        .is_some_and(|v| !["10", "30", "60", "120", "144", "240"].contains(&v.as_str()))
     {
-        return Err("Invalid --view-fps: use 10, 30 or 60".into());
+        return Err("Invalid --view-fps: use 10, 30, 60, 120, 144 or 240".into());
     }
     if out
         .get("--compute-budget")
@@ -122,10 +136,24 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
     {
         return Err("Playback controls apply to the viewer; headless runs are uncapped".into());
     }
+    if out.contains_key("--headless") && out.contains_key("--wallpaper") {
+        return Err("--wallpaper applies to the viewer; headless runs are not rendered".into());
+    }
+    if out.contains_key("--resume") && !out.contains_key("--wallpaper") {
+        return Err("--resume is for the wallpaper viewer".into());
+    }
+    if out.contains_key("--resume") && out.contains_key("--load-game") {
+        return Err("--resume and --load-game are mutually exclusive".into());
+    }
+    if out.contains_key("--communication-trace") && !out.contains_key("--single-world") {
+        return Err("--communication-trace requires --single-world".into());
+    }
     if !out.contains_key("--headless") {
         for key in [
             "--ticks",
             "--comparisons",
+            "--descendant-percent",
+            "--random-percent",
             "--sample",
             "--output",
             "--save-checkpoint",
@@ -133,6 +161,7 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
             "--families",
             "--journeys",
             "--journey-sample",
+            "--communication-trace",
             "--survivors",
             "--survivor-sample",
             "--famine-at",
@@ -149,6 +178,7 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
             for key in out.keys() {
                 if ![
                     "--load-game",
+                    "--wallpaper",
                     "--view-speed",
                     "--view-fps",
                     "--compute-budget",
@@ -236,6 +266,18 @@ pub fn configure(sim: &mut Simulation, args: &[String]) -> Result<(), String> {
     if let Some(v) = a.get("--motor-gain") {
         sim.settings.motor_response_gain = v.parse().map_err(|_| "Invalid motor gain")?;
     }
+    if let Some(v) = a.get("--descendant-percent") {
+        sim.founder_descendant_percent = v.parse().map_err(|_| "Invalid descendant percent")?;
+    }
+    if let Some(v) = a.get("--random-percent") {
+        sim.founder_random_percent = v.parse().map_err(|_| "Invalid random percent")?;
+    }
+    if sim.founder_descendant_percent > 100
+        || sim.founder_random_percent > 100
+        || sim.founder_descendant_percent + sim.founder_random_percent > 100
+    {
+        return Err("Founder mixture percentages must be 0..=100 and sum to at most 100".into());
+    }
     sim.settings.force_enabled = !a.contains_key("--no-force");
     sim.settings.communication_enabled = !a.contains_key("--no-signals");
     sim.settings.evolving_landscape = !a.contains_key("--static-landscape");
@@ -285,6 +327,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
         .map(|path| new_report(path).map(std::io::BufWriter::new))
         .transpose()?;
     let mut journeys = crate::journey_observer::JourneyObserver::default();
+    let mut communication_file = a
+        .get("--communication-trace")
+        .map(|path| new_report(path).map(std::io::BufWriter::new))
+        .transpose()?;
     if sample == 0 || ticks > 1_000_000 {
         return Err("Sample must be positive; ticks must be <= 1000000".into());
     }
@@ -325,6 +371,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
         )?);
     }
     let initial_tick = sim.tick;
+    let mut communication_next_sequence = if communication_file.is_some() {
+        sim.event_sequence(&device, &queue)?
+    } else {
+        0
+    };
+    let mut communication_event_count = 0u64;
+    let mut communication_dropped_events = 0u64;
+    if let Some(file) = &mut communication_file {
+        file.write_all(b"{\"events\":[")
+            .map_err(|e| e.to_string())?;
+    }
     if survivor_file.is_some() {
         crate::survivor_observer::observe(&mut survivors, &sim, &device, &queue)?;
     }
@@ -332,10 +389,11 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let mut travel = crate::travel_observer::TravelObserver::default();
     travel.observe(sim.tick, &sim.agent_snapshot(&device, &queue)?)?;
     if let Some(file) = &mut journey_file {
-        journeys.observe(
+        journeys.observe_in_habitat(
             sim.tick,
             &sim.agent_snapshot(&device, &queue)?,
             &sim.vegetation_snapshot(&device, &queue)?,
+            [sim.settings.habitat_width, sim.settings.habitat_height],
         )?;
         let header = serde_json::json!({"type": "header", "model": MODEL_ID, "seed": sim.seed,
             "initial_tick": sim.tick, "observer": journeys.report(journey_sample)});
@@ -377,6 +435,30 @@ pub fn run(args: &[String]) -> Result<(), String> {
         // independently of the much less frequent full reporting interval.
         sim.copy_alive_count(&mut encoder);
         queue.submit(Some(encoder.finish()));
+        if let Some(file) = &mut communication_file {
+            let total = sim.event_sequence(&device, &queue)?;
+            let events = sim.recent_events(&device, &queue)?;
+            communication_dropped_events += u64::from(
+                total
+                    .wrapping_sub(communication_next_sequence)
+                    .saturating_sub(EVENT_RING_SIZE),
+            );
+            for event in events.into_iter().filter(|event| {
+                event.sequence >= communication_next_sequence
+                    && event.sequence < total
+                    && (event.action == crate::model::EMIT
+                        || event.action == crate::model::SIGNAL_OBSERVED
+                        || event.action == crate::model::SIGNAL_CONTROL
+                        || event.action == crate::model::MEMORY_SAMPLE)
+            }) {
+                if communication_event_count > 0 {
+                    file.write_all(b",").map_err(|e| e.to_string())?;
+                }
+                serde_json::to_writer(&mut *file, &event).map_err(|e| e.to_string())?;
+                communication_event_count += 1;
+            }
+            communication_next_sequence = total;
+        }
         extinct = sim
             .read_alive_count(&device)
             .ok_or("Could not read living population; refusing to guess extinction")?
@@ -392,10 +474,11 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 || extinct
                 || sim.tick.is_multiple_of(sample))
         {
-            let events = journeys.observe(
+            let events = journeys.observe_in_habitat(
                 sim.tick,
                 &sim.agent_snapshot(&device, &queue)?,
                 &sim.vegetation_snapshot(&device, &queue)?,
+                [sim.settings.habitat_width, sim.settings.habitat_height],
             )?;
             for event in events {
                 let line = serde_json::json!({"type": "journey", "evidence": event});
@@ -447,6 +530,29 @@ pub fn run(args: &[String]) -> Result<(), String> {
         let footer =
             serde_json::json!({"type": "summary", "observer": journeys.report(journey_sample)});
         writeln!(file, "{footer}").map_err(|e| e.to_string())?;
+        file.flush().map_err(|e| e.to_string())?;
+    }
+    if let Some(file) = &mut communication_file {
+        let trace = serde_json::json!({
+            "schema": 1,
+            "model": MODEL_ID,
+            "initial_tick": initial_tick,
+            "final_tick": sim.tick,
+            "event_kinds": {"emit": crate::model::EMIT, "signal_observed": crate::model::SIGNAL_OBSERVED, "signal_control": crate::model::SIGNAL_CONTROL, "memory_sample": crate::model::MEMORY_SAMPLE},
+            "event_count": communication_event_count,
+            "overwritten_ring_events": communication_dropped_events,
+            "limits": [
+                "Signals are local scalar emissions visible to the nearest body in each sector for one tick.",
+                "A signal_observed event records the receiver action on that tick for the first visible signal in compass-sector order, at most once per receiver per tick.",
+                "For signal_observed events, other_lineage stores the receiver action code because the event ring is shared with physical interactions.",
+                "For signal_control events, other_lineage stores the nearby-body action selected when no signal was visible; controls are sampled deterministically at roughly 1 in 64 eligible decisions.",
+                "For memory_sample events, amount is the selected action score contribution from the carried-forward recurrent state, other stores the action selected with that contribution removed, and position stores old/new hidden-state norms; samples are roughly 1 in 512 decisions.",
+                "This is behavioral correlation, not proof that the signal caused the response or carries a shared semantic code."
+            ]
+        });
+        let metadata = serde_json::to_vec(&trace).map_err(|e| e.to_string())?;
+        file.write_all(b"],").map_err(|e| e.to_string())?;
+        file.write_all(&metadata[1..]).map_err(|e| e.to_string())?;
         file.flush().map_err(|e| e.to_string())?;
     }
     let export = a
@@ -547,7 +653,11 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
         }
         let batch_at = std::time::Instant::now();
         let mut n = (ticks - elapsed)
-            .min(32)
+            .min(if sim.ticks_until_challenger_can_win().is_some() {
+                32
+            } else {
+                1024
+            })
             .min(sample - elapsed % sample)
             .min(MAX_WORLD_TICKS.saturating_sub(sim.tick));
         if let Some(until_win) = sim.ticks_until_challenger_can_win() {

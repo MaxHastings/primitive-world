@@ -7,15 +7,15 @@ struct InterventionParams {
 @group(0) @binding(0) var<storage, read_write> resource_values: array<u32>;
 @group(0) @binding(1) var<uniform> intervention: InterventionParams;
 @group(0) @binding(2) var<storage, read_write> ground: array<Ground>;
+@group(0) @binding(3) var<uniform> params: SimParams;
 
 const GRID: u32 = 512u;
-const WORLD_SIZE: f32 = 2048.0;
 const SCALE: f32 = 1000.0;
 
 @compute @workgroup_size(8, 8, 1)
 fn apply(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= GRID || id.y >= GRID) { return; }
-  let world = (vec2<f32>(id.xy) + vec2<f32>(0.5)) / f32(GRID) * WORLD_SIZE;
+  let world = (vec2<f32>(id.xy) + vec2<f32>(0.5)) / f32(GRID) * params.world_size.xy;
   if (length(world - intervention.center) > intervention.radius) { return; }
   let index = id.y * GRID + id.x;
   // Hand-painted food is dropped supply: it remains harvestable anywhere and

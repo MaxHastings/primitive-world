@@ -7,6 +7,8 @@ struct CheckpointMetadata {
     settings: SimSettings,
     progress: crate::evolution::Progress,
     environment_start_age: u32,
+    #[serde(default)]
+    assisted: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
@@ -66,12 +68,12 @@ pub struct EvolutionSnapshot {
     pub food_gradient_samples: u64,
 }
 
-fn local_food_gradient(food: &[u32], position: [f32; 2]) -> [f64; 2] {
+fn local_food_gradient(food: &[u32], position: [f32; 2], world_size: [f32; 2]) -> [f64; 2] {
     let grid = RESOURCE_GRID as usize;
-    let cell_x = (position[0] / (WORLD_SIZE / RESOURCE_GRID as f32))
+    let cell_x = (position[0] / (world_size[0] / RESOURCE_GRID as f32))
         .floor()
         .clamp(0.0, (grid - 1) as f32) as i32;
-    let cell_y = (position[1] / (WORLD_SIZE / RESOURCE_GRID as f32))
+    let cell_y = (position[1] / (world_size[1] / RESOURCE_GRID as f32))
         .floor()
         .clamp(0.0, (grid - 1) as f32) as i32;
     let sample = |x: i32, y: i32| -> f64 {
@@ -80,8 +82,8 @@ fn local_food_gradient(food: &[u32], position: [f32; 2]) -> [f64; 2] {
         food[y * grid + x] as f64
     };
     [
-        sample(cell_x + 1, cell_y) - sample(cell_x - 1, cell_y),
-        sample(cell_x, cell_y + 1) - sample(cell_x, cell_y - 1),
+        (sample(cell_x + 1, cell_y) - sample(cell_x - 1, cell_y)) / world_size[0] as f64,
+        (sample(cell_x, cell_y + 1) - sample(cell_x, cell_y - 1)) / world_size[1] as f64,
     ]
 }
 
@@ -114,6 +116,15 @@ pub fn read_buffer(
 }
 
 impl Simulation {
+    pub fn event_sequence(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<u32, String> {
+        let stats = read_buffer(device, queue, &self.death_stats_buffer)?;
+        Ok(bytemuck::cast_slice::<u8, u32>(&stats)[8])
+    }
+
     /// Vegetation only, for optional read-only journey diagnostics.
     pub fn vegetation_snapshot(
         &self,
@@ -167,7 +178,11 @@ impl Simulation {
             snapshot.mean_ancestry_depth += agent.ancestry_depth as f64;
             snapshot.mean_velocity_x += agent.velocity[0] as f64;
             snapshot.mean_velocity_y += agent.velocity[1] as f64;
-            let gradient = local_food_gradient(food, agent.position);
+            let gradient = local_food_gradient(
+                food,
+                agent.position,
+                [self.settings.habitat_width, self.settings.habitat_height],
+            );
             let gradient_length = gradient[0].hypot(gradient[1]);
             if gradient_length > 0.0 {
                 snapshot.mean_food_gradient_x += gradient[0] / gradient_length;
@@ -283,6 +298,7 @@ impl Simulation {
             settings: self.settings.clone(),
             progress: self.progress.clone(),
             environment_start_age: self.environment_start_age,
+            assisted: self.assisted,
         })
         .map_err(|e| e.to_string())
     }
@@ -448,9 +464,10 @@ impl Simulation {
                 || a.lifetime_padding != 0
                 || a.alive > 1
                 || a.action > 5
-                || a.position
-                    .iter()
-                    .any(|v| !v.is_finite() || !(0.0..=WORLD_SIZE).contains(v))
+                || !a.position[0].is_finite()
+                || !a.position[1].is_finite()
+                || !(0.0..=settings.habitat_width).contains(&a.position[0])
+                || !(0.0..=settings.habitat_height).contains(&a.position[1])
                 || [
                     a.energy,
                     a.age,
@@ -592,13 +609,13 @@ impl Simulation {
                 .as_ref()
                 .map(|b| o.duration > b.duration && search.challenger != search.incumbent);
             if alive
-                || counters[30] != 0
                 || o.duration != counters[18]
                 || o.births != counters[3]
                 || o.maximum_generation != counters[23]
                 || o.food_ingested
                     != (u64::from(counters[0]) + (u64::from(counters[14]) << 32)) as f64 / 1000.0
                 || o.challenger_accepted != accepted
+                || o.assisted != (counters[30] != 0)
             {
                 return Err("Completed outcome does not match physical checkpoint".into());
             }
@@ -625,11 +642,20 @@ impl Simulation {
         queue.write_buffer(&self.agent_buffers[1], 0, &data[0]);
         queue.write_buffer(&self.resource_display_buffer, 0, &data[1]);
         self.progress = metadata.progress;
+        if self.progress.best.is_none() {
+            self.progress.best = self
+                .progress
+                .history
+                .iter()
+                .max_by_key(|o| o.duration)
+                .cloned();
+        }
         self.search = search;
         self.settings = settings;
         self.seed = seed;
         self.tick = tick;
         self.environment_start_age = metadata.environment_start_age;
+        self.assisted = counters[30] != 0 || metadata.assisted;
         self.current_buffer = 0;
         self.terrain_epoch = u32::MAX;
         self.update_params(queue);

@@ -18,6 +18,8 @@ mod survivor_observer;
 mod travel_observer;
 mod ui;
 mod ui_details;
+#[cfg(windows)]
+mod windows_platform;
 
 use std::{
     sync::Arc,
@@ -31,7 +33,7 @@ use winit::{
     application::ApplicationHandler,
     event::{ElementState, KeyEvent, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
-    keyboard::{KeyCode, PhysicalKey},
+    keyboard::{KeyCode, ModifiersState, PhysicalKey},
     window::{Window, WindowAttributes, WindowId},
 };
 
@@ -41,6 +43,9 @@ struct App {
 }
 
 struct AppState {
+    wallpaper: bool,
+    wallpaper_size: Option<[f32; 2]>,
+    assisted: bool,
     ui: ui::UiState,
     experiment: Option<experiments::Experiment>,
     world_revision: u64,
@@ -88,6 +93,10 @@ struct AppState {
     gpu_tick_ms: Option<f32>,
     gpu_timing: Option<GpuTiming>,
     last_autosave: Instant,
+    modifiers: ModifiersState,
+    last_desktop_check: Instant,
+    #[cfg(windows)]
+    tray: Option<windows_platform::Tray>,
 }
 
 struct GpuTiming {
@@ -176,9 +185,32 @@ impl AppState {
                 None
             };
 
-        let mut simulation = Simulation::new(&device, &queue, 1);
         let args: Vec<_> = std::env::args().collect();
+        let wallpaper = args.iter().any(|a| a == "--wallpaper");
+        let wallpaper_size = wallpaper.then(|| {
+            let size = window.inner_size();
+            [size.width as f32, size.height as f32]
+        });
+        let mut simulation = Simulation::new(&device, &queue, 1);
         headless::configure(&mut simulation, &args).expect("Invalid command line");
+        if let Some([width, height]) = wallpaper_size {
+            simulation.settings.habitat_width = width;
+            simulation.settings.habitat_height = height;
+            if !args.iter().any(|arg| arg == "--load-game")
+                && !args.iter().any(|arg| arg == "--population")
+            {
+                let area_ratio =
+                    f64::from(width) * f64::from(height) / f64::from(WORLD_SIZE * WORLD_SIZE);
+                simulation.settings.population =
+                    (f64::from(simulation.settings.population) * area_ratio)
+                        .round()
+                        .clamp(1.0, f64::from(MAX_AGENTS)) as u32;
+            }
+            simulation
+                .settings
+                .validate()
+                .expect("monitor habitat dimensions must be valid");
+        }
         if args.len() > 1 {
             simulation.reset(&queue);
         }
@@ -220,11 +252,14 @@ impl AppState {
             mapped_at_creation: false,
         });
         let mut state = Self {
+            wallpaper,
+            wallpaper_size,
+            assisted: false,
             ui: ui::UiState::new(args.len() > 1),
             experiment: None,
             world_revision: 0,
             saved_revision: None,
-            window,
+            window: window.clone(),
             surface,
             device,
             queue,
@@ -260,7 +295,17 @@ impl AppState {
                 .iter()
                 .position(|a| a == "--view-fps")
                 .map(|i| args[i + 1].parse().expect("validated FPS"))
-                .unwrap_or(30),
+                .unwrap_or_else(|| {
+                    if wallpaper {
+                        window
+                            .current_monitor()
+                            .and_then(|monitor| monitor.refresh_rate_millihertz())
+                            .map(|hz| (hz / 1000).clamp(30, 240))
+                            .unwrap_or(60)
+                    } else {
+                        30
+                    }
+                }),
             compute_budget: args
                 .iter()
                 .position(|a| a == "--compute-budget")
@@ -275,6 +320,20 @@ impl AppState {
             gpu_tick_ms: None,
             gpu_timing,
             last_autosave: Instant::now(),
+            modifiers: ModifiersState::default(),
+            last_desktop_check: Instant::now(),
+            #[cfg(windows)]
+            tray: if wallpaper {
+                match windows_platform::Tray::new() {
+                    Ok(tray) => Some(tray),
+                    Err(error) => {
+                        eprintln!("Wallpaper tray unavailable: {error}");
+                        None
+                    }
+                }
+            } else {
+                None
+            },
         };
         state.refresh_saves();
         if state.ui.has_world
@@ -285,7 +344,19 @@ impl AppState {
             state.paused = true;
             state.file_status = error;
         }
+        state.sync_world_view();
         state
+    }
+
+    fn sync_world_view(&mut self) {
+        self.assisted = self.simulation.assisted;
+        self.renderer.set_world(
+            self.simulation.settings.habitat_width,
+            self.simulation.settings.habitat_height,
+        );
+        if self.wallpaper {
+            self.renderer.camera.zoom = 1.0;
+        }
     }
 
     fn resize(&mut self, width: u32, height: u32) {
@@ -304,6 +375,10 @@ impl AppState {
             self.renderer.camera.center,
             self.renderer.camera.zoom,
             point,
+            [
+                self.simulation.settings.habitat_width,
+                self.simulation.settings.habitat_height,
+            ],
         );
         let selected = self.simulation.select_agent(
             &self.device,
@@ -314,6 +389,79 @@ impl AppState {
         self.inspection.select(selected, self.simulation.tick);
         self.update_selection_highlight();
         self.ui.tab = ui::Tab::Agent;
+    }
+
+    fn handle_food_click(&mut self, point: egui::Pos2) {
+        let world = controls::world_position(
+            self.ui.world_rect,
+            self.renderer.camera.center,
+            self.renderer.camera.zoom,
+            point,
+            [
+                self.simulation.settings.habitat_width,
+                self.simulation.settings.habitat_height,
+            ],
+        );
+        self.simulation
+            .apply_resource_shock(&self.device, &self.queue, world, 24.0, 0.45);
+        self.assisted = true;
+        self.world_revision = self.world_revision.saturating_add(1);
+        self.file_status = format!("Food patch added at {:.0}, {:.0}", world[0], world[1]);
+    }
+
+    #[cfg(windows)]
+    fn handle_wallpaper_desktop_click(&mut self, x: i32, y: i32) {
+        let point = egui::pos2(
+            x as f32 / self.egui_context.pixels_per_point(),
+            y as f32 / self.egui_context.pixels_per_point(),
+        );
+        let controls = &mut self.ui.wallpaper_controls;
+        for (rect, menu) in [
+            (controls.lens_button, ui::WallpaperMenu::View),
+            (controls.speed_button, ui::WallpaperMenu::Speed),
+            (controls.details_button, ui::WallpaperMenu::Details),
+        ] {
+            if rect.contains(point) {
+                controls.toggle(menu);
+                return;
+            }
+        }
+        if let Some(menu) = controls.menu {
+            match menu {
+                ui::WallpaperMenu::View => {
+                    if let Some(lens) = controls
+                        .lens_options
+                        .iter()
+                        .position(|rect| rect.contains(point))
+                    {
+                        self.renderer.camera.lens = lens as u32;
+                        controls.menu = None;
+                    }
+                }
+                ui::WallpaperMenu::Speed => {
+                    if let Some(speed) = controls
+                        .speed_buttons
+                        .iter()
+                        .position(|rect| rect.contains(point))
+                    {
+                        self.speed_index = speed;
+                        controls.menu = None;
+                    }
+                }
+                ui::WallpaperMenu::Details => {}
+            }
+            if !controls.popup_rect.contains(point) {
+                controls.menu = None;
+            }
+            // An outside click dismisses the menu without adding food.
+            return;
+        }
+        if controls.hud_rect.contains(point) {
+            return;
+        }
+        if self.ui.world_rect.contains(point) {
+            self.handle_food_click(point);
+        }
     }
 
     fn update_title(&self) {
@@ -362,6 +510,12 @@ impl AppState {
             });
         let rect = self.ui.world_rect;
         self.renderer.camera.aspect = rect.width().max(1.0) / rect.height().max(1.0);
+        if self.wallpaper {
+            self.renderer.camera.zoom = (self.renderer.camera.aspect
+                * self.simulation.settings.habitat_height
+                / self.simulation.settings.habitat_width)
+                .min(1.0);
+        }
         self.renderer.update_camera(&self.queue);
         let view = output
             .texture
@@ -473,6 +627,7 @@ impl AppState {
         self.history.clear();
         self.recent_events.clear();
         self.evolution_snapshot = None;
+        self.assisted = false;
         self.renderer.camera.selected_id = u32::MAX;
         self.renderer.camera.selected_generation = 0;
         self.seed_input = self.simulation.seed;
@@ -482,6 +637,18 @@ impl AppState {
         self.age_deaths = 0;
         self.food_eaten = 0;
         self.interaction_stats = [0; 4];
+    }
+
+    fn close_requested(&mut self) -> bool {
+        self.complete_batch(true);
+        if self.experiment.is_some()
+            && let Err(error) = self.save_experiment()
+        {
+            self.paused = true;
+            self.file_status = format!("Save failed; window kept open so you can retry: {error}");
+            return false;
+        }
+        true
     }
 }
 
@@ -513,24 +680,43 @@ impl Lens {
 }
 
 fn action_name(action: u32) -> &'static str {
-    model::ACTION_NAMES[action.min(6) as usize]
+    match action {
+        model::SIGNAL_OBSERVED => "signal observed",
+        model::SIGNAL_CONTROL => "signal control",
+        model::MEMORY_SAMPLE => "memory sample",
+        _ => model::ACTION_NAMES
+            .get(action as usize)
+            .copied()
+            .unwrap_or("unknown"),
+    }
 }
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
         }
+        let wallpaper = std::env::args().any(|arg| arg == "--wallpaper");
+        let mut attributes = WindowAttributes::default()
+            .with_visible(false)
+            .with_title(format!("Primitive World {}", env!("CARGO_PKG_VERSION")))
+            .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 820.0))
+            .with_min_inner_size(winit::dpi::LogicalSize::new(900.0, 620.0));
+        if wallpaper {
+            attributes = attributes.with_decorations(false).with_resizable(false);
+        }
         let window = Arc::new(
             event_loop
-                .create_window(
-                    WindowAttributes::default()
-                        .with_visible(false)
-                        .with_title(format!("Primitive World {}", env!("CARGO_PKG_VERSION")))
-                        .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 820.0))
-                        .with_min_inner_size(winit::dpi::LogicalSize::new(900.0, 620.0)),
-                )
+                .create_window(attributes)
                 .expect("window creation failed"),
         );
+        #[cfg(windows)]
+        if wallpaper && let Err(error) = windows_platform::attach_to_desktop(&window) {
+            eprintln!("Wallpaper desktop hosting unavailable: {error}");
+            // Wallpaper mode must never fall back to an ordinary visible
+            // window: that would cover the user's desktop and icons.
+            event_loop.exit();
+            return;
+        }
         let state = pollster::block_on(AppState::new(window.clone()));
         window.set_visible(true);
         self.window = Some(window);
@@ -548,17 +734,18 @@ impl ApplicationHandler for App {
         };
         let egui_response = state.egui_state.on_window_event(&state.window, &event);
         match event {
-            WindowEvent::CloseRequested => {
-                state.complete_batch(true);
-                if state.experiment.is_some()
-                    && let Err(error) = state.save_experiment()
-                {
-                    state.paused = true;
-                    state.file_status =
-                        format!("Save failed; window kept open so you can retry: {error}");
-                    return;
+            WindowEvent::Destroyed if state.wallpaper => {
+                // Explorer owns our parent. If it exits, the child cannot be
+                // reattached or rendered; save and release the hook/singleton.
+                if !state.close_requested() {
+                    eprintln!("Wallpaper host disappeared: {}", state.file_status);
                 }
                 event_loop.exit();
+            }
+            WindowEvent::CloseRequested => {
+                if state.close_requested() {
+                    event_loop.exit();
+                }
             }
             WindowEvent::Resized(size) => {
                 state.occluded = size.width == 0 || size.height == 0;
@@ -581,20 +768,45 @@ impl ApplicationHandler for App {
             } if !egui_response.consumed && state.ui.screen == ui::Screen::Play => {
                 let pan = 80.0 / state.renderer.camera.zoom;
                 match code {
-                    KeyCode::Escape => state.open_menu(),
+                    KeyCode::Escape if !state.wallpaper => state.open_menu(),
+                    KeyCode::Escape if state.wallpaper => {
+                        if state.close_requested() {
+                            event_loop.exit();
+                        }
+                    }
+                    KeyCode::KeyQ
+                        if state.wallpaper
+                            && state.modifiers.control_key()
+                            && state.modifiers.shift_key() =>
+                    {
+                        if state.close_requested() {
+                            event_loop.exit();
+                        }
+                    }
                     KeyCode::Space => state.paused = !state.paused,
                     KeyCode::KeyL => {
                         state.renderer.camera.lens =
                             Lens::from_u32(state.renderer.camera.lens).next() as u32
                     }
-                    KeyCode::Home => {
-                        state.renderer.camera.center = [WORLD_SIZE * 0.5, WORLD_SIZE * 0.5];
+                    KeyCode::Home if !state.wallpaper => {
+                        state.renderer.camera.center = [
+                            state.simulation.settings.habitat_width * 0.5,
+                            state.simulation.settings.habitat_height * 0.5,
+                        ];
                         state.renderer.camera.zoom = 1.0;
                     }
-                    KeyCode::ArrowUp | KeyCode::KeyW => state.renderer.camera.center[1] -= pan,
-                    KeyCode::ArrowDown | KeyCode::KeyS => state.renderer.camera.center[1] += pan,
-                    KeyCode::ArrowLeft | KeyCode::KeyA => state.renderer.camera.center[0] -= pan,
-                    KeyCode::ArrowRight | KeyCode::KeyD => state.renderer.camera.center[0] += pan,
+                    KeyCode::ArrowUp | KeyCode::KeyW if !state.wallpaper => {
+                        state.renderer.camera.center[1] -= pan
+                    }
+                    KeyCode::ArrowDown | KeyCode::KeyS if !state.wallpaper => {
+                        state.renderer.camera.center[1] += pan
+                    }
+                    KeyCode::ArrowLeft | KeyCode::KeyA if !state.wallpaper => {
+                        state.renderer.camera.center[0] -= pan
+                    }
+                    KeyCode::ArrowRight | KeyCode::KeyD if !state.wallpaper => {
+                        state.renderer.camera.center[0] += pan
+                    }
                     KeyCode::Digit1 => state.speed_index = 0,
                     KeyCode::Digit2 => state.speed_index = 1,
                     KeyCode::Digit4 => state.speed_index = 2,
@@ -604,6 +816,7 @@ impl ApplicationHandler for App {
                     _ => {}
                 }
             }
+            WindowEvent::ModifiersChanged(modifiers) => state.modifiers = modifiers.state(),
             WindowEvent::RedrawRequested => match state.render() {
                 Ok(()) => {}
                 Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
@@ -619,8 +832,34 @@ impl ApplicationHandler for App {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         if let Some(state) = &mut self.state {
+            #[cfg(windows)]
+            if let Some(tray) = &state.tray
+                && let Some(action) = tray.take_action()
+            {
+                match action {
+                    windows_platform::TrayAction::TogglePause => state.paused = !state.paused,
+                    windows_platform::TrayAction::DesktopClick { x, y } => {
+                        state.handle_wallpaper_desktop_click(x, y)
+                    }
+                    windows_platform::TrayAction::Quit => {
+                        if state.close_requested() {
+                            event_loop.exit();
+                            return;
+                        }
+                    }
+                }
+            }
             state.pump_simulation();
             let now = Instant::now();
+            #[cfg(windows)]
+            if state.wallpaper
+                && now.duration_since(state.last_desktop_check) >= Duration::from_secs(3)
+            {
+                if let Some(tray) = &state.tray {
+                    tray.refresh();
+                }
+                state.last_desktop_check = now;
+            }
             if !state.occluded && now >= state.next_frame {
                 state.window.request_redraw();
             }
@@ -633,6 +872,46 @@ impl ApplicationHandler for App {
 
 fn main() {
     let options: Vec<_> = std::env::args().collect();
+    #[cfg(windows)]
+    {
+        if options.iter().any(|x| x == "--stop-wallpaper") {
+            if options.len() != 2 {
+                eprintln!("Use --stop-wallpaper by itself");
+                std::process::exit(2);
+            }
+            match windows_platform::stop_wallpaper() {
+                Ok(message) => println!("{message}"),
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
+        if options.iter().any(|x| x == "--install-startup")
+            || options.iter().any(|x| x == "--uninstall-startup")
+        {
+            if options.iter().any(|x| x == "--install-startup")
+                && options.iter().any(|x| x == "--uninstall-startup")
+            {
+                eprintln!("Choose either --install-startup or --uninstall-startup");
+                std::process::exit(2);
+            }
+            let result = if options.iter().any(|x| x == "--install-startup") {
+                windows_platform::install_startup()
+            } else {
+                windows_platform::uninstall_startup()
+            };
+            match result {
+                Ok(message) => println!("{message}"),
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
+    }
     if options.iter().any(|x| x == "--help") {
         println!("{}", headless::HELP);
         return;
@@ -645,6 +924,23 @@ fn main() {
         eprintln!("{e}");
         std::process::exit(2);
     }
+    #[cfg(windows)]
+    let _single_instance = match if options.iter().any(|a| a == "--wallpaper") {
+        windows_platform::SingleInstance::acquire()
+    } else {
+        Ok(None)
+    } {
+        Ok(Some(guard)) => Some(guard),
+        Ok(None) if !options.iter().any(|a| a == "--wallpaper") => None,
+        Ok(None) => {
+            eprintln!("Primitive World wallpaper is already running.");
+            return;
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+    };
     let args: Vec<_> = std::env::args().collect();
     if args.iter().any(|a| a == "--headless") {
         if let Err(error) = headless::run(&args) {

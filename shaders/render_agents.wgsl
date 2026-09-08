@@ -1,5 +1,5 @@
 struct Camera {
-  center: vec2<f32>, zoom: f32, aspect: f32, lens: u32, point_size: f32, selected_id: u32, selected_generation: u32,
+  center: vec2<f32>, zoom: f32, aspect: f32, lens: u32, point_size: f32, selected_id: u32, selected_generation: u32, world_size: vec2<f32>,
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;
@@ -23,9 +23,9 @@ fn vs(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: u32) -
     return VertexOutput(vec4<f32>(2.0, 2.0, 0.0, 1.0), vec4<f32>(0.0));
   }
   let agent_offset = agent.position - camera.center;
-  let ndc = vec2<f32>(agent_offset.x * 2.0 * camera.zoom / 2048.0 / camera.aspect, -agent_offset.y * 2.0 * camera.zoom / 2048.0);
+  let ndc = vec2<f32>(agent_offset.x * 2.0 * camera.zoom / camera.world_size.y / camera.aspect, -agent_offset.y * 2.0 * camera.zoom / camera.world_size.y);
   let p = perceptions[index];
-  let cell = clamp(agent.position / 2048.0 * 256.0, vec2<f32>(vec2(0.0)), vec2<f32>(255.0));
+  let cell = clamp(agent.position / camera.world_size * 256.0, vec2<f32>(vec2(0.0)), vec2<f32>(255.0));
   let density = min(f32(atomicLoad(&occupancy[u32(cell.y) * 256u + u32(cell.x)])) / 24.0, 1.0);
   var color = vec3<f32>(0.86, 0.94, 0.98);
   if (camera.lens == 1u) { color = heat(p.resource_here, vec3<f32>(0.15, 0.22, 0.94), vec3<f32>(1.0, 0.85, 0.18)); }
@@ -43,7 +43,7 @@ fn vs(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: u32) -
   var corners = array<vec2<f32>, 6>(
     vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0),
     vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0));
-  let pixel = camera.point_size * 2.0 * camera.zoom / 2048.0;
+  let pixel = camera.point_size * 2.0 * camera.zoom / camera.world_size.y;
   let corner_offset = corners[vertex] * vec2<f32>(pixel / camera.aspect, pixel);
   return VertexOutput(vec4<f32>(ndc + corner_offset, 0.0, 1.0), vec4<f32>(color, 0.90));
 }

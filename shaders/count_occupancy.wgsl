@@ -7,6 +7,6 @@ const GRID: u32 = 256u;
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   let index = id.x;
   if (index >= params.agent_count || agents[index].alive == 0u) { return; }
-  let cell = clamp(agents[index].position / params.world_size * f32(GRID), vec2<f32>(vec2(0.0)), vec2<f32>(f32(GRID - 1u)));
+  let cell = clamp(agents[index].position / params.world_size.xy * f32(GRID), vec2<f32>(vec2(0.0)), vec2<f32>(f32(GRID - 1u)));
   atomicAdd(&occupancy[u32(cell.y) * GRID + u32(cell.x)], 1u);
 }

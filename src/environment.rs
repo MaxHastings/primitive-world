@@ -1,11 +1,21 @@
 //! World-coordinate augmentation only. No controller or behavior changes.
 
+#[cfg(test)]
 pub fn rotate_point(mut point: [f32; 2], extent: f32, turns: u32) -> [f32; 2] {
     assert!(turns < 4);
     for _ in 0..turns {
         point = [extent - point[1], point[0]];
     }
     point
+}
+
+pub fn rotate_point_rect(point: [f32; 2], width: f32, height: f32, turns: u32) -> [f32; 2] {
+    assert!(turns < 4 && width > 0.0 && height > 0.0);
+    let mut normalized = [point[0] / width, point[1] / height];
+    for _ in 0..turns {
+        normalized = [1.0 - normalized[1], normalized[0]];
+    }
+    [normalized[0] * width, normalized[1] * height]
 }
 
 pub fn rotate_grid<T: Copy>(grid: Vec<T>, side: usize, turns: u32) -> Vec<T> {

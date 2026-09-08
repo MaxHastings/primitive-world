@@ -121,8 +121,8 @@ Environment rotation applies quarter-turns to initial positions and the entire
 habitat/weather history. It is never a brain input. These two controls change the
 environment, not the body or weights. Normal play uses contrast 1; the capped
 post-bootstrap pressures are mobility, fragmentation, and regional seasonality,
-not a reward or population rescue. Optional manual
-interventions are user experiments; record them when comparing outcomes.
+not a reward or population rescue. Manual interventions are part of the assisted
+experiment and are recorded in completed outcomes.
 
 An evolution run does not retain an earned environmental age floor. Every new
 world and every matched challenger starts at effective environment age zero, so

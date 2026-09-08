@@ -2079,10 +2079,13 @@ dependencies = [
  "egui-wgpu",
  "egui-winit",
  "pollster",
+ "raw-window-handle",
  "rfd",
  "serde",
  "serde_json",
  "wgpu",
+ "windows",
+ "windows-sys 0.59.0",
  "winit",
 ]
 

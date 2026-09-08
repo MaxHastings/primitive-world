@@ -104,8 +104,9 @@ Checkpoints preserve current bodies, hidden memory, all live genomes, ecology,
 traces, counters, the complete current/candidate founding groups, paired baseline,
 completed outcome, history, provenance and search RNG. Saving at extinction before
 advancing is valid; resuming cannot score that world twice. Derived indexes and
-terrain are rebuilt. Manual ecological intervention makes a world ineligible for
-population comparison. Read-only diagnostic observers do not alter eligibility.
+terrain are rebuilt. Manual ecological intervention is saved as part of the world
+and remains eligible for population comparison; outcomes record whether they were
+assisted. Read-only diagnostic observers do not alter eligibility.
 
 There is one current model, `primitive-v24-delayed-social-fresh-worlds`: checkpoint 37,
 game receipt 4, founder bank 13. Noncurrent files are rejected, never converted,

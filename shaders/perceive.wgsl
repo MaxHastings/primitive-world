@@ -12,16 +12,17 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  let i=id.x;if(i>=params.agent_count){return;}let a=agents[i];var p:Perception;
  for(var k=0u;k<8u;k++){p.bodies[k].slot=INVALID;}
  if(a.alive==0u){perceptions[i]=p;return;}
- p.resource_here=food_at_index(ground_index(a.position));
+ p.resource_here=food_at_index(ground_index(a.position,params.world_size.xy));
  let r=a.sensor_radius;let r2=r*r;let near2=r2*0.25;
  // Integrate every food-cell center in the local disk. Grid resolution,
  // rather than isolated probes, determines the remaining spatial aliasing.
  var cells:array<u32,16>;
- let lo=vec2<i32>(clamp(floor((a.position-vec2<f32>(r))/4.0),vec2<f32>(0),vec2<f32>(511)));
- let hi=vec2<i32>(clamp(floor((a.position+vec2<f32>(r))/4.0),vec2<f32>(0),vec2<f32>(511)));
+ let food_cell_size=params.world_size.xy/512.0;
+ let lo=vec2<i32>(clamp(floor((a.position-vec2<f32>(r))/food_cell_size),vec2<f32>(0),vec2<f32>(511)));
+ let hi=vec2<i32>(clamp(floor((a.position+vec2<f32>(r))/food_cell_size),vec2<f32>(0),vec2<f32>(511)));
  for(var y=lo.y;y<=hi.y;y++){
   for(var x=lo.x;x<=hi.x;x++){
-   let delta=(vec2<f32>(f32(x),f32(y))+vec2<f32>(0.5))*4.0-a.position;
+   let delta=(vec2<f32>(f32(x),f32(y))+vec2<f32>(0.5))*food_cell_size-a.position;
    let distance2=dot(delta,delta);if(distance2>r2){continue;}
    let region=sensory_sector(delta)+select(0u,8u,distance2>near2);
    p.regions[region].food+=food_at_index(u32(y)*512u+u32(x));cells[region]++;
@@ -32,8 +33,9 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  // is individually observable. No per-tick random subsampling.
  var nearest:array<f32,8>;
  for(var k=0u;k<8u;k++){nearest[k]=r2+1.0;}
- let blo=vec2<i32>(clamp(floor((a.position-vec2<f32>(r))/8.0),vec2<f32>(0),vec2<f32>(255)));
- let bhi=vec2<i32>(clamp(floor((a.position+vec2<f32>(r))/8.0),vec2<f32>(0),vec2<f32>(255)));
+ let body_cell_size=params.world_size.xy/256.0;
+ let blo=vec2<i32>(clamp(floor((a.position-vec2<f32>(r))/body_cell_size),vec2<f32>(0),vec2<f32>(255)));
+ let bhi=vec2<i32>(clamp(floor((a.position+vec2<f32>(r))/body_cell_size),vec2<f32>(0),vec2<f32>(255)));
  for(var y=blo.y;y<=bhi.y;y++){
   for(var x=blo.x;x<=bhi.x;x++){
    let ci=u32(y)*256u+u32(x);if(occupancy[ci]==0u){continue;}

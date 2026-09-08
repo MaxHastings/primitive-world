@@ -40,6 +40,13 @@ pub const GATE_BASE: usize = RECURRENT_BASE + HIDDEN * HIDDEN;
 pub const OUTPUT_BASE: usize = GATE_BASE + HIDDEN * HIDDEN;
 pub const GENOME_SIZE: usize = OUTPUT_BASE + OUTPUTS * HIDDEN;
 pub const ACTION_NAMES: [&str; 6] = ["none", "collect", "transfer", "force", "emit", "reproduce"];
+pub const EMIT: u32 = 4;
+/// Event-ring action code for a receiver decision made while a signal was visible.
+pub const SIGNAL_OBSERVED: u32 = 6;
+/// Event-ring action code for a matched nearby-body decision without a visible signal.
+pub const SIGNAL_CONTROL: u32 = 7;
+/// Event-ring action code for a sampled recurrent-memory diagnostic.
+pub const MEMORY_SAMPLE: u32 = 8;
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 pub struct AgentGpu {
@@ -137,10 +144,11 @@ impl Default for DecisionGpu {
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 pub struct SimParams {
-    pub world_size: f32,
+    pub world_size: [f32; 4],
     pub resource_grid_size: u32,
     pub agent_count: u32,
     pub tick: u32,
+    pub world_padding: u32,
     pub time_and_costs: [f32; 4],
     pub resource_and_noise: [f32; 4],
     pub sensor_and_padding: [f32; 4],
@@ -180,6 +188,12 @@ fn no_environment_rotation(rotation: &u32) -> bool {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SimSettings {
+    /// Logical habitat width. Wallpaper mode sets this to the monitor width.
+    #[serde(default = "default_habitat_width")]
+    pub habitat_width: f32,
+    /// Logical habitat height. Wallpaper mode sets this to the monitor height.
+    #[serde(default = "default_habitat_height")]
+    pub habitat_height: f32,
     /// Quarter turns of the full environment/initial positions, never a brain input.
     #[serde(default, skip_serializing_if = "no_environment_rotation")]
     pub environment_rotation: u32,
@@ -213,6 +227,8 @@ pub struct SimSettings {
 impl Default for SimSettings {
     fn default() -> Self {
         Self {
+            habitat_width: WORLD_SIZE,
+            habitat_height: WORLD_SIZE,
             environment_rotation: 0,
             habitat_contrast: 1.0,
             population: 1000,
@@ -240,6 +256,10 @@ impl Default for SimSettings {
 impl SimSettings {
     pub fn validate(&self) -> Result<(), String> {
         if self.environment_rotation > 3
+            || !self.habitat_width.is_finite()
+            || !self.habitat_height.is_finite()
+            || !(256.0..=32768.0).contains(&self.habitat_width)
+            || !(256.0..=32768.0).contains(&self.habitat_height)
             || self.population > MAX_AGENTS
             || self.birth_cooldown > 1_000_000
             || [
@@ -277,6 +297,14 @@ impl SimSettings {
         }
         crate::founders::validate_genomes(&self.founder_genomes)
     }
+}
+
+fn default_habitat_width() -> f32 {
+    WORLD_SIZE
+}
+
+fn default_habitat_height() -> f32 {
+    WORLD_SIZE
 }
 /// Fixed recurrent brains with random inherited parameters.
 pub fn random_genome(rng: &mut u32) -> [f32; GENOME_SIZE] {

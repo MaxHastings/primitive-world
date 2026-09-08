@@ -7,6 +7,7 @@ struct Camera {
   point_size: f32,
   selected_id: u32,
   selected_generation: u32,
+  world_size: vec2<f32>,
 };
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(1) @binding(0) var<storage, read> resources: array<u32>;
@@ -22,6 +23,36 @@ struct VertexOutput {
   @location(0) ndc: vec2<f32>,
 };
 
+fn resource_at(cell: vec2<u32>) -> f32 {
+  return f32(resources[cell.y * GRID + cell.x]) / SCALE;
+}
+
+// The simulation stores food per cell, but the display should not expose the
+// cell lattice as hard bands when a rectangular wallpaper scales the field.
+// Bilinear interpolation keeps the underlying values unchanged while making
+// patch edges continuous in screen space.
+fn sample_resource(uv: vec2<f32>) -> f32 {
+  let grid = clamp(
+    uv * f32(GRID) - vec2<f32>(0.5),
+    vec2<f32>(0.0),
+    vec2<f32>(f32(GRID - 1u) - 0.001),
+  );
+  let lower = vec2<u32>(floor(grid));
+  let upper = min(lower + vec2<u32>(1u), vec2<u32>(GRID - 1u));
+  let blend = fract(grid);
+  let top = mix(
+    resource_at(vec2<u32>(lower.x, lower.y)),
+    resource_at(vec2<u32>(upper.x, lower.y)),
+    blend.x,
+  );
+  let bottom = mix(
+    resource_at(vec2<u32>(lower.x, upper.y)),
+    resource_at(vec2<u32>(upper.x, upper.y)),
+    blend.x,
+  );
+  return mix(top, bottom, blend.y);
+}
+
 @vertex
 fn vs(@builtin(vertex_index) index: u32) -> VertexOutput {
   var positions = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
@@ -31,14 +62,14 @@ fn vs(@builtin(vertex_index) index: u32) -> VertexOutput {
 
 @fragment
 fn fs(input: VertexOutput) -> @location(0) vec4<f32> {
-  let world = camera.center + vec2<f32>(input.ndc.x * camera.aspect, -input.ndc.y) * params.world_size / (2.0 * camera.zoom);
-  let inside_world = world.x >= 0.0 && world.x < params.world_size && world.y >= 0.0 && world.y < params.world_size;
+  let world = camera.center + vec2<f32>(input.ndc.x * camera.aspect, -input.ndc.y) * params.world_size.y / (2.0 * camera.zoom);
+  let inside_world = world.x >= 0.0 && world.x < params.world_size.x && world.y >= 0.0 && world.y < params.world_size.y;
   if (!inside_world) {
     return vec4<f32>(0.003, 0.005, 0.009, 1.0);
   }
-  let uv = world / params.world_size;
+  let uv = world / params.world_size.xy;
   let cell = vec2<u32>(uv * f32(GRID));
-  let value = f32(resources[cell.y * GRID + cell.x]) / SCALE;
+  let value = sample_resource(uv);
   let occupancy_cell = vec2<u32>(uv * f32(AGENT_GRID));
   let density = min(f32(atomicLoad(&occupancy[occupancy_cell.y * AGENT_GRID + occupancy_cell.x])) / 24.0, 1.0);
   var tint = mix(vec3<f32>(0.004, 0.008, 0.016), vec3<f32>(0.12, 0.27, 0.14), smoothstep(0.02, 0.78, value));

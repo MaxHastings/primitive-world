@@ -1,6 +1,6 @@
 use bytemuck::{Pod, Zeroable};
 
-use crate::simulation::{MAX_AGENTS, Simulation, WORLD_SIZE};
+use crate::simulation::{MAX_AGENTS, Simulation};
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -12,6 +12,7 @@ pub struct CameraUniform {
     pub point_size: f32,
     pub selected_id: u32,
     pub selected_generation: u32,
+    pub world_size: [f32; 2],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,13 +80,20 @@ impl Renderer {
         height: u32,
     ) -> Self {
         let camera = CameraUniform {
-            center: [WORLD_SIZE * 0.5, WORLD_SIZE * 0.5],
+            center: [
+                simulation.settings.habitat_width * 0.5,
+                simulation.settings.habitat_height * 0.5,
+            ],
             zoom: 1.0,
             aspect: width.max(1) as f32 / height.max(1) as f32,
             lens: Lens::Energy as u32,
             point_size: 2.0,
             selected_id: u32::MAX,
             selected_generation: 0,
+            world_size: [
+                simulation.settings.habitat_width,
+                simulation.settings.habitat_height,
+            ],
         };
         let camera_buffer = wgpu::util::DeviceExt::create_buffer_init(
             device,
@@ -281,6 +289,11 @@ impl Renderer {
 
     pub fn resize(&mut self, width: u32, height: u32) {
         self.camera.aspect = width.max(1) as f32 / height.max(1) as f32;
+    }
+
+    pub fn set_world(&mut self, width: f32, height: f32) {
+        self.camera.world_size = [width, height];
+        self.camera.center = [width * 0.5, height * 0.5];
     }
 }
 

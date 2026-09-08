@@ -4,10 +4,16 @@ use crate::simulation::*;
 #[test]
 fn paused_food_brush_changes_food_inside_the_visible_circle() {
     let (d, q) = gpu();
-    let sim = scene(&d, &q);
+    let mut sim = scene(&d, &q);
     let rect = egui::Rect::from_min_size(egui::pos2(0.0, 56.0), egui::vec2(920.0, 734.0));
     let point = rect.center() + egui::vec2(90.0, -70.0);
-    let world = crate::controls::world_position(rect, [WORLD_SIZE * 0.5; 2], 2.0, point);
+    let world = crate::controls::world_position(
+        rect,
+        [WORLD_SIZE * 0.5; 2],
+        2.0,
+        point,
+        [WORLD_SIZE, WORLD_SIZE],
+    );
     let before = sim.metrics(&d, &q).unwrap();
     sim.apply_resource_shock(&d, &q, world, 45.0 / 2.0, 0.45);
     let added = sim.metrics(&d, &q).unwrap();

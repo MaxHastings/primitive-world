@@ -155,6 +155,9 @@ fn readback(device: &wgpu::Device, size: u64) -> wgpu::Buffer {
 pub struct Simulation {
     device: wgpu::Device,
     pub search: crate::evolution::Search,
+    /// Headless-only founder mixture controls; intentionally not checkpoint state.
+    pub founder_descendant_percent: usize,
+    pub founder_random_percent: usize,
     pub progress: crate::evolution::Progress,
     pub settings: SimSettings,
     pub seed: u32,
@@ -162,6 +165,7 @@ pub struct Simulation {
     /// Environment/action time at this world's tick zero. This is separate
     /// from tick so every world's survival duration is measured from zero.
     pub environment_start_age: u32,
+    pub assisted: bool,
     pub current_buffer: usize,
     pub(crate) genome_buffer: wgpu::Buffer,
     pub agent_buffers: [wgpu::Buffer; 2],
@@ -263,7 +267,7 @@ impl Simulation {
         let tick_params_buffer = buffer(
             device,
             "tick parameters",
-            32 * std::mem::size_of::<SimParams>() as u64,
+            1024 * std::mem::size_of::<SimParams>() as u64,
         );
         let alive_count_buffer = buffer(device, "alive count", 4);
         let alive_count_readback = readback(device, 4);
@@ -368,13 +372,16 @@ impl Simulation {
             "decide",
             "../shaders/decide.wgsl",
             "main",
-            "rrwur",
+            "rrwurrww",
             pair(|s| vec![
                 &agent_buffers[s],
                 &perception_buffer,
                 &decision_buffer,
                 &params_buffer,
-                &genome_buffer
+                &genome_buffer,
+                &active_indices,
+                &event_buffer,
+                &death_stats_buffer,
             ])
         );
         passes.insert(
@@ -407,7 +414,7 @@ impl Simulation {
                 "decide_live",
                 &live_source(include_str!("../shaders/decide.wgsl"), 5),
                 "main",
-                "rrwurr",
+                "rrwurrww",
                 pair(|s| {
                     vec![
                         &agent_buffers[s],
@@ -416,6 +423,8 @@ impl Simulation {
                         &params_buffer,
                         &genome_buffer,
                         &active_indices,
+                        &event_buffer,
+                        &death_stats_buffer,
                     ]
                 }),
             ),
@@ -440,7 +449,7 @@ impl Simulation {
             "body",
             "../shaders/update_agents.wgsl",
             "main",
-            "rrrw uww".replace(' ', "").as_str(),
+            "rrrw uwwrw".replace(' ', "").as_str(),
             pair(|s| vec![
                 &agent_buffers[s],
                 &decision_buffer,
@@ -448,7 +457,9 @@ impl Simulation {
                 &agent_buffers[1 - s],
                 &params_buffer,
                 &birth_flags,
-                &death_stats_buffer
+                &death_stats_buffer,
+                &active_indices,
+                &event_buffer
             ])
         );
         passes.insert(
@@ -458,7 +469,7 @@ impl Simulation {
                 "body_live",
                 &live_source(include_str!("../shaders/update_agents.wgsl"), 7),
                 "main",
-                "rrrw uwwr".replace(' ', "").as_str(),
+                "rrrw uwwrw".replace(' ', "").as_str(),
                 pair(|s| {
                     vec![
                         &agent_buffers[s],
@@ -469,6 +480,7 @@ impl Simulation {
                         &birth_flags,
                         &death_stats_buffer,
                         &active_indices,
+                        &event_buffer,
                     ]
                 }),
             ),
@@ -495,8 +507,8 @@ impl Simulation {
             "release",
             "../shaders/release_food.wgsl",
             "main",
-            "ww",
-            pair(|s| vec![&agent_buffers[s], &ground_buffer])
+            "wwu",
+            pair(|s| vec![&agent_buffers[s], &ground_buffer, &params_buffer])
         );
         add!(
             "free",
@@ -597,11 +609,12 @@ impl Simulation {
             "shock",
             "../shaders/intervene.wgsl",
             "apply",
-            "wuw",
+            "wuwu",
             vec![vec![
                 &resource_buffer,
                 &intervention_params_buffer,
-                &ground_buffer
+                &ground_buffer,
+                &params_buffer,
             ]]
         );
         add!(
@@ -614,11 +627,14 @@ impl Simulation {
         let mut sim = Self {
             device: device.clone(),
             search: crate::evolution::Search::default(),
+            founder_descendant_percent: crate::evolution::DESCENDANT_FOUNDER_PERCENT,
+            founder_random_percent: crate::evolution::RANDOM_FOUNDER_PERCENT,
             progress: crate::evolution::Progress::initial(seed),
             settings: SimSettings::default(),
             seed,
             tick: 0,
             environment_start_age: 0,
+            assisted: false,
             current_buffer: 0,
             genome_buffer,
             agent_buffers,
@@ -673,6 +689,7 @@ impl Simulation {
         }
         queue.submit(Some(clear.finish()));
         self.family_observer = None;
+        self.assisted = false;
         self.progress = crate::evolution::Progress::initial(self.seed);
         self.settings.validate().expect("valid reset settings");
         let random;
@@ -783,7 +800,7 @@ impl Simulation {
         queue: &wgpu::Queue,
         ticks: u32,
     ) {
-        assert!(ticks <= 32);
+        assert!(ticks <= 1024);
         assert!(
             ticks <= MAX_WORLD_TICKS.saturating_sub(self.tick),
             "World tick capacity reached; save without scoring extinction"
@@ -954,13 +971,14 @@ impl Simulation {
     }
 
     pub fn apply_resource_shock(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         center: [f32; 2],
         radius: f32,
         delta: f32,
     ) {
+        self.assisted = true;
         queue.write_buffer(&self.death_stats_buffer, 30 * 4, bytemuck::bytes_of(&1u32));
         queue.write_buffer(
             &self.intervention_params_buffer,
@@ -1085,10 +1103,11 @@ pub(crate) fn ecological_pressures(age: u32) -> [f32; 4] {
 
 fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> SimParams {
     SimParams {
-        world_size: WORLD_SIZE,
+        world_size: [s.habitat_width, s.habitat_height, 0.0, 0.0],
         resource_grid_size: RESOURCE_GRID,
         agent_count: MAX_AGENTS,
         tick,
+        world_padding: 0,
         time_and_costs: [
             0.0,
             s.resource_regeneration,
@@ -1129,12 +1148,13 @@ fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
     let mut rng = seed.max(1);
     (0..MAX_AGENTS)
         .map(|i| AgentGpu {
-            position: crate::environment::rotate_point(
+            position: crate::environment::rotate_point_rect(
                 [
-                    random01(&mut rng) * WORLD_SIZE,
-                    random01(&mut rng) * WORLD_SIZE,
+                    random01(&mut rng) * s.habitat_width,
+                    random01(&mut rng) * s.habitat_height,
                 ],
-                WORLD_SIZE,
+                s.habitat_width,
+                s.habitat_height,
                 s.environment_rotation,
             ),
             energy: 65.0,
@@ -1353,8 +1373,11 @@ fn apply_fragmentation(habitat: &mut [f32], fragmentation: f32, epoch: u32, seed
 }
 
 fn terrain_noise(x: f32, y: f32, seed: u32) -> f32 {
-    let ix = x.floor() as u32;
-    let iy = y.floor() as u32;
+    // Moving fragmentation samples negative coordinates. Float-to-u32 casts
+    // saturate them to zero, and fract() is negative there: together those
+    // extrapolated the noise and introduced a seam at every integer row.
+    let ix = x.floor() as i32 as u32;
+    let iy = y.floor() as i32 as u32;
     let sample = |dx: u32, dy: u32| {
         let mut h = seed
             ^ ix.wrapping_add(dx).wrapping_mul(0x9e3779b9)
@@ -1363,8 +1386,8 @@ fn terrain_noise(x: f32, y: f32, seed: u32) -> f32 {
         h = (h ^ (h >> 15)).wrapping_mul(0x846ca68b);
         (h ^ (h >> 16)) as f32 / u32::MAX as f32
     };
-    let tx = x.fract();
-    let ty = y.fract();
+    let tx = x - x.floor();
+    let ty = y - y.floor();
     let sx = tx * tx * (3.0 - 2.0 * tx);
     let sy = ty * ty * (3.0 - 2.0 * ty);
     let top = sample(0, 0) * (1.0 - sx) + sample(1, 0) * sx;

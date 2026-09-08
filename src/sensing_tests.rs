@@ -30,6 +30,59 @@ fn sector(dx: f32, dy: f32) -> usize {
 }
 
 #[test]
+fn rectangular_habitat_sensing_collection_and_death_drop_agree() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings.habitat_width = 3840.0;
+    s.settings.habitat_height = 1080.0;
+    s.update_params(&q);
+    let position = [3003.75, 800.5078];
+    let cell =
+        (position[1] / 1080.0 * 512.0) as usize * 512 + (position[0] / 3840.0 * 512.0) as usize;
+    q.write_buffer(
+        &s.resource_buffer,
+        cell as u64 * 4,
+        bytemuck::bytes_of(&1000u32),
+    );
+    let mut a = body(position);
+    a.food = 0.0;
+    put(&s, &q, 0, a, &fixed(1, [0.0; 2]));
+    put(
+        &s,
+        &q,
+        1,
+        body([position[0] + 10.0, position[1]]),
+        &fixed(0, [0.0; 2]),
+    );
+    let (p, _) = sense(&s, &d, &q);
+    near(p.resource_here, 1.0);
+    assert_eq!(p.nearby_count, 1.0);
+    assert!(p.regions.iter().any(|region| region.food > 0.0));
+    step(&mut s, &d, &q, 1);
+    assert!(read::<u32>(&d, &q, &s.resource_buffer, 512 * 512)[cell] < 1000);
+    a.alive = 0;
+    a.food = 2.0;
+    q.write_buffer(
+        &s.agent_buffers[s.current_buffer],
+        0,
+        bytemuck::bytes_of(&a),
+    );
+    let mut e = d.create_command_encoder(&Default::default());
+    s.dispatch(
+        &mut e,
+        "release",
+        s.current_buffer,
+        MAX_AGENTS.div_ceil(64),
+        1,
+    );
+    q.submit(Some(e.finish()));
+    assert_eq!(
+        read::<[u32; 8]>(&d, &q, &s.ground_buffer, 512 * 512)[cell][0],
+        2000
+    );
+}
+
+#[test]
 fn regional_food_matches_full_grid_reference_at_edges_and_all_radii() {
     let (d, q) = gpu();
     let s = scene(&d, &q);

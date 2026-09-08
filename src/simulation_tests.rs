@@ -1,5 +1,156 @@
 use super::*;
 
+#[test]
+#[ignore = "read-only validation of the user's current experiment library"]
+fn current_experiment_library_loads_without_rewriting_saves() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let (saves, skipped) = crate::experiments::list(&crate::experiments::save_root()).unwrap();
+    eprintln!(
+        "Checking {} current receipts; {skipped} historical/incompatible receipts skipped",
+        saves.len()
+    );
+    for saved in saves {
+        s.load_game_checkpoint(
+            &q,
+            std::fs::File::open(saved.checkpoint()).unwrap(),
+            (saved.record.seed, saved.record.tick, saved.record.living),
+            saved.record.world,
+        )
+        .unwrap_or_else(|error| panic!("{}: {error}", saved.directory.display()));
+        assert_eq!(s.tick, saved.record.tick);
+        assert_eq!(s.progress.world, saved.record.world);
+        eprintln!(
+            "Loaded {} world {} tick {}",
+            saved.directory.display(),
+            s.progress.world,
+            s.tick
+        );
+    }
+}
+
+#[test]
+fn terrain_noise_is_bounded_and_continuous_across_negative_grid_lines() {
+    for seed in [1, 91, 3137] {
+        for boundary in -80..=2 {
+            let y = boundary as f32;
+            let below = terrain_noise(0.37, y - 0.0001, seed);
+            let above = terrain_noise(0.37, y + 0.0001, seed);
+            assert!(
+                (below - above).abs() < 0.001,
+                "noise seam at y={y}: {below} -> {above}"
+            );
+            for x in [-2.7, -0.3, 0.37] {
+                let value = terrain_noise(x, y - 0.3, seed);
+                assert!((0.0..=1.0).contains(&value), "noise {value} at {x}, {y}");
+            }
+        }
+    }
+}
+
+/// Raw data and the actual world/agent pipelines, without a surface or egui.
+#[test]
+#[ignore = "writes diagnostic PPM images to PRIMITIVE_RENDER_DIAGNOSTICS"]
+fn capture_food_render_diagnostics() {
+    let output = std::path::PathBuf::from(std::env::var("PRIMITIVE_RENDER_DIAGNOSTICS").unwrap());
+    std::fs::create_dir_all(&output).unwrap();
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings.evolving_landscape = true;
+    s.settings.resource_regeneration = 1.0;
+    s.reset_with_genomes_at(&q, None, 3_114_696);
+    step(&mut s, &d, &q, 1);
+    let raw = read::<u32>(&d, &q, &s.resource_buffer, 512 * 512);
+    let displayed = read::<u32>(&d, &q, &s.resource_display_buffer, 512 * 512);
+    assert_eq!(raw, displayed, "display copy differs from simulation");
+    let write = |name: &str, rgb: Vec<u8>| {
+        let mut bytes = b"P6\n512 512\n255\n".to_vec();
+        bytes.extend(rgb);
+        std::fs::write(output.join(name), bytes).unwrap();
+    };
+    write(
+        "raw-food.ppm",
+        raw.iter()
+            .flat_map(|v| {
+                let value = (*v as f32 / 1000.0 * 255.0).clamp(0.0, 255.0) as u8;
+                [value, value, value]
+            })
+            .collect(),
+    );
+    let texture = d.create_texture(&wgpu::TextureDescriptor {
+        label: Some("diagnostic world"),
+        size: wgpu::Extent3d {
+            width: 512,
+            height: 512,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let view = texture.create_view(&Default::default());
+    let mut renderer =
+        crate::renderer::Renderer::new(&d, wgpu::TextureFormat::Rgba8Unorm, &s, 512, 512);
+    renderer.camera.lens = 0;
+    renderer.update_camera(&q);
+    let staging = readback(&d, 512 * 512 * 4);
+    let mut previous = None;
+    for frame in 0..2 {
+        let mut e = d.create_command_encoder(&Default::default());
+        {
+            let mut pass = e.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("diagnostic world pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            renderer.draw(&mut pass, &s);
+        }
+        e.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &staging,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(512 * 4),
+                    rows_per_image: Some(512),
+                },
+            },
+            texture.size(),
+        );
+        q.submit(Some(e.finish()));
+        let (tx, rx) = mpsc::channel();
+        staging.slice(..).map_async(wgpu::MapMode::Read, move |r| {
+            tx.send(r).unwrap();
+        });
+        d.poll(wgpu::Maintain::Wait);
+        rx.recv().unwrap().unwrap();
+        let rgba = staging.slice(..).get_mapped_range().to_vec();
+        staging.unmap();
+        if let Some(old) = previous {
+            assert_eq!(old, rgba, "paused render changed");
+        }
+        write(
+            &format!("offscreen-{frame}.ppm"),
+            rgba.chunks_exact(4)
+                .flat_map(|p| [p[0], p[1], p[2]])
+                .collect(),
+        );
+        previous = Some(rgba);
+    }
+}
+
 /// Manual timing, never a performance assertion: GPU, driver and contention matter.
 #[test]
 #[ignore = "manual GPU throughput and per-pass profile"]
@@ -1117,7 +1268,7 @@ fn layout_and_cli_contract() {
     assert_eq!(std::mem::size_of::<PerceptionGpu>(), 400);
     assert_eq!(std::mem::size_of::<DecisionGpu>(), 568);
     assert_eq!(std::mem::size_of::<SelectionOutput>(), 1160);
-    assert_eq!(std::mem::size_of::<SimParams>(), 128);
+    assert_eq!(std::mem::size_of::<SimParams>(), 144);
     assert!(MAX_AGENTS as usize * GENOME_SIZE * 4 <= 256 * 1024 * 1024);
     for flag in [
         "--unknown-option",
@@ -1299,6 +1450,32 @@ fn automatic_digestion_does_not_gather_unrequested_ground_food() {
         1000
     );
 }
+
+#[test]
+fn vegetation_does_not_survive_a_barren_habitat_cell() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings.evolving_landscape = true;
+    s.update_params(&q);
+    let cell = 225 * 512 + 150;
+    q.write_buffer(&s.resource_buffer, cell * 4, bytemuck::bytes_of(&1000u32));
+    q.write_buffer(
+        &s.ground_buffer,
+        cell * 32,
+        bytemuck::bytes_of(&[0, 0, 0, 0, 0, 0, 1.0f32.to_bits(), 1.0f32.to_bits()]),
+    );
+    q.write_buffer(&s.terrain_buffer, 0, &vec![0; 512 * 512 * 16]);
+
+    let mut encoder = d.create_command_encoder(&Default::default());
+    s.dispatch(&mut encoder, "resource", 0, 64, 64);
+    q.submit(Some(encoder.finish()));
+
+    assert_eq!(
+        read::<u32>(&d, &q, &s.resource_buffer, 512 * 512)[cell as usize],
+        0
+    );
+}
+
 #[test]
 fn reproduction_is_requested_can_coexist_with_motion_and_conserves() {
     let (d, q) = gpu();
@@ -1675,7 +1852,7 @@ fn inspector_render_pipelines_accept_incarnation_aware_camera() {
     let s = scene(&d, &q);
     let mut renderer =
         crate::renderer::Renderer::new(&d, wgpu::TextureFormat::Rgba8Unorm, &s, 1280, 820);
-    assert_eq!(std::mem::size_of::<crate::renderer::CameraUniform>(), 32);
+    assert_eq!(std::mem::size_of::<crate::renderer::CameraUniform>(), 40);
     renderer.camera.selected_id = 4;
     renderer.camera.selected_generation = 7;
     renderer.update_camera(&q);

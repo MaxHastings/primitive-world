@@ -5,6 +5,7 @@
 @group(0) @binding(4) var<uniform> params:SimParams;
 @group(0) @binding(5) var<storage,read_write> births:array<u32>;
 @group(0) @binding(6) var<storage,read_write> stats:array<atomic<u32>>;
+@group(0) @binding(8) var<storage,read_write> events:array<InteractionEvent>;
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id:vec3<u32>){
  let i=id.x;if(i>=INVALID){return;}var a=source[i];births[i]=0u;
@@ -29,7 +30,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  var movement=d.movement*a.max_speed*juvenile;
  let cost=length(movement)*params.time_and_costs.z;
  if(cost>a.energy){movement*=a.energy/max(cost,0.00001);}
- let old=a.position;a.position=clamp(old+movement,vec2<f32>(0),vec2<f32>(params.world_size));
+ let old=a.position;a.position=clamp(old+movement,vec2<f32>(0),params.world_size.xy);
  a.velocity=a.position-old;a.moved=a.velocity;let distance=length(a.velocity);
  a.spent=distance*params.time_and_costs.z;a.energy=max(0.0,a.energy-a.spent);
  // Fixed body and brain upkeep share one metabolic cost.
@@ -39,6 +40,8 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  // Only full affordable emissions occur. Receivers sample it next tick.
  if(d.selected_action==EMIT && params.physical.y>=0.5 && a.energy>=0.02){
   a.energy-=0.02;a.spent+=0.02;a.signal_payload=d.payload;a.signal_tick=params.tick+1u;
+  let sequence=atomicAdd(&stats[8],1u);
+  events[sequence%65536u]=InteractionEvent(params.tick,i,INVALID,EMIT,d.payload,sequence,a.lineage_id,0u,a.position);
   atomicAdd(&stats[9],1u);
  }
 

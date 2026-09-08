@@ -1,5 +1,6 @@
 # Personal simulation data and builds never belong in the public source tree.
 /target/
+/target-*/
 /runs/
 /reports/
 *.checkpoint

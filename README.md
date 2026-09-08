@@ -34,6 +34,23 @@ cargo run --release
 On Windows, you can also double-click `Play.cmd`. It builds the current source
 before opening it. The window shows the application version and world status.
 
+Wallpaper mode fills the desktop host with a fixed-camera native-resolution
+habitat. A compact top-right strip shows the world and population, with menus
+for the view and `1x` through `32x` biological speed. Details contains world age,
+population history, and the longest completed world:
+
+```sh
+cargo run --release -- --wallpaper
+```
+
+On Windows, `primitive_world.exe --install-startup` registers a per-user wallpaper
+that resumes the newest saved experiment at login. Remove it with
+`primitive_world.exe --uninstall-startup`.
+
+Use the wallpaper tray menu to pause or quit. Resizing a resumed habitat creates
+a separate descendant experiment and retains the original save. See
+[wallpaper controls and desktop limitations](docs/play.md).
+
 **New Game and Load Game both retain evolution across worlds.** Fresh founders
 have seed-specific random brains. Each paired comparison preserves the current
 founding group unless its candidate produces a longer world. Every candidate

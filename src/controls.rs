@@ -14,6 +14,7 @@ pub enum Command {
     Pause,
     Step,
     WorldClick(egui::Pos2),
+    FoodClick(egui::Pos2),
     Pan(egui::Vec2),
     Zoom(f32),
     InspectEvolution,
@@ -27,8 +28,9 @@ pub fn world_position(
     center: [f32; 2],
     zoom: f32,
     point: egui::Pos2,
+    world_size: [f32; 2],
 ) -> [f32; 2] {
-    let delta = (point - rect.center()) * WORLD_SIZE / (rect.height().max(1.0) * zoom);
+    let delta = (point - rect.center()) * world_size[1] / (rect.height().max(1.0) * zoom);
     [center[0] + delta.x, center[1] + delta.y]
 }
 
@@ -68,8 +70,12 @@ pub fn apply(state: &mut AppState, command: Command) {
             state.handle_click(point);
             return;
         }
+        Command::FoodClick(point) => {
+            state.handle_food_click(point);
+            return;
+        }
         Command::Pan(delta) => {
-            let delta = delta * WORLD_SIZE
+            let delta = delta * state.simulation.settings.habitat_height
                 / (state.ui.world_rect.height().max(1.0) * state.renderer.camera.zoom);
             state.renderer.camera.center[0] -= delta.x;
             state.renderer.camera.center[1] -= delta.y;
@@ -135,6 +141,7 @@ fn import(state: &mut AppState) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::simulation::WORLD_SIZE;
     #[test]
     fn picks_and_brushes_use_the_world_viewport_at_every_zoom() {
         for rect in [
@@ -143,9 +150,12 @@ mod tests {
         ] {
             for zoom in [0.15, 1.0, 8.0, 80.0] {
                 let center = [1200.0, 800.0];
-                assert_eq!(world_position(rect, center, zoom, rect.center()), center);
+                assert_eq!(
+                    world_position(rect, center, zoom, rect.center(), [WORLD_SIZE, WORLD_SIZE]),
+                    center
+                );
                 let point = rect.center() + egui::vec2(27.0, -16.0);
-                let result = world_position(rect, center, zoom, point);
+                let result = world_position(rect, center, zoom, point, [WORLD_SIZE, WORLD_SIZE]);
                 let roundtrip = rect.center()
                     + egui::vec2(result[0] - center[0], result[1] - center[1])
                         * rect.height()

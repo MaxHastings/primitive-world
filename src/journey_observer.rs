@@ -1,6 +1,8 @@
 //! Optional CPU-only, sampled journey evidence. Never supplied to controllers.
 //! Thresholds classify observations; they do not cause travel or reward genes.
-use crate::model::{AgentGpu, RESOURCE_GRID, WORLD_SIZE};
+#[cfg(test)]
+use crate::model::WORLD_SIZE;
+use crate::model::{AgentGpu, RESOURCE_GRID};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -107,7 +109,7 @@ fn distance(a: [f32; 2], b: [f32; 2]) -> f32 {
 
 /// Fixed observer footprint: center plus eight points on a radius-24 ring.
 /// Vegetation only: dropped food is intentionally not counted as a food patch.
-fn vegetation(resources: &[u32], position: [f32; 2]) -> f32 {
+fn vegetation(resources: &[u32], position: [f32; 2], world_size: [f32; 2]) -> f32 {
     let mut total = 0.0;
     for offset in [
         [0.0, 0.0],
@@ -121,7 +123,7 @@ fn vegetation(resources: &[u32], position: [f32; 2]) -> f32 {
         [-16.970562, -16.970562],
     ] {
         let cell = |axis: usize| {
-            ((position[axis] + offset[axis]).clamp(0.0, WORLD_SIZE) / WORLD_SIZE
+            ((position[axis] + offset[axis]).clamp(0.0, world_size[axis]) / world_size[axis]
                 * RESOURCE_GRID as f32)
                 .min((RESOURCE_GRID - 1) as f32) as usize
         };
@@ -130,12 +132,12 @@ fn vegetation(resources: &[u32], position: [f32; 2]) -> f32 {
     total / 9.0
 }
 
-fn point(tick: u32, a: &AgentGpu, resources: &[u32]) -> Point {
+fn point(tick: u32, a: &AgentGpu, resources: &[u32], world_size: [f32; 2]) -> Point {
     Point {
         tick,
         position: a.position,
         collection_position: [a.position[0] - a.moved[0], a.position[1] - a.moved[1]],
-        local_vegetation: vegetation(resources, a.position),
+        local_vegetation: vegetation(resources, a.position, world_size),
         collected_last_tick: a.collected,
         ingested_last_tick: a.ingested,
         energy: a.energy,
@@ -157,6 +159,7 @@ fn nearest_destination(
     resources: &[u32],
     position: [f32; 2],
     origin: [f32; 2],
+    world_size: [f32; 2],
 ) -> Option<Destination> {
     let mut nearest: Option<Destination> = None;
     for (index, _) in resources
@@ -165,14 +168,14 @@ fn nearest_destination(
         .filter(|(_, food)| **food >= 40)
     {
         let p = [
-            ((index % RESOURCE_GRID as usize) as f32 + 0.5) * 4.0,
-            ((index / RESOURCE_GRID as usize) as f32 + 0.5) * 4.0,
+            ((index % RESOURCE_GRID as usize) as f32 + 0.5) * world_size[0] / RESOURCE_GRID as f32,
+            ((index / RESOURCE_GRID as usize) as f32 + 0.5) * world_size[1] / RESOURCE_GRID as f32,
         ];
         let d = distance(p, position);
         if distance(p, origin) < 96.0 || nearest.as_ref().is_some_and(|n| d >= n.distance) {
             continue;
         }
-        let footprint = vegetation(resources, p);
+        let footprint = vegetation(resources, p, world_size);
         if footprint >= 0.04 {
             nearest = Some(Destination {
                 position: p,
@@ -234,11 +237,22 @@ impl JourneyObserver {
         }
     }
 
+    #[cfg(test)]
     pub fn observe(
         &mut self,
         tick: u32,
         agents: &[AgentGpu],
         resources: &[u32],
+    ) -> Result<Vec<Journey>, String> {
+        self.observe_in_habitat(tick, agents, resources, [WORLD_SIZE; 2])
+    }
+
+    pub fn observe_in_habitat(
+        &mut self,
+        tick: u32,
+        agents: &[AgentGpu],
+        resources: &[u32],
+        world_size: [f32; 2],
     ) -> Result<Vec<Journey>, String> {
         if resources.len() != (RESOURCE_GRID * RESOURCE_GRID) as usize {
             return Err("Journey observer needs the complete vegetation grid".into());
@@ -273,13 +287,13 @@ impl JourneyObserver {
                 self.stats.invalid_observations += 1;
                 continue;
             }
-            let p = point(tick, a, resources);
+            let p = point(tick, a, resources, world_size);
             let mut track = self.tracks.remove(&key);
             if track.as_ref().is_some_and(|t| t.birth_tick != a.birth_tick) {
                 self.end_track(key, track.take().unwrap(), tick, "birth_tick_changed", None);
             }
-            let collecting_in_patch =
-                a.collected > 0.0 && vegetation(resources, p.collection_position) >= 0.04;
+            let collecting_in_patch = a.collected > 0.0
+                && vegetation(resources, p.collection_position, world_size) >= 0.04;
             if let Some(t) = &mut track
                 && (t.points.len() >= 512
                     || a.lifetime_births < t.points.last().unwrap().lifetime_births)
@@ -296,7 +310,7 @@ impl JourneyObserver {
             if let Some(t) = &mut track {
                 t.points.push(p.clone());
                 let from_source = distance(a.position, t.source.collection_position);
-                let source_now = vegetation(resources, t.source.collection_position);
+                let source_now = vegetation(resources, t.source.collection_position, world_size);
                 if from_source <= 24.0 {
                     t.peak = t.peak.max(source_now);
                 }
@@ -305,8 +319,12 @@ impl JourneyObserver {
                     && source_now <= (t.peak * 0.25).min(0.02)
                 {
                     t.departure = Some((tick, source_now));
-                    t.nearest_destination =
-                        nearest_destination(resources, p.position, t.source.collection_position);
+                    t.nearest_destination = nearest_destination(
+                        resources,
+                        p.position,
+                        t.source.collection_position,
+                        world_size,
+                    );
                     self.stats.depleted_departures += 1;
                 }
                 let voluntary = distance(a.moved, a.velocity) <= 0.001;
@@ -380,7 +398,7 @@ impl JourneyObserver {
                 track = Some(Track {
                     birth_tick: a.birth_tick,
                     source: p.clone(),
-                    peak: vegetation(resources, p.collection_position),
+                    peak: vegetation(resources, p.collection_position, world_size),
                     departure: None,
                     nearest_destination: None,
                     poor_start: None,
@@ -424,7 +442,7 @@ impl JourneyObserver {
                         .chain(&a.moved)
                         .all(|v| v.is_finite())
                 })
-                .map(|a| point(tick, a, resources));
+                .map(|a| point(tick, a, resources, world_size));
             self.end_track(key, t, tick, reason, terminal_point);
         }
         self.tracks = current;
@@ -648,14 +666,14 @@ mod tests {
     #[test]
     fn nearest_food_scan_excludes_origin_and_requires_a_footprint() {
         let origin = [502.0, 502.0];
-        assert!(nearest_destination(&field(&[origin]), origin, origin).is_none());
+        assert!(nearest_destination(&field(&[origin]), origin, origin, [WORLD_SIZE; 2]).is_none());
         let resources = field(&[origin, [702.0, 502.0]]);
-        let target = nearest_destination(&resources, origin, origin).unwrap();
+        let target = nearest_destination(&resources, origin, origin, [WORLD_SIZE; 2]).unwrap();
         assert!(target.distance >= 160.0 && target.distance <= 200.0);
         assert!(target.footprint_vegetation >= 0.04);
         let mut crumbs = field(&[]);
         crumbs[125 * 512 + 175] = 40;
-        assert!(nearest_destination(&crumbs, origin, origin).is_none());
+        assert!(nearest_destination(&crumbs, origin, origin, [WORLD_SIZE; 2]).is_none());
     }
 
     #[test]

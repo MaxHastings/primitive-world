@@ -179,11 +179,16 @@ pub fn physics(ui: &mut egui::Ui, state: &mut AppState) {
 }
 
 pub fn events(ui: &mut egui::Ui, state: &mut AppState, command: &mut controls::Command) {
-    ui.collapsing("Recent physical events", |ui| {
+    ui.collapsing("Recent events", |ui| {
         if ui.button("Refresh events").clicked() {
             *command = controls::Command::RefreshEvents;
         }
         for e in state.recent_events.iter().rev().take(30) {
+            if e.action == model::MEMORY_SAMPLE {
+                ui.small(format!("{}: {} memory sample · selected {} · without retained memory {} · contribution {:.3}",
+                    e.tick, e.actor, action_name(e.other_lineage), action_name(e.other), e.amount));
+                continue;
+            }
             ui.small(format!(
                 "{}: {} {} → {} ({:.3})",
                 e.tick,

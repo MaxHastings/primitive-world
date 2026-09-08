@@ -32,6 +32,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= GRID || id.y >= GRID) { return; }
   let index = id.y * GRID + id.x;
   let old_value = resources[index];
+  let previous_geography = ground[index].habitat;
   let environment_tick=params.lifecycle.w;
   if (params.mutation.z!=0.0) {
     let phase=f32(environment_tick%8192u)/8192.0;
@@ -101,8 +102,13 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   let accumulation=ground[index].remainder + growth*14.0;
   let increment=u32(accumulation);
   ground[index].remainder=fract(accumulation);
-  // Food painted into barren space remains harvestable, but does not regrow.
-  let next=select(old_value,min(u32(capacity),old_value+increment),geography>0.0);
+  // Keep independently supplied food in an already-barren cell, but remove
+  // vegetation stranded when a live patch disappears. Dropped/manual food is
+  // tracked separately in ground[].dropped and is unaffected by this cleanup.
+  var next=select(old_value,min(u32(capacity),old_value+increment),geography>0.0);
+  if (params.mutation.z!=0.0 && previous_geography>0.0 && geography==0.0) {
+    next=0u;
+  }
   if (next>=old_value) { ground[index].produced += next-old_value; }
   else { ground[index].weather_loss += old_value-next; }
   resources[index]=next;

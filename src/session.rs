@@ -57,7 +57,7 @@ impl AppState {
         self.ui.screen = ui::Screen::Home;
     }
     fn prepare_replacement(&mut self) -> Result<(), String> {
-        if self.ui.has_world && self.ui.screen == ui::Screen::Play {
+        if self.experiment.is_some() && self.ui.screen == ui::Screen::Play {
             self.save_experiment()?;
         }
         self.paused = true;
@@ -66,12 +66,17 @@ impl AppState {
     }
     fn activate_experiment(&mut self, experiment: experiments::Experiment) -> Result<(), String> {
         self.experiment = Some(experiment);
+        self.assisted = false;
         self.world_revision = 0;
         self.saved_revision = None;
         self.clear_world_observers();
         self.refresh_metrics()?;
-        self.renderer.camera.center = [WORLD_SIZE * 0.5; 2];
         self.renderer.camera.zoom = 1.0;
+        self.sync_world_view();
+        self.renderer.camera.center = [
+            self.simulation.settings.habitat_width * 0.5,
+            self.simulation.settings.habitat_height * 0.5,
+        ];
         self.renderer.camera.lens = Lens::Normal as u32;
         self.ui.tab = ui::Tab::Overview;
         self.ui.has_world = true;
@@ -124,14 +129,87 @@ impl AppState {
             saved.record.world,
         )?;
         let experiment = saved.experiment();
-        self.activate_experiment(experiment)
+        self.activate_experiment(experiment)?;
+        self.paused = false;
+        Ok(())
     }
+
     pub(crate) fn import_checkpoint(&mut self, path: &Path) -> Result<(), String> {
         self.load_experiment(experiments::read_record(path)?)
+    }
+
+    /// A size conversion creates a separate experiment; the source is never saved over.
+    fn resume_wallpaper_experiment(
+        &mut self,
+        saved: experiments::SavedExperiment,
+    ) -> Result<(), String> {
+        self.prepare_replacement()?;
+        self.simulation.load_game_checkpoint(
+            &self.queue,
+            std::fs::File::open(saved.checkpoint()).map_err(|e| e.to_string())?,
+            (saved.record.seed, saved.record.tick, saved.record.living),
+            saved.record.world,
+        )?;
+        let [width, height] = self
+            .wallpaper_size
+            .ok_or("Wallpaper dimensions unavailable")?;
+        let source = self.simulation.settings.clone();
+        if (source.habitat_width - width).abs() < 1.0
+            && (source.habitat_height - height).abs() < 1.0
+        {
+            self.activate_experiment(saved.experiment())?;
+        } else {
+            let mut survivors = None;
+            survivor_observer::observe(
+                &mut survivors,
+                &self.simulation,
+                &self.device,
+                &self.queue,
+            )?;
+            let genomes = survivors.ok_or("Saved world has no living genomes; open it in the normal viewer to continue evolution")?.bank.genomes;
+            self.simulation.settings.population =
+                (f64::from(source.population) * f64::from(width) * f64::from(height)
+                    / (f64::from(source.habitat_width) * f64::from(source.habitat_height)))
+                .round()
+                .clamp(1.0, f64::from(MAX_AGENTS)) as u32;
+            self.simulation.settings.habitat_width = width;
+            self.simulation.settings.habitat_height = height;
+            self.simulation.settings.founder_name = format!(
+                "descendants of {} world {} at tick {}",
+                saved.record.name, saved.record.world, saved.record.tick
+            );
+            self.simulation.settings.founder_genomes = genomes;
+            self.simulation.settings.validate()?;
+            self.simulation.reset(&self.queue);
+            let experiment = experiments::create(
+                "Native wallpaper evolution",
+                &format!(
+                    "Descendants from {} at world {}, tick {}; source receipt retained",
+                    saved.directory.display(),
+                    saved.record.world,
+                    saved.record.tick
+                ),
+            )?;
+            self.activate_experiment(experiment)?;
+        }
+        self.paused = false;
+        Ok(())
     }
     pub(crate) fn start_command_line_world(&mut self, args: &[String]) -> Result<(), String> {
         if let Some(i) = args.iter().position(|a| a == "--load-game") {
             return self.import_checkpoint(Path::new(&args[i + 1]));
+        }
+        if args.iter().any(|a| a == "--resume") {
+            let (mut saves, _) = experiments::list(&experiments::save_root())?;
+            saves.sort_unstable_by(|a, b| {
+                b.record
+                    .saved_at_ms
+                    .cmp(&a.record.saved_at_ms)
+                    .then_with(|| b.record.world.cmp(&a.record.world))
+            });
+            if let Some(saved) = saves.into_iter().next() {
+                return self.resume_wallpaper_experiment(saved);
+            }
         }
         let experiment = experiments::create(
             "New evolution",

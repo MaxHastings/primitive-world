@@ -3,6 +3,8 @@
 @group(0) @binding(2) var<storage,read_write> decisions:array<Decision>;
 @group(0) @binding(3) var<uniform> params:SimParams;
 @group(0) @binding(4) var<storage,read> genomes:array<f32>;
+@group(0) @binding(6) var<storage,read_write> events:array<InteractionEvent>;
+@group(0) @binding(7) var<storage,read_write> stats:array<atomic<u32>>;
 // Each body gets a stable, identity-derived unlock point for an action. The
 // chance ramps from none to every body across the interval; it is unrelated to
 // fitness, energy, ancestry depth, or action results.
@@ -78,7 +80,50 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  let force_raw=vec2<f32>(out[FORCE_OUTPUT],out[FORCE_OUTPUT+1u]);d.force=unit_vector(force_raw)*tanh(length(force_raw));
  best=-3.4e38;
  for(var k=0u;k<8u;k++){if(p.bodies[k].slot<INVALID && out[10u+k]>best){best=out[10u+k];d.target_id=p.bodies[k].slot;d.target_generation=p.bodies[k].generation;}}
+ var any_signal=false;var control_target=INVALID;
+ for(var k=0u;k<8u;k++){
+  let b=p.bodies[k];
+  if(b.slot<INVALID){control_target=select(control_target,b.slot,control_target>=INVALID);}
+  // At most one signal record per receiver per dispatch. Eight records per
+  // body could wrap the ring inside one parallel pass and race on its slots.
+  if(!any_signal && b.slot<INVALID && b.signal_present>0.5){
+   any_signal=true;
+   let sequence=atomicAdd(&stats[8],1u);
+   // other_lineage carries the receiver's selected action for this diagnostic event.
+   events[sequence%65536u]=InteractionEvent(params.tick,i,b.slot,SIGNAL_OBSERVED,b.signal,sequence,a.lineage_id,d.selected_action,a.position);
+  }
+ }
+ if(!any_signal && control_target<INVALID && (hash_u32(a.lineage_id^params.tick)&63u)==0u){
+  let sequence=atomicAdd(&stats[8],1u);
+  events[sequence%65536u]=InteractionEvent(params.tick,i,control_target,SIGNAL_CONTROL,0.0,sequence,a.lineage_id,d.selected_action,a.position);
+ }
  // Fault containment only: do not replace finite but ineffective intentions.
  if(d.invalid!=0u){d.selected_action=NONE;d.movement=vec2<f32>(0);d.amount=0.0;d.payload=0.0;d.force=vec2<f32>(0);for(var h=0u;h<HIDDEN_COUNT;h++){d.hidden[h]=0.0;}}
+ if((hash_u32(a.lineage_id^params.tick^0x51ed270bu)&511u)==0u){
+ var memory_effect=0.0;var old_norm_sq=0.0;var new_norm_sq=0.0;let base=i*GENOME_SIZE;
+  for(var h=0u;h<HIDDEN_COUNT;h++){
+   memory_effect+=genomes[base+OUTPUT_BASE+d.selected_action*HIDDEN_COUNT+h]*(1.0-d.update_gates[h])*a.hidden[h];
+   old_norm_sq+=a.hidden[h]*a.hidden[h];new_norm_sq+=d.hidden[h]*d.hidden[h];
+  }
+  var counterfactual_action=NONE;var counterfactual_best=-3.4e38;
+  let ramp=u32(params.physical.w);let social_delay=ramp;
+  for(var k=0u;k<6u;k++){
+   var allowed=true;
+   if(k==REPRODUCE && !progressively_available(a,REPRODUCE,0u,ramp/20u)){allowed=false;}
+   if(k==TRANSFER && (!progressively_available(a,TRANSFER,social_delay+ramp/20u,social_delay+ramp*3u/10u) || params.resource_and_noise.w<0.5)){allowed=false;}
+   if(k==EMIT && (!progressively_available(a,EMIT,social_delay+ramp*3u/10u,social_delay+ramp*3u/5u) || params.resource_and_noise.w<0.5 || params.physical.y<0.5)){allowed=false;}
+   if(k==APPLY_FORCE && (!progressively_available(a,APPLY_FORCE,social_delay+ramp*3u/5u,social_delay+ramp) || params.resource_and_noise.w<0.5 || params.physical.x<0.5)){allowed=false;}
+   if(allowed){
+    var memory_for_action=0.0;
+    for(var h=0u;h<HIDDEN_COUNT;h++){memory_for_action+=genomes[base+OUTPUT_BASE+k*HIDDEN_COUNT+h]*(1.0-d.update_gates[h])*a.hidden[h];}
+    let counterfactual_score=d.scores[k]-memory_for_action;
+    if(counterfactual_score>counterfactual_best){counterfactual_best=counterfactual_score;counterfactual_action=k;}
+   }
+  }
+  let sequence=atomicAdd(&stats[8],1u);
+  // amount is the selected action's score contribution from the recurrent state;
+  // position stores old and new hidden-state norms for this diagnostic event.
+  events[sequence%65536u]=InteractionEvent(params.tick,i,counterfactual_action,MEMORY_SAMPLE,memory_effect,sequence,a.lineage_id,d.selected_action,vec2<f32>(sqrt(old_norm_sq),sqrt(new_norm_sq)));
+ }
  decisions[i]=d;
 }

@@ -21,7 +21,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     let normalized = clamp(
-        agents[agent_index].position / params.world_size * f32(OCCUPANCY_GRID),
+        agents[agent_index].position / params.world_size.xy * f32(OCCUPANCY_GRID),
         vec2<f32>(0.0),
         vec2<f32>(f32(OCCUPANCY_GRID - 1u)),
     );

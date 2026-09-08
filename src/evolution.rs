@@ -33,6 +33,8 @@ pub struct Outcome {
     pub maximum_generation: u32,
     pub food_ingested: f64,
     pub food_collected: f64,
+    #[serde(default)]
+    pub assisted: bool,
     pub challenger_accepted: Option<bool>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -53,6 +55,9 @@ pub struct Progress {
     /// extinction starts a fresh hard-environment comparison, never an unfair
     /// challenger trial against its easier pre-promotion run.
     pub live_winner: bool,
+    /// Longest completed world in this experiment, retained beyond the rolling history.
+    #[serde(default)]
+    pub best: Option<Outcome>,
     pub baseline: Option<Outcome>,
     pub completed: Option<Outcome>,
     pub history: Vec<Outcome>,
@@ -70,6 +75,7 @@ impl Progress {
             descendant_founders: 0,
             environment_age_floor: 0,
             live_winner: false,
+            best: None,
             baseline: None,
             completed: None,
             history: Vec::new(),
@@ -118,6 +124,8 @@ impl Progress {
             || self.descendant_founders > population
             || self.history.len() > HISTORY_LIMIT
             || self.history.iter().any(bad)
+            || self.best.as_ref().is_some_and(bad)
+            || self.best.as_ref().is_some_and(|o| o.world > self.world)
             || self.history.windows(2).any(|w| w[0].world >= w[1].world)
             || self.history.iter().any(|o| o.world > self.world)
             || self
@@ -211,6 +219,8 @@ fn proposal(
     descendants: &[f32],
     settings: &SimSettings,
     p: &mut Progress,
+    descendant_percent: usize,
+    random_percent: usize,
 ) -> Vec<f32> {
     let population = settings.population as usize;
     debug_assert_eq!(descendants.len() % GENOME_SIZE, 0);
@@ -226,7 +236,9 @@ fn proposal(
     // Some remain unchanged as viability anchors; the rest of the candidate is
     // supplied by fresh random genomes or continuously mutated incumbent
     // sources.
-    let descendant_limit = (population * DESCENDANT_FOUNDER_PERCENT / 100).max(1);
+    let descendant_limit = (population * descendant_percent / 100)
+        .min(population)
+        .max(usize::from(descendant_percent > 0 && population > 0));
     let descendant = descendants.len() / GENOME_SIZE;
     let carried = descendant.min(descendant_limit);
     p.descendant_founders = carried as u32;
@@ -239,7 +251,9 @@ fn proposal(
     }
     // Preserve sampled terminal descendants as viable anchors. Their selection
     // is uniform over surviving ancestry, not an individual fitness score.
-    let random_limit = (population * RANDOM_FOUNDER_PERCENT / 100).max(1);
+    let random_limit = (population * random_percent / 100)
+        .min(population)
+        .max(usize::from(random_percent > 0 && population > 0));
     let random_count = random_limit.min(population.saturating_sub(carried));
     for &slot in slots.iter().skip(carried).take(random_count) {
         let genome = brain::random_genome(&mut p.rng);
@@ -399,10 +413,8 @@ impl Simulation {
         }
         let bytes = read_buffer(d, q, &self.death_stats_buffer)?;
         let counters: &[u32] = bytemuck::cast_slice(&bytes);
-        if self.settings.population == 0 || counters[18] == 0 || counters[30] != 0 {
-            return Err(
-                "Only an unmodified world ending in natural extinction can be compared".into(),
-            );
+        if self.settings.population == 0 || counters[18] == 0 {
+            return Err("Only a populated world ending in natural extinction can be scored".into());
         }
         let accepted =
             self.progress.baseline.as_ref().map(|b| {
@@ -422,6 +434,7 @@ impl Simulation {
             maximum_generation: counters[23],
             food_ingested: m.food_ingested,
             food_collected: m.harvested,
+            assisted: counters[30] != 0,
             challenger_accepted: accepted,
         };
         self.progress.history.push(outcome.clone());
@@ -429,6 +442,15 @@ impl Simulation {
             self.progress.history.remove(0);
         }
         self.progress.completed = Some(outcome);
+        let completed = self.progress.completed.as_ref().expect("just completed");
+        if self
+            .progress
+            .best
+            .as_ref()
+            .is_none_or(|best| completed.duration > best.duration)
+        {
+            self.progress.best = Some(completed.clone());
+        }
         Ok(())
     }
     pub fn advance_world(&mut self, d: &wgpu::Device, q: &wgpu::Queue) -> Result<(), String> {
@@ -446,7 +468,11 @@ impl Simulation {
             .ok_or("Comparison counter overflow")?;
         let mut p = self.progress.clone();
         let population = self.settings.population as usize;
-        let descendant_limit = (population * DESCENDANT_FOUNDER_PERCENT / 100).max(1);
+        let descendant_limit = (population * self.founder_descendant_percent / 100)
+            .min(population)
+            .max(usize::from(
+                self.founder_descendant_percent > 0 && population > 0,
+            ));
         let descendants = if p.phase == Phase::Incumbent && !p.live_winner {
             self.sample_terminal_descendants(d, q, descendant_limit, &mut p.rng)?
         } else {
@@ -467,8 +493,14 @@ impl Simulation {
                     self.seed = next(&mut p.rng);
                     next_environment_start_age = 0;
                 } else {
-                    search.challenger =
-                        proposal(&search.incumbent, &descendants, &self.settings, &mut p);
+                    search.challenger = proposal(
+                        &search.incumbent,
+                        &descendants,
+                        &self.settings,
+                        &mut p,
+                        self.founder_descendant_percent,
+                        self.founder_random_percent,
+                    );
                     p.baseline = Some(outcome);
                     p.phase = Phase::Challenger;
                     // Same seed, body locations, ages, resources and physical laws.
@@ -518,6 +550,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn zero_descendant_percentage_carries_no_descendant_anchor() {
+        let settings = SimSettings {
+            population: 20,
+            ..Default::default()
+        };
+        let incumbent = vec![0.0; settings.population as usize * GENOME_SIZE];
+        let descendants = vec![1.0; GENOME_SIZE];
+        let mut progress = Progress::initial(7);
+        let challenger = proposal(&incumbent, &descendants, &settings, &mut progress, 0, 0);
+        assert_eq!(progress.descendant_founders, 0);
+        assert!(
+            !challenger
+                .chunks_exact(GENOME_SIZE)
+                .any(|genome| genome == descendants)
+        );
+    }
+
+    #[test]
     fn challenger_mutates_incumbent_sources_and_preserves_descendant_anchor() {
         let settings = SimSettings {
             population: 20,
@@ -527,7 +577,14 @@ mod tests {
         let descendants = vec![1.0; GENOME_SIZE];
         let mut progress = Progress::initial(7);
 
-        let challenger = proposal(&incumbent, &descendants, &settings, &mut progress);
+        let challenger = proposal(
+            &incumbent,
+            &descendants,
+            &settings,
+            &mut progress,
+            DESCENDANT_FOUNDER_PERCENT,
+            RANDOM_FOUNDER_PERCENT,
+        );
 
         assert_eq!(progress.descendant_founders, 1);
         assert!(
@@ -554,7 +611,14 @@ mod tests {
         let incumbent = vec![0.0; settings.population as usize * GENOME_SIZE];
         let mut progress = Progress::initial(7);
 
-        let challenger = proposal(&incumbent, &[], &settings, &mut progress);
+        let challenger = proposal(
+            &incumbent,
+            &[],
+            &settings,
+            &mut progress,
+            DESCENDANT_FOUNDER_PERCENT,
+            RANDOM_FOUNDER_PERCENT,
+        );
 
         assert_eq!(progress.descendant_founders, 0);
         assert!(
@@ -573,7 +637,14 @@ mod tests {
         let incumbent = vec![0.0; settings.population as usize * GENOME_SIZE];
         let descendants = vec![1.0; GENOME_SIZE * 10];
         let mut progress = Progress::initial(7);
-        let challenger = proposal(&incumbent, &descendants, &settings, &mut progress);
+        let challenger = proposal(
+            &incumbent,
+            &descendants,
+            &settings,
+            &mut progress,
+            DESCENDANT_FOUNDER_PERCENT,
+            RANDOM_FOUNDER_PERCENT,
+        );
 
         assert_eq!(progress.descendant_founders, 10);
         assert_eq!(
@@ -621,6 +692,7 @@ mod tests {
             maximum_generation: 0,
             food_ingested: 0.0,
             food_collected: 0.0,
+            assisted: false,
             challenger_accepted: None,
         });
         progress.history.push(progress.baseline.clone().unwrap());

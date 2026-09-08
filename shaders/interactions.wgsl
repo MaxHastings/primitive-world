@@ -1,4 +1,3 @@
-struct InteractionEvent { tick:u32, actor:u32, other:u32, action:u32, amount:f32, sequence:u32, actor_lineage:u32, other_lineage:u32, position:vec2<f32>, };
 @group(0) @binding(6) var<storage,read_write> events:array<InteractionEvent>;
 fn record(actor:u32,other:u32,action:u32,amount:f32,position:vec2<f32>) {
   let sequence=atomicAdd(&stats[8],1u);
@@ -59,7 +58,7 @@ fn resolve(@builtin(global_invocation_id) id: vec3<u32>) {
     let requested_cost=length(displacement)*0.2;
     if(requested_cost>a.energy){displacement*=a.energy/max(requested_cost,0.00001);}
     let old=b.position;
-    b.position=clamp(old+displacement,vec2<f32>(0),vec2<f32>(params.world_size));
+    b.position=clamp(old+displacement,vec2<f32>(0),params.world_size.xy);
     let actual=b.position-old;let cost=min(a.energy,length(actual)*0.2);
     b.moved+=actual;a.energy-=cost;a.spent+=cost;
 
