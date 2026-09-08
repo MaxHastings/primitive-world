@@ -1,4 +1,4 @@
-//! Desktop lifecycle for the fixed-brain evolutionary loop.
+//! Desktop lifecycle for the masked-controller evolutionary loop.
 use crate::*;
 use std::path::Path;
 
@@ -166,7 +166,7 @@ impl AppState {
                 &self.device,
                 &self.queue,
             )?;
-            let genomes = survivors.ok_or("Saved world has no living genomes; open it in the normal viewer to continue evolution")?.bank.genomes;
+            let bank = survivors.ok_or("Saved world has no living genomes; open it in the normal viewer to continue evolution")?.bank;
             self.simulation.settings.population =
                 (f64::from(source.population) * f64::from(width) * f64::from(height)
                     / (f64::from(source.habitat_width) * f64::from(source.habitat_height)))
@@ -178,7 +178,8 @@ impl AppState {
                 "descendants of {} world {} at tick {}",
                 saved.record.name, saved.record.world, saved.record.tick
             );
-            self.simulation.settings.founder_genomes = genomes;
+            self.simulation.settings.founder_genomes = bank.genomes;
+            self.simulation.settings.founder_traits = bank.traits;
             self.simulation.settings.validate()?;
             self.simulation.reset(&self.queue);
             let experiment = experiments::create(

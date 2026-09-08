@@ -10,7 +10,6 @@ Wallpaper viewer: --wallpaper uses the desktop host as a native-resolution habit
 Windows integration: --install-startup registers wallpaper + auto-resume at login; --uninstall-startup removes it; --stop-wallpaper asks the wallpaper to save and close.
 Wallpaper startup: --resume opens the latest saved experiment, or creates one if none exists.
 Save cleanup: --prune-saves retains the newest six snapshots per experiment and caps the library at 16 GiB.
-Legacy cleanup: --purge-legacy-saves removes paired saves from explicitly incompatible models.
 Headless population comparisons: --headless --ticks N [--comparisons N] [--checkpoint PATH] [--save-checkpoint NEW_PATH]
 Use --headless --single-world for diagnostics that stop at extinction.
   --load-game RECEIPT.json opens a saved experiment in the viewer.
@@ -26,7 +25,7 @@ Headless observers:
          --communication-trace PATH (read-only signal emissions and receiver responses)
          --survivors PATH [--survivor-sample N] (latest nonempty living sample;
            up to 64 current genomes, founders included; period 1..1024, default 128)
-         --famine-at T --restore-at T --help --version
+         --famine-at T --restore-at T [--famine-radius X --famine-delta X] --help --version
 New Game and fresh command-line runs use seed-specific random weights for every founder. --founders imports a specified bank.
 Motor gain calibrates continuous effort, not minimum movement or maximum speed.
 Checkpoint settings take precedence; physical overrides cannot accompany --checkpoint.";
@@ -89,6 +88,8 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
         "--communication-trace",
         "--famine-at",
         "--restore-at",
+        "--famine-radius",
+        "--famine-delta",
     ];
     let mut out = HashMap::new();
     let mut i = 1;
@@ -168,6 +169,8 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
             "--survivor-sample",
             "--famine-at",
             "--restore-at",
+            "--famine-radius",
+            "--famine-delta",
         ] {
             if out.contains_key(key) {
                 return Err(format!("{key} requires --headless"));
@@ -209,6 +212,8 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
             "--survivors",
             "--famine-at",
             "--restore-at",
+            "--famine-radius",
+            "--famine-delta",
             "--export-founders",
         ] {
             if out.contains_key(key) {
@@ -338,6 +343,19 @@ pub fn run(args: &[String]) -> Result<(), String> {
     }
     let famine = number("--famine-at", u32::MAX)?;
     let restore = number("--restore-at", u32::MAX)?;
+    let decimal = |key: &str, default: f32| -> Result<f32, String> {
+        a.get(key).map_or(Ok(default), |v| {
+            v.parse().map_err(|_| format!("Invalid {key}"))
+        })
+    };
+    let famine_radius = decimal("--famine-radius", 4096.0)?;
+    let famine_delta = decimal("--famine-delta", -1000.0)?;
+    if famine_radius <= 0.0 || !famine_radius.is_finite() {
+        return Err("Famine radius must be finite and positive".into());
+    }
+    if famine_delta >= 0.0 || !famine_delta.is_finite() {
+        return Err("Famine delta must be finite and negative".into());
+    }
     if restore != u32::MAX && restore <= famine {
         return Err("Restore tick must follow famine".into());
     }
@@ -406,7 +424,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let mut extinct = history[0].living == 0;
     while sim.tick < target && !extinct {
         if sim.tick == famine {
-            sim.apply_resource_shock(&device, &queue, [1024.0; 2], 4096.0, -1000.0);
+            sim.apply_resource_shock(&device, &queue, [1024.0; 2], famine_radius, famine_delta);
             sim.settings.resource_regeneration = 0.0;
         }
         if sim.tick == restore {
@@ -572,7 +590,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
   "family_report":family_report,
   "survivor_observer":survivors.as_ref().map(|s| serde_json::json!({"source_tick":s.bank.source_tick,"source_population":s.source_population,"sampled_bodies":s.bodies.len(),"period":survivor_sample,"selection":s.selection})),
   "journey_observer":journey_file.as_ref().map(|_| journeys.report(journey_sample)),
-  "famine_at":famine,"restore_at":restore,"wall_seconds":start.elapsed().as_secs_f64(),"founder_export":export,
+  "famine_at":famine,"restore_at":restore,"famine_radius":famine_radius,"famine_delta":famine_delta,"wall_seconds":start.elapsed().as_secs_f64(),"founder_export":export,
   "population_completion":population_completion,
   "scope":"Explicit single-world diagnostic. Observations do not affect population selection."});
     file.write_all(&serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?)

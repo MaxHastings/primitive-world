@@ -886,20 +886,6 @@ fn main() {
         }
         return;
     }
-    if options.iter().any(|x| x == "--purge-legacy-saves") {
-        if options.len() != 2 {
-            eprintln!("Use --purge-legacy-saves by itself");
-            std::process::exit(2);
-        }
-        match experiments::purge_legacy(&experiments::save_root()) {
-            Ok(report) => println!("{}", report.legacy_message()),
-            Err(error) => {
-                eprintln!("Could not purge legacy saves: {error}");
-                std::process::exit(1);
-            }
-        }
-        return;
-    }
     #[cfg(windows)]
     {
         if options.iter().any(|x| x == "--stop-wallpaper") {

@@ -5,7 +5,10 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 
 pub const SPEED_LABELS: [&str; 9] = ["1x", "2x", "4x", "8x", "16x", "32x", "64x", "128x", "MAX"];
 pub const BASE_TPS: u32 = 60;
-pub const READBACK_SIZE: u64 = 160
+pub const TELEMETRY_SIZE: u64 = (1 + model::DEATH_STATS_COUNT as u64) * 4;
+pub const TIMING_OFFSET: u64 = TELEMETRY_SIZE.next_multiple_of(8);
+pub const INSPECTION_OFFSET: u64 = TIMING_OFFSET + 16;
+pub const READBACK_SIZE: u64 = INSPECTION_OFFSET
     + (std::mem::size_of::<model::AgentGpu>()
         + std::mem::size_of::<model::PerceptionGpu>()
         + std::mem::size_of::<model::DecisionGpu>()) as u64;
@@ -171,7 +174,13 @@ impl AppState {
         if let Some(timing) = &self.gpu_timing {
             e.write_timestamp(&timing.query_set, 1);
             e.resolve_query_set(&timing.query_set, 0..2, &timing.resolve_buffer, 0);
-            e.copy_buffer_to_buffer(&timing.resolve_buffer, 0, &self.batch_readback, 144, 16);
+            e.copy_buffer_to_buffer(
+                &timing.resolve_buffer,
+                0,
+                &self.batch_readback,
+                TIMING_OFFSET,
+                16,
+            );
         }
         self.simulation
             .encode_telemetry(&mut e, &self.batch_readback);
@@ -187,7 +196,7 @@ impl AppState {
         };
         if let Some(previous) = inspected {
             let slot = u64::from(previous.selected - 1);
-            let mut offset = 160;
+            let mut offset = INSPECTION_OFFSET;
             for (source, size) in [
                 (
                     &self.simulation.agent_buffers[self.simulation.current_buffer],
@@ -255,8 +264,12 @@ impl AppState {
         self.births = u32_at(16);
         self.interaction_stats = [u32_at(20), u32_at(24), u32_at(28), u32_at(32)];
         if let Some(timing) = &self.gpu_timing {
-            let start = bytemuck::pod_read_unaligned::<u64>(&mapped[144..152]);
-            let end = bytemuck::pod_read_unaligned::<u64>(&mapped[152..160]);
+            let start = bytemuck::pod_read_unaligned::<u64>(
+                &mapped[TIMING_OFFSET as usize..TIMING_OFFSET as usize + 8],
+            );
+            let end = bytemuck::pod_read_unaligned::<u64>(
+                &mapped[TIMING_OFFSET as usize + 8..INSPECTION_OFFSET as usize],
+            );
             self.gpu_tick_ms = Some(
                 end.saturating_sub(start) as f32 * timing.timestamp_period_ns
                     / 1_000_000.0
@@ -264,7 +277,7 @@ impl AppState {
             );
         }
         if let Some(previous) = pending.inspected {
-            let mut offset = 160;
+            let mut offset = INSPECTION_OFFSET as usize;
             let mut current = previous;
             let size = std::mem::size_of::<model::AgentGpu>();
             current.agent = bytemuck::pod_read_unaligned(&mapped[offset..offset + size]);

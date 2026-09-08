@@ -47,9 +47,10 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
                 s.decision.force
             ));
             ui.small(format!(
-                "Fixed brain: {} memory units, {} inherited parameters",
+                "Cognitive capacity: {} active of {} units · {} inherited controller parameters",
+                s.agent.active_mask.count_ones(),
                 model::HIDDEN,
-                model::GENOME_SIZE
+                model::GENOME_SIZE,
             ));
             ui.collapsing("Surrounding sensory field", |ui| {
                 ui.label(format!("Underfoot {:.3}", s.perception.resource_here));
@@ -93,7 +94,13 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
                 }
             });
             ui.collapsing("Internal recurrent state", |ui| {
-                for (i, v) in s.agent.hidden.iter().enumerate() {
+                for (i, v) in s
+                    .agent
+                    .hidden
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| s.agent.active_mask & (1u32 << i) != 0)
+                {
                     ui.small(format!(
                         "{i}: {v:.4} · update {:.3}",
                         s.decision.update_gates[i]
@@ -159,22 +166,12 @@ pub fn physics(ui: &mut egui::Ui, state: &mut AppState) {
         ui.label(format!("Founding bodies: {}", s.population));
         ui.label(format!("Food regeneration: {:.3}", s.resource_regeneration));
         ui.label(format!(
-            "Metabolism: .010 → {:.3} over {} ticks · movement cost: {:.3}",
-            s.metabolic_cost, s.metabolic_ramp_ticks, s.movement_energy_cost
+            "Body upkeep: .010 → {:.3} · unit upkeep: {:.5} · write energy: {:.5} · movement cost: {:.3}",
+            s.metabolic_cost, s.active_unit_upkeep, s.memory_write_energy, s.movement_energy_cost
         ));
-        ui.small(format!(
-            "Social actions: {}",
-            if s.social_actions_enabled {
-                format!(
-                    "unlock progressively after the {}-tick survival bootstrap",
-                    s.metabolic_ramp_ticks
-                )
-            } else {
-                "disabled".into()
-            }
-        ));
+        ui.small(format!("Social actions: {}", if s.social_actions_enabled { "available under ordinary world rules" } else { "disabled" }));
         ui.small("Food patches start broader and recede to their normal footprint by the ramp cap.");
-        ui.small("Metabolism includes brain upkeep. Reproduction overhead includes construction.");
+        ui.small("Active units and actual memory writes are paid; reproduction overhead remains physical construction.");
     });
 }
 

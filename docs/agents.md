@@ -5,11 +5,11 @@ same implementation in interactive and headless worlds.
 
 ## Computation and memory
 
-All brains contain eight fixed recurrent units, 108 senses, and 20 outputs.
-Dense sensory-to-candidate, previous-state-to-candidate, candidate-to-gate, and
-state-to-output matrices plus biases total 1,188 inherited float32 parameters.
-Eight units keep memory and gates compact without assigning semantic node roles.
-This size is an implementation choice, not a measured evolutionary optimum.
+Each organism has a 16-unit potential gated-recurrent substrate, 108 senses,
+and 20 outputs. A heritable 32-bit active mask expresses from one to 16 units;
+inactive units have no state, gates, readout, write, or energy effect. The dense
+full controller has 2,612 inherited float32 values, stored in GPU banks without
+reducing the population cap. No capacity is privileged.
 
 Candidates use tanh(sensory projection + previous-state projection + bias).
 Gates use a linear projection of candidate values plus bias, clamped to [0,1].
@@ -18,14 +18,26 @@ one replaces, and intermediate values blend. Outputs project the next state.
 Fresh gate biases center on .5; inherited parameters may close gates completely.
 No mandatory forgetting floor is imposed.
 
-Structure and parameters stay fixed during life. Birth and cross-world founding
-reset recurrent state. Ordinary parameter mutation applies at paid reproduction
-and to next-world variants. The shared mutation law is not a brain output.
-There is no node/edge mutation, online optimizer, or authored action reward.
+Birth resets recurrent, trace, and learned-weight state. It mutates expressed
+weights under a fixed per-birth budget and independently may activate or retire
+a unit. Activation clones a live unit's connections with a bounded perturbation;
+inactive values remain inherited but latent. Each active unit also has an
+inherited signed local-plasticity rate, with inherited trace and fast-weight
+retention. During life, only local pre/post activity, trace, and gate modulation
+update fast connection deltas; those deltas are bounded, never inherited, and
+pay write energy. There is no optimizer, semantic slot, curriculum, reward, or
+authored action incentive.
 
-Body and brain upkeep begin at .01 energy/tick and rise linearly to .06 by world
-tick 50,000. Construction is covered by the fixed .2 times reproduction-cost
-overhead. There is no separate connection upkeep or genome-length copying charge.
+Each organism also carries one bounded mutation-scale trait (0.25–4). It
+multiplies its fixed, capacity-independent birth-mutation budget and can itself
+drift slightly at birth. This lets lineages evolve conservative or exploratory
+inheritance without adding a cognitive input, action, reward, or lifecycle
+state.
+
+Energy is body upkeep plus active-unit upkeep times active capacity, plus the
+actual absolute change in recurrent, trace, and learned-weight state times the
+write-energy constant, plus existing action costs. Genome copying itself is not
+a separate running cost.
 
 ## Inputs (zero-based)
 
@@ -106,11 +118,16 @@ not authored food-seeking or reproduction policies. Random does not mean compete
 `--founders` imports an explicitly named current-format bank without initialization
 noise. It repeats across founding positions; invalid data fails without fallback.
 
-Paid births copy the parent's fixed genome and then apply the shared continuous
-mutation law: each inherited genome samples its own log-uniform temperature from
-1/8 to 8, scaling the .02 per-parameter chance and .03 step size. Every newborn
-therefore differs from its parent while retaining fresh body state and zero memory.
-Between worlds, [population selection](evolution.md) compares complete founding
-groups. A sparse uniform sample of terminal biological descendants can supply
-inherited sources for the next candidate, but each source is varied and only the
-complete candidate group's world duration decides what carries forward.
+Paid births copy the parent's inherited controller and traits, then apply the
+shared mutation law described in [evolution](evolution.md). Eligible topology
+activation and retirement each have a 1% chance. Expressed parameters receive a
+capacity-independent expected budget of 23.76 draws, scaled by the square root
+of a log-uniform temperature in [1/8, 8] and the inherited mutation scale. Draws
+select expressed parameters uniformly with replacement; step size is .03 times
+the same scale. At least one controller value changes. One active plasticity
+rate and both retention traits also vary, within their bounds.
+
+Between worlds, population selection compares complete founding groups. A sparse
+uniform sample of terminal descendants supplies unchanged inherited anchors;
+the other sources are fresh random immigrants or mutated incumbent founders.
+Only the complete candidate group's world duration decides what carries forward.

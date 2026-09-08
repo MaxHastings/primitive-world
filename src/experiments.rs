@@ -257,93 +257,6 @@ pub fn prune(root: &Path) -> Result<PruneReport, String> {
     Ok(report)
 }
 
-/// Remove paired saves whose receipt explicitly identifies a model this build
-/// cannot load. This is deliberately separate from normal retention: users may
-/// keep old-model data until they explicitly choose to discard it.
-pub fn purge_legacy(root: &Path) -> Result<PruneReport, String> {
-    let mut report = PruneReport::default();
-    if !root.exists() {
-        return Ok(report);
-    }
-    for entry in std::fs::read_dir(root).map_err(|e| e.to_string())? {
-        let directory = entry.map_err(|e| e.to_string())?.path();
-        if !directory.is_dir() {
-            continue;
-        }
-        // The pre-receipt archive format stored full checkpoint trees below a
-        // session-* directory. Current experiments never create this layout.
-        for entry in std::fs::read_dir(&directory).map_err(|e| e.to_string())? {
-            let session = entry.map_err(|e| e.to_string())?.path();
-            if session.is_dir()
-                && session
-                    .file_name()
-                    .is_some_and(|name| name.to_string_lossy().starts_with("session-"))
-            {
-                let bytes = directory_size(&session)?;
-                std::fs::remove_dir_all(&session).map_err(|e| e.to_string())?;
-                report.removed_snapshots += 1;
-                report.removed_bytes += bytes;
-            }
-        }
-        for entry in std::fs::read_dir(&directory).map_err(|e| e.to_string())? {
-            let receipt = entry.map_err(|e| e.to_string())?.path();
-            if receipt
-                .extension()
-                .is_none_or(|extension| extension != "json")
-                || !receipt
-                    .file_name()
-                    .is_some_and(|name| name.to_string_lossy().starts_with("save-"))
-            {
-                continue;
-            }
-            let Some(model) = receipt_model(&receipt)? else {
-                continue;
-            };
-            if model == crate::model::MODEL_ID {
-                continue;
-            }
-            let checkpoint = receipt.with_extension("checkpoint");
-            if !checkpoint.is_file() {
-                continue;
-            }
-            let bytes = receipt.metadata().map_err(|e| e.to_string())?.len()
-                + checkpoint.metadata().map_err(|e| e.to_string())?.len();
-            std::fs::remove_file(&checkpoint).map_err(|e| e.to_string())?;
-            std::fs::remove_file(&receipt).map_err(|e| e.to_string())?;
-            report.removed_snapshots += 1;
-            report.removed_bytes += bytes;
-        }
-    }
-    report.bytes_after = 0;
-    Ok(report)
-}
-
-fn directory_size(directory: &Path) -> Result<u64, String> {
-    let mut bytes = 0;
-    for entry in std::fs::read_dir(directory).map_err(|e| e.to_string())? {
-        let path = entry.map_err(|e| e.to_string())?.path();
-        bytes += if path.is_dir() {
-            directory_size(&path)?
-        } else {
-            path.metadata().map_err(|e| e.to_string())?.len()
-        };
-    }
-    Ok(bytes)
-}
-
-fn receipt_model(path: &Path) -> Result<Option<String>, String> {
-    let mut header = Vec::with_capacity(8192);
-    std::fs::File::open(path)
-        .map_err(|e| e.to_string())?
-        .take(8192)
-        .read_to_end(&mut header)
-        .map_err(|e| e.to_string())?;
-    let header = String::from_utf8_lossy(&header);
-    Ok(header
-        .split_once("\"model\":\"")
-        .and_then(|(_, tail)| tail.split_once('"').map(|(model, _)| model.to_owned())))
-}
-
 #[derive(Default)]
 pub struct PruneReport {
     pub removed_snapshots: usize,
@@ -359,14 +272,6 @@ impl PruneReport {
             self.removed_snapshots,
             self.removed_bytes as f64 / 1024.0_f64.powi(3),
             self.bytes_after as f64 / 1024.0_f64.powi(3),
-        )
-    }
-
-    pub fn legacy_message(&self) -> String {
-        format!(
-            "Removed {} incompatible legacy archives and freed {:.1} GiB",
-            self.removed_snapshots,
-            self.removed_bytes as f64 / 1024.0_f64.powi(3),
         )
     }
 }
@@ -582,45 +487,6 @@ mod tests {
         for value in 3..=8 {
             assert!(directory.join(format!("save-{value}.checkpoint")).exists());
         }
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn legacy_purge_removes_only_explicitly_incompatible_paired_saves() {
-        let root = std::env::temp_dir().join(format!("primitive-legacy-{}", stamp().unwrap()));
-        let directory = root.join("experiment-fixture");
-        std::fs::create_dir_all(&directory).unwrap();
-        let legacy = directory.join("save-1.json");
-        let current = directory.join("save-2.json");
-        std::fs::write(&legacy, r#"{"model":"primitive-v6-variable-brain"}"#).unwrap();
-        std::fs::write(
-            &current,
-            format!(r#"{{"model":"{}"}}"#, crate::model::MODEL_ID),
-        )
-        .unwrap();
-        std::fs::write(directory.join("save-1.checkpoint"), b"legacy").unwrap();
-        std::fs::write(directory.join("save-2.checkpoint"), b"current").unwrap();
-        let report = purge_legacy(&root).unwrap();
-        assert_eq!(report.removed_snapshots, 1);
-        assert!(!legacy.exists());
-        assert!(current.exists());
-        assert!(directory.join("save-2.checkpoint").exists());
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn legacy_purge_removes_only_legacy_session_directories() {
-        let root = std::env::temp_dir().join(format!("primitive-session-{}", stamp().unwrap()));
-        let directory = root.join("experiment-fixture");
-        let legacy = directory.join("session-1").join("checkpoints");
-        std::fs::create_dir_all(&legacy).unwrap();
-        std::fs::write(legacy.join("old.checkpoint"), b"old").unwrap();
-        let current = directory.join("save-1.checkpoint");
-        std::fs::write(&current, b"current").unwrap();
-        let report = purge_legacy(&root).unwrap();
-        assert_eq!(report.removed_snapshots, 1);
-        assert!(!directory.join("session-1").exists());
-        assert!(current.exists());
         std::fs::remove_dir_all(root).unwrap();
     }
 

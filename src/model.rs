@@ -1,11 +1,16 @@
 //! primitive-world: fixed-frame sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
-pub const MODEL_ID: &str = "primitive-v24-delayed-social-fresh-worlds";
-pub const FOUNDER_BANK_VERSION: u32 = 13;
-pub const CHECKPOINT_VERSION: u32 = 37;
-pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD037";
+/// Persistence accepts only this model's controller and lifetime-state layout.
+pub const MODEL_ID: &str = "primitive-v26-masked-plastic-16";
+pub const FOUNDER_BANK_VERSION: u32 = 15;
+pub const CHECKPOINT_VERSION: u32 = 39;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD039";
 pub const METABOLIC_START_COST: f32 = 0.01;
 pub const DEFAULT_METABOLIC_RAMP_TICKS: u32 = 50_000;
+/// Incremental maintenance paid for each expressed recurrent unit.
+pub const DEFAULT_ACTIVE_UNIT_UPKEEP: f32 = 0.0005;
+/// Energy paid for each unit of actual bounded memory-state change.
+pub const DEFAULT_MEMORY_WRITE_ENERGY: f32 = 0.0001;
 /// Every inherited genome samples its own log-uniform multiplier in this range.
 pub const MUTATION_TEMPERATURE_MIN: f32 = 0.125;
 pub const MUTATION_TEMPERATURE_MAX: f32 = 8.0;
@@ -19,7 +24,8 @@ pub const RESOURCE_GRID: u32 = 512;
 pub const OCCUPANCY_GRID: u32 = 256;
 pub const SPATIAL_CELL_COUNT: u32 = OCCUPANCY_GRID * OCCUPANCY_GRID;
 pub const WORLD_SIZE: f32 = 2048.0;
-pub const DEATH_STATS_COUNT: u32 = 32;
+/// Cumulative physical and cognitive accounting counters.
+pub const DEATH_STATS_COUNT: u32 = 36;
 pub const EVENT_RING_SIZE: u32 = 65_536;
 pub const SECTORS: usize = 8;
 pub const SECTOR_NAMES: [&str; SECTORS] = ["E", "SE", "S", "SW", "W", "NW", "N", "NE"];
@@ -27,8 +33,9 @@ pub const REGIONS: usize = SECTORS * 2;
 pub const NEIGHBOR_BASE: usize = 52;
 pub const NEIGHBOR_INPUTS: usize = 7;
 pub const INPUTS: usize = NEIGHBOR_BASE + SECTORS * NEIGHBOR_INPUTS;
-/// Eight fixed recurrent units, with dense sensory, recurrent, gate and output weights.
-pub const HIDDEN: usize = 8;
+/// The model has sixteen equivalent potential units.  The inherited active
+/// mask, not this engineering ceiling, determines an organism's capacity.
+pub const HIDDEN: usize = 16;
 pub const OUTPUTS: usize = 20;
 pub const FORCE_OUTPUT: usize = 18;
 pub const NODE_BIAS: usize = 0;
@@ -39,6 +46,44 @@ pub const RECURRENT_BASE: usize = INPUT_BASE + HIDDEN * INPUTS;
 pub const GATE_BASE: usize = RECURRENT_BASE + HIDDEN * HIDDEN;
 pub const OUTPUT_BASE: usize = GATE_BASE + HIDDEN * HIDDEN;
 pub const GENOME_SIZE: usize = OUTPUT_BASE + OUTPUTS * HIDDEN;
+/// Two equal parameter banks keep each dense full-population buffer below the
+/// common 256 MiB WebGPU storage-binding limit without reducing body capacity.
+pub const GENOME_BANK_COUNT: usize = 2;
+pub const GENOME_BANK_STRIDE: usize = GENOME_SIZE.div_ceil(GENOME_BANK_COUNT);
+/// All non-bias controller values.  Learned deltas are kept only for these
+/// connections; biases remain inherited-only.
+pub const CONNECTION_COUNT: usize = HIDDEN * INPUTS + 2 * HIDDEN * HIDDEN + OUTPUTS * HIDDEN;
+pub const FAST_BANK_STRIDE: usize = CONNECTION_COUNT / 2;
+pub const TRACE_COUNT: usize = INPUTS + HIDDEN + OUTPUTS;
+pub const ACTIVE_MASK_ALL: u32 = (1u32 << HIDDEN) - 1;
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Pod, Zeroable, serde::Serialize, serde::Deserialize)]
+pub struct CognitiveTraits {
+    pub active_mask: u32,
+    pub padding: [u32; 3],
+    pub plasticity_rate: [f32; HIDDEN],
+    pub trace_retention: f32,
+    pub learned_weight_retention: f32,
+    /// Heritable, bounded multiplier for mutation magnitude/budget.  It is
+    /// evolutionary variation, not a runtime cognitive mechanism.
+    pub mutation_scale: f32,
+}
+impl CognitiveTraits {
+    pub fn validate(&self) -> bool {
+        self.active_mask != 0
+            && self.active_mask & !ACTIVE_MASK_ALL == 0
+            && self.trace_retention.is_finite()
+            && self.learned_weight_retention.is_finite()
+            && (0.0..=0.9999).contains(&self.trace_retention)
+            && (0.0..=0.9999).contains(&self.learned_weight_retention)
+            && self.mutation_scale.is_finite()
+            && (0.25..=4.0).contains(&self.mutation_scale)
+            && self
+                .plasticity_rate
+                .iter()
+                .all(|v| v.is_finite() && v.abs() <= 0.2)
+    }
+}
 pub const ACTION_NAMES: [&str; 6] = ["none", "collect", "transfer", "force", "emit", "reproduce"];
 pub const EMIT: u32 = 4;
 /// Event-ring action code for a receiver decision made while a signal was visible.
@@ -83,14 +128,45 @@ pub struct AgentGpu {
     pub distance_travelled: f32,
     /// Founder genome slot; observer bookkeeping, never a cognitive input.
     pub founder_family: u32,
+    /// Heritable topology.  A bit is set exactly when its recurrent unit is
+    /// expressed; every inactive unit is semantically inert.
+    pub active_mask: u32,
+    /// One signed, inherited plasticity coefficient for each unit is stored in
+    /// the organism rather than a separate cognitive subsystem.
+    pub plasticity_rate: [f32; HIDDEN],
+    /// Inherited organism-wide persistence for local activity traces.
+    pub trace_retention: f32,
+    /// Inherited organism-wide persistence for lifetime-only learned deltas.
+    pub learned_weight_retention: f32,
     pub hidden: [f32; HIDDEN],
     /// Actual evaluated ticks, excluding the randomized initial biological age.
     pub lived_ticks: u32,
-    pub lifetime_padding: u32,
+    pub cognitive_padding: u32,
+    /// Heritable bounded multiplier for offspring variation.
+    pub mutation_scale: f32,
 }
 impl Default for AgentGpu {
     fn default() -> Self {
-        Self::zeroed()
+        // CPU fixtures represent a fully expressed controller unless they are
+        // specifically exercising topology.  GPU-created unused slots remain
+        // zeroed and dead.
+        Self {
+            active_mask: ACTIVE_MASK_ALL,
+            mutation_scale: 1.0,
+            ..Self::zeroed()
+        }
+    }
+}
+impl AgentGpu {
+    pub fn cognitive_traits(&self) -> CognitiveTraits {
+        CognitiveTraits {
+            active_mask: self.active_mask,
+            padding: [0; 3],
+            plasticity_rate: self.plasticity_rate,
+            trace_retention: self.trace_retention,
+            learned_weight_retention: self.learned_weight_retention,
+            mutation_scale: self.mutation_scale,
+        }
     }
 }
 #[repr(C)]
@@ -132,9 +208,19 @@ pub struct DecisionGpu {
     pub invalid: u32,
     pub body_padding: u32,
     pub force: [f32; 2],
+    /// Candidate and output activities are retained only for the immediately
+    /// following local-plasticity pass; they are not inherited state.
+    pub candidate: [f32; HIDDEN],
     pub hidden: [f32; HIDDEN],
     pub update_gates: [f32; HIDDEN],
+    pub outputs: [f32; OUTPUTS],
+    pub memory_write_cost: f32,
+    // WGSL aligns vec3<u32> to sixteen bytes, so this explicit four-word
+    // region preserves the CPU/GPU storage contract before inputs.
+    pub decision_padding: [u32; 4],
     pub inputs: [f32; INPUTS],
+    /// Explicitly matches WGSL's sixteen-byte `Decision` array stride.
+    pub decision_end_padding: u32,
 }
 impl Default for DecisionGpu {
     fn default() -> Self {
@@ -177,9 +263,13 @@ pub struct InterventionParams {
 pub struct SelectionOutput {
     pub agent: AgentGpu,
     pub perception: PerceptionGpu,
+    /// WGSL aligns `Decision` to sixteen bytes after the eight-byte-aligned
+    /// perception record.
+    pub decision_alignment_padding: [u32; 2],
     pub decision: DecisionGpu,
     pub selected: u32,
     pub padding: u32,
+    pub selection_padding: [u32; 2],
 }
 fn no_environment_rotation(rotation: &u32) -> bool {
     *rotation == 0
@@ -205,6 +295,8 @@ pub struct SimSettings {
     /// The metabolism reached after the deterministic world-start ramp.
     pub metabolic_cost: f32,
     pub metabolic_ramp_ticks: u32,
+    pub active_unit_upkeep: f32,
+    pub memory_write_energy: f32,
     /// Actuator sensitivity, not minimum effort or maximum body speed.
     pub motor_response_gain: f32,
     pub consume_amount: f32,
@@ -222,6 +314,9 @@ pub struct SimSettings {
     pub communication_enabled: bool,
     pub evolving_landscape: bool,
     pub founder_genomes: Vec<Vec<f32>>,
+    /// Topology and plasticity are inherited alongside every founder genome.
+    #[serde(default)]
+    pub founder_traits: Vec<CognitiveTraits>,
     pub founder_name: String,
 }
 impl Default for SimSettings {
@@ -236,6 +331,8 @@ impl Default for SimSettings {
             movement_energy_cost: 0.01,
             metabolic_cost: 0.06,
             metabolic_ramp_ticks: DEFAULT_METABOLIC_RAMP_TICKS,
+            active_unit_upkeep: DEFAULT_ACTIVE_UNIT_UPKEEP,
+            memory_write_energy: DEFAULT_MEMORY_WRITE_ENERGY,
             motor_response_gain: 4.0,
             consume_amount: 25.0,
             conversion_efficiency: 8.0,
@@ -249,6 +346,7 @@ impl Default for SimSettings {
             communication_enabled: true,
             evolving_landscape: true,
             founder_genomes: Vec::new(),
+            founder_traits: Vec::new(),
             founder_name: "primitive-world-random".into(),
         }
     }
@@ -267,6 +365,8 @@ impl SimSettings {
                 self.resource_regeneration,
                 self.movement_energy_cost,
                 self.metabolic_cost,
+                self.active_unit_upkeep,
+                self.memory_write_energy,
                 self.motor_response_gain,
                 self.consume_amount,
                 self.conversion_efficiency,
@@ -295,7 +395,14 @@ impl SimSettings {
         {
             return Err("Invalid primitive-world physical settings".into());
         }
-        crate::founders::validate_genomes(&self.founder_genomes)
+        crate::founders::validate_genomes(&self.founder_genomes)?;
+        if !self.founder_traits.is_empty()
+            && (self.founder_traits.len() != self.founder_genomes.len()
+                || self.founder_traits.iter().any(|t| !t.validate()))
+        {
+            return Err("Invalid founder cognitive traits".into());
+        }
+        Ok(())
     }
 }
 

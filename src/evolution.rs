@@ -181,12 +181,21 @@ impl Progress {
 pub struct Search {
     pub incumbent: Vec<f32>,
     pub challenger: Vec<f32>,
+    pub incumbent_traits: Vec<CognitiveTraits>,
+    pub challenger_traits: Vec<CognitiveTraits>,
 }
 impl Search {
     pub fn validate(&self, population: u32, phase: Phase) -> Result<(), String> {
         let n = population as usize * GENOME_SIZE;
         if self.incumbent.len() != n
             || self.challenger.len() != if phase == Phase::Challenger { n } else { 0 }
+            || self.incumbent_traits.len() != population as usize
+            || self.challenger_traits.len()
+                != if phase == Phase::Challenger {
+                    population as usize
+                } else {
+                    0
+                }
         {
             return Err("Population search genome length mismatch".into());
         }
@@ -197,6 +206,14 @@ impl Search {
         {
             brain::validate(g)?;
         }
+        if self
+            .incumbent_traits
+            .iter()
+            .chain(&self.challenger_traits)
+            .any(|traits| !traits.validate())
+        {
+            return Err("Population search cognitive traits are invalid".into());
+        }
         Ok(())
     }
 }
@@ -204,7 +221,6 @@ fn next(rng: &mut u32) -> u32 {
     *rng = rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
     *rng
 }
-
 /// Keep an incumbent/challenger pair matched, then rotate the ecology for the
 /// next independent comparison. Rotation changes the world, never the brain
 /// inputs, so a fixed heading is not rewarded by one map orientation forever.
@@ -214,15 +230,19 @@ fn next_comparison_rotation(current: u32, phase: Phase, live_winner: bool) -> u3
         _ => (current + 1) % 4,
     }
 }
-fn proposal(
+fn proposal_with_traits(
     incumbent: &[f32],
-    descendants: &[f32],
+    traits: &mut [CognitiveTraits],
+    descendants: (&[f32], &[CognitiveTraits]),
     settings: &SimSettings,
     p: &mut Progress,
     descendant_percent: usize,
     random_percent: usize,
 ) -> Vec<f32> {
+    let (descendants, descendant_traits) = descendants;
     let population = settings.population as usize;
+    assert_eq!(traits.len(), population);
+    assert_eq!(descendant_traits.len() * GENOME_SIZE, descendants.len());
     debug_assert_eq!(descendants.len() % GENOME_SIZE, 0);
     let mut result = incumbent.to_vec();
     let mut slots: Vec<_> = (0..population).collect();
@@ -242,12 +262,14 @@ fn proposal(
     let descendant = descendants.len() / GENOME_SIZE;
     let carried = descendant.min(descendant_limit);
     p.descendant_founders = carried as u32;
-    for (&slot, genome) in slots
+    for ((&slot, genome), &source_traits) in slots
         .iter()
         .take(carried)
         .zip(descendants.chunks_exact(GENOME_SIZE))
+        .zip(descendant_traits)
     {
         result[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE].copy_from_slice(genome);
+        traits[slot] = source_traits;
     }
     // Preserve sampled terminal descendants as viable anchors. Their selection
     // is uniform over surviving ancestry, not an individual fitness score.
@@ -258,19 +280,59 @@ fn proposal(
     for &slot in slots.iter().skip(carried).take(random_count) {
         let genome = brain::random_genome(&mut p.rng);
         result[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE].copy_from_slice(&genome);
+        let (plasticity_rate, trace_retention, learned_weight_retention, mutation_scale) =
+            brain::random_plasticity(&mut p.rng);
+        traits[slot] = CognitiveTraits {
+            active_mask: brain::random_active_mask(&mut p.rng),
+            padding: [0; 3],
+            plasticity_rate,
+            trace_retention,
+            learned_weight_retention,
+            mutation_scale,
+        };
     }
     // The remaining inherited sources receive the ordinary continuous mutation
     // law. No source is scored by heading, behavior, or individual outcome.
     for &slot in slots.iter().skip(carried + random_count) {
         let g = &mut result[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE];
-        brain::mutate(
-            g,
-            next(&mut p.rng),
-            BASE_MUTATION_PROBABILITY,
-            BASE_MUTATION_MAGNITUDE,
-        );
+        let traits = &mut traits[slot];
+        brain::mutate_inherited(g, traits, next(&mut p.rng));
     }
     result
+}
+
+/// Test and diagnostic wrapper for a population without an explicit cognitive
+/// record.  Production search always calls `proposal_with_traits`.
+#[cfg(test)]
+fn proposal(
+    incumbent: &[f32],
+    descendants: &[f32],
+    settings: &SimSettings,
+    p: &mut Progress,
+    descendant_percent: usize,
+    random_percent: usize,
+) -> Vec<f32> {
+    let mut traits = vec![
+        CognitiveTraits {
+            active_mask: ACTIVE_MASK_ALL,
+            padding: [0; 3],
+            plasticity_rate: [0.0; HIDDEN],
+            trace_retention: 0.9,
+            learned_weight_retention: 0.99,
+            mutation_scale: 1.0,
+        };
+        settings.population as usize
+    ];
+    let descendant_traits = vec![traits[0]; descendants.len() / GENOME_SIZE];
+    proposal_with_traits(
+        incumbent,
+        &mut traits,
+        (descendants, &descendant_traits),
+        settings,
+        p,
+        descendant_percent,
+        random_percent,
+    )
 }
 
 fn promote_challenger_if_outlived(
@@ -289,7 +351,8 @@ fn promote_challenger_if_outlived(
     if tick <= baseline.duration {
         return Ok(false);
     }
-    if search.challenger == search.incumbent {
+    if search.challenger == search.incumbent && search.challenger_traits == search.incumbent_traits
+    {
         return Err("A candidate must differ from its incumbent before promotion".into());
     }
 
@@ -311,6 +374,7 @@ fn promote_challenger_if_outlived(
     progress.descendant_founders = 0;
     progress.live_winner = true;
     search.incumbent = std::mem::take(&mut search.challenger);
+    search.incumbent_traits = std::mem::take(&mut search.challenger_traits);
     Ok(true)
 }
 
@@ -347,9 +411,9 @@ impl Simulation {
         q: &wgpu::Queue,
         limit: usize,
         rng: &mut u32,
-    ) -> Result<Vec<f32>, String> {
+    ) -> Result<(Vec<f32>, Vec<CognitiveTraits>), String> {
         if limit == 0 {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), Vec::new()));
         }
         let agents = self.agent_snapshot(d, q)?;
         let mut slots: Vec<_> = agents
@@ -364,43 +428,17 @@ impl Simulation {
         }
         slots.truncate(count);
         if slots.is_empty() {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), Vec::new()));
         }
-        let genome_bytes = (slots.len() * GENOME_SIZE * std::mem::size_of::<f32>()) as u64;
-        let staging = d.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("terminal descendant genomes"),
-            size: genome_bytes,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-        let mut encoder = d.create_command_encoder(&Default::default());
-        for (destination, slot) in slots.into_iter().enumerate() {
-            encoder.copy_buffer_to_buffer(
-                &self.genome_buffer,
-                (slot * GENOME_SIZE * std::mem::size_of::<f32>()) as u64,
-                &staging,
-                (destination * GENOME_SIZE * std::mem::size_of::<f32>()) as u64,
-                GENOME_SIZE as u64 * std::mem::size_of::<f32>() as u64,
-            );
-        }
-        q.submit(Some(encoder.finish()));
-        let (tx, rx) = std::sync::mpsc::channel();
-        staging
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |result| {
-                let _ = tx.send(result);
-            });
-        d.poll(wgpu::Maintain::Wait);
-        rx.recv()
-            .map_err(|e| e.to_string())?
-            .map_err(|e| e.to_string())?;
-        let genomes =
-            bytemuck::cast_slice::<u8, f32>(&staging.slice(..).get_mapped_range()).to_vec();
-        staging.unmap();
+        let genomes = self.read_genome_slots(d, q, &slots)?;
+        let traits = slots
+            .iter()
+            .map(|&slot| agents[slot].cognitive_traits())
+            .collect();
         for genome in genomes.chunks_exact(GENOME_SIZE) {
             brain::validate(genome)?;
         }
-        Ok(genomes)
+        Ok((genomes, traits))
     }
     /// Idempotent natural completion. A pause or tick budget cannot complete a living world.
     pub fn complete_world(&mut self, d: &wgpu::Device, q: &wgpu::Queue) -> Result<(), String> {
@@ -416,10 +454,11 @@ impl Simulation {
         if self.settings.population == 0 || counters[18] == 0 {
             return Err("Only a populated world ending in natural extinction can be scored".into());
         }
-        let accepted =
-            self.progress.baseline.as_ref().map(|b| {
-                counters[18] > b.duration && self.search.challenger != self.search.incumbent
-            });
+        let accepted = self.progress.baseline.as_ref().map(|b| {
+            counters[18] > b.duration
+                && (self.search.challenger != self.search.incumbent
+                    || self.search.challenger_traits != self.search.incumbent_traits)
+        });
         let outcome = Outcome {
             world: self.progress.world,
             comparison: self.progress.comparison,
@@ -473,10 +512,10 @@ impl Simulation {
             .max(usize::from(
                 self.founder_descendant_percent > 0 && population > 0,
             ));
-        let descendants = if p.phase == Phase::Incumbent && !p.live_winner {
+        let (descendants, descendant_traits) = if p.phase == Phase::Incumbent && !p.live_winner {
             self.sample_terminal_descendants(d, q, descendant_limit, &mut p.rng)?
         } else {
-            Vec::new()
+            (Vec::new(), Vec::new())
         };
         let outcome = p.completed.take().ok_or("Missing world outcome")?;
         let next_environment_rotation =
@@ -493,14 +532,18 @@ impl Simulation {
                     self.seed = next(&mut p.rng);
                     next_environment_start_age = 0;
                 } else {
-                    search.challenger = proposal(
+                    search.challenger_traits = search.incumbent_traits.clone();
+                    search.challenger = proposal_with_traits(
                         &search.incumbent,
-                        &descendants,
+                        &mut search.challenger_traits,
+                        (&descendants, &descendant_traits),
                         &self.settings,
                         &mut p,
                         self.founder_descendant_percent,
                         self.founder_random_percent,
                     );
+                    // The proposal mutates each matched controller and its
+                    // topology/plasticity record together.
                     p.baseline = Some(outcome);
                     p.phase = Phase::Challenger;
                     // Same seed, body locations, ages, resources and physical laws.
@@ -515,11 +558,13 @@ impl Simulation {
                 let _ = p.baseline.as_ref().ok_or("Missing paired baseline")?;
                 if outcome.challenger_accepted == Some(true) {
                     search.incumbent = std::mem::take(&mut search.challenger);
+                    search.incumbent_traits = std::mem::take(&mut search.challenger_traits);
                     p.incumbent_parent_id = Some(p.incumbent_id);
                     p.incumbent_id = p.comparison + 1;
                     p.accepted_challengers += 1;
                 } else {
                     search.challenger.clear();
+                    search.challenger_traits.clear();
                 }
                 p.comparison = comparison;
                 p.phase = Phase::Incumbent;
@@ -532,12 +577,13 @@ impl Simulation {
         p.world = world;
         self.settings.environment_rotation = next_environment_rotation;
         self.settings.founder_genomes.clear();
+        self.settings.founder_traits.clear();
         self.settings.founder_name = "world-duration population search".into();
-        let founders = match p.phase {
-            Phase::Incumbent => &search.incumbent,
-            Phase::Challenger => &search.challenger,
+        let (founders, traits) = match p.phase {
+            Phase::Incumbent => (&search.incumbent, &search.incumbent_traits),
+            Phase::Challenger => (&search.challenger, &search.challenger_traits),
         };
-        self.reset_with_genomes_at(q, Some(founders), next_environment_start_age);
+        self.reset_with_population_at(q, Some(founders), Some(traits), next_environment_start_age);
         self.search = search;
         self.progress = p;
         self.update_params(q);
@@ -699,8 +745,26 @@ mod tests {
         let mut search = Search {
             incumbent: vec![0.0],
             challenger: vec![1.0],
+            incumbent_traits: vec![CognitiveTraits {
+                active_mask: 1,
+                padding: [0; 3],
+                plasticity_rate: [0.0; HIDDEN],
+                trace_retention: 0.9,
+                learned_weight_retention: 0.99,
+                mutation_scale: 1.0,
+            }],
+            challenger_traits: vec![CognitiveTraits {
+                active_mask: 1,
+                padding: [0; 3],
+                plasticity_rate: [0.0; HIDDEN],
+                trace_retention: 0.9,
+                learned_weight_retention: 0.99,
+                mutation_scale: 1.0,
+            }],
         };
 
+        search.challenger_traits[0].active_mask = (1 << (HIDDEN - 1)) | 1;
+        let winner_traits = search.challenger_traits.clone();
         assert_eq!(ticks_until_challenger_can_win(&progress, 10), Some(1));
         assert!(!promote_challenger_if_outlived(&mut progress, &mut search, 10, 1).unwrap());
         assert!(promote_challenger_if_outlived(&mut progress, &mut search, 11, 1).unwrap());
@@ -713,7 +777,42 @@ mod tests {
         assert!(progress.baseline.is_none());
         assert_eq!(search.incumbent, vec![1.0]);
         assert!(search.challenger.is_empty());
+        assert_eq!(search.incumbent_traits, winner_traits);
+        assert!(search.challenger_traits.is_empty());
         assert_eq!(ticks_until_challenger_can_win(&progress, 11), None);
         progress.validate(1, 7, 11).unwrap();
+    }
+    #[test]
+    fn descendant_anchors_preserve_the_complete_inherited_record() {
+        let settings = SimSettings {
+            population: 20,
+            ..Default::default()
+        };
+        let incumbent = vec![0.0; 20 * GENOME_SIZE];
+        let descendant = vec![1.0; GENOME_SIZE];
+        let mut traits = vec![AgentGpu::default().cognitive_traits(); 20];
+        let anchor = CognitiveTraits {
+            active_mask: 1 << (HIDDEN - 1),
+            plasticity_rate: [-0.1; HIDDEN],
+            mutation_scale: 4.0,
+            trace_retention: 0.7,
+            learned_weight_retention: 0.95,
+            padding: [0; 3],
+        };
+        let mut progress = Progress::initial(7);
+        let challenger = proposal_with_traits(
+            &incumbent,
+            &mut traits,
+            (&descendant, &[anchor]),
+            &settings,
+            &mut progress,
+            10,
+            0,
+        );
+        let slot = challenger
+            .chunks_exact(GENOME_SIZE)
+            .position(|g| g == descendant)
+            .unwrap();
+        assert_eq!(traits[slot], anchor);
     }
 }

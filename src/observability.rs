@@ -37,6 +37,11 @@ pub struct WorldMetrics {
     pub force_attempts: u32,
     pub force_energy_spent: f64,
     pub forced_distance: f64,
+    /// Births that expanded/retired an expressed unit, respectively.
+    pub topology_activations: u32,
+    pub topology_retirals: u32,
+    pub cognitive_write_energy: f64,
+    pub cognitive_upkeep_energy: f64,
 }
 
 /// A read-only population snapshot for studying evolution. Nothing in this
@@ -66,6 +71,11 @@ pub struct EvolutionSnapshot {
     /// Positive values move up-gradient; negative values move away.
     pub food_gradient_alignment: f64,
     pub food_gradient_samples: u64,
+    /// Distribution over capacities 1..16; index zero is intentionally unused.
+    pub active_capacity_distribution: Vec<u64>,
+    pub mean_active_capacity: f64,
+    pub mean_hidden_memory_magnitude: f64,
+    pub mean_learned_weight_magnitude: f64,
 }
 
 fn local_food_gradient(food: &[u32], position: [f32; 2], world_size: [f32; 2]) -> [f64; 2] {
@@ -160,15 +170,38 @@ impl Simulation {
         let agents = bytemuck::cast_slice::<u8, AgentGpu>(&bytes);
         let food_bytes = read_buffer(device, queue, &self.resource_buffer)?;
         let food = bytemuck::cast_slice::<u8, u32>(&food_bytes);
+        let mut encoder = device.create_command_encoder(&Default::default());
+        self.dispatch(
+            &mut encoder,
+            "summarize_learning",
+            self.current_buffer,
+            MAX_AGENTS.div_ceil(64),
+            1,
+        );
+        queue.submit(Some(encoder.finish()));
+        let learned_bytes = read_buffer(device, queue, &self.learned_summary_buffer)?;
+        let learned: &[f32] = bytemuck::cast_slice(&learned_bytes);
         let mut lineages = HashSet::new();
         let mut parent_lineages = HashSet::new();
         let mut moving_gradient_samples = 0u64;
         let mut snapshot = EvolutionSnapshot {
             tick: self.tick,
+            active_capacity_distribution: vec![0; HIDDEN + 1],
             ..Default::default()
         };
-        for agent in agents.iter().filter(|a| a.alive != 0) {
+        for (slot, agent) in agents.iter().enumerate().filter(|(_, a)| a.alive != 0) {
             snapshot.living += 1;
+            let capacity = agent.active_mask.count_ones() as usize;
+            snapshot.active_capacity_distribution[capacity] += 1;
+            snapshot.mean_active_capacity += capacity as f64;
+            snapshot.mean_hidden_memory_magnitude += agent
+                .hidden
+                .iter()
+                .enumerate()
+                .filter(|(h, _)| agent.active_mask & (1u32 << h) != 0)
+                .map(|(_, v)| v.abs() as f64)
+                .sum::<f64>();
+            snapshot.mean_learned_weight_magnitude += learned[slot] as f64;
             lineages.insert(agent.lineage_id);
             if agent.parent_lineage != 0 {
                 parent_lineages.insert(agent.parent_lineage);
@@ -210,6 +243,9 @@ impl Simulation {
         if snapshot.living > 0 {
             let count = snapshot.living as f64;
             snapshot.mean_ancestry_depth /= count;
+            snapshot.mean_active_capacity /= count;
+            snapshot.mean_hidden_memory_magnitude /= count;
+            snapshot.mean_learned_weight_magnitude /= count;
             snapshot.mean_velocity_x /= count;
             snapshot.mean_velocity_y /= count;
             let horizontal = snapshot.leftward_agents + snapshot.rightward_agents;
@@ -285,6 +321,10 @@ impl Simulation {
             force_attempts: counters[12],
             force_energy_spent: counters[13] as f64 / 1000.0,
             forced_distance: counters[15] as f64 / 1000.0,
+            topology_activations: counters[32],
+            topology_retirals: counters[33],
+            cognitive_write_energy: counters[34] as f64 / 1000.0,
+            cognitive_upkeep_energy: counters[35] as f64 / 1000.0,
         })
     }
 
@@ -319,7 +359,11 @@ impl Simulation {
             &self.event_buffer,
             &self.perception_buffer,
             &self.decision_buffer,
-            &self.genome_buffer,
+            &self.genome_buffers[0],
+            &self.genome_buffers[1],
+            &self.fast_weight_buffers[0],
+            &self.fast_weight_buffers[1],
+            &self.trace_buffer,
         ];
         let data: Vec<_> = buffers
             .iter()
@@ -349,6 +393,15 @@ impl Simulation {
         }
         for genes in [&self.search.incumbent, &self.search.challenger] {
             let bytes: &[u8] = bytemuck::cast_slice(genes);
+            file.write_all(&(bytes.len() as u64).to_le_bytes())
+                .map_err(|e| e.to_string())?;
+            file.write_all(bytes).map_err(|e| e.to_string())?;
+        }
+        for traits in [
+            &self.search.incumbent_traits,
+            &self.search.challenger_traits,
+        ] {
+            let bytes: &[u8] = bytemuck::cast_slice(traits);
             file.write_all(&(bytes.len() as u64).to_le_bytes())
                 .map_err(|e| e.to_string())?;
             file.write_all(bytes).map_err(|e| e.to_string())?;
@@ -442,14 +495,21 @@ impl Simulation {
         buffers.extend([
             &self.perception_buffer,
             &self.decision_buffer,
-            &self.genome_buffer,
+            &self.genome_buffers[0],
+            &self.genome_buffers[1],
         ]);
         let mut data = Vec::new();
-        for buffer in &buffers {
+        buffers.extend([
+            &self.fast_weight_buffers[0],
+            &self.fast_weight_buffers[1],
+            &self.trace_buffer,
+        ]);
+        for buffer in buffers.iter() {
             let mut length = [0; 8];
             file.read_exact(&mut length).map_err(|e| e.to_string())?;
+            let stored = u64::from_le_bytes(length);
             let expected = buffer.size();
-            if u64::from_le_bytes(length) != expected {
+            if stored != expected {
                 return Err("Checkpoint layout mismatch".into());
             }
             let mut bytes = vec![0; expected as usize];
@@ -461,7 +521,6 @@ impl Simulation {
             .map(bytemuck::pod_read_unaligned::<AgentGpu>)
         {
             if a.lived_ticks > tick
-                || a.lifetime_padding != 0
                 || a.alive > 1
                 || a.action > 5
                 || !a.position[0].is_finite()
@@ -497,15 +556,43 @@ impl Simulation {
                 || a.max_speed < 0.0
                 || a.max_speed > 1.2
                 || a.hidden.iter().any(|v| v.abs() > 1.0)
+                || a.active_mask == 0
+                || a.active_mask & !ACTIVE_MASK_ALL != 0
+                || !a.trace_retention.is_finite()
+                || !a.learned_weight_retention.is_finite()
+                || !(0.0..=0.9999).contains(&a.trace_retention)
+                || !(0.0..=0.9999).contains(&a.learned_weight_retention)
+                || !a.mutation_scale.is_finite()
+                || !(0.25..=4.0).contains(&a.mutation_scale)
+                || a.plasticity_rate
+                    .iter()
+                    .any(|v| !v.is_finite() || v.abs() > 0.2)
                 || a.sensor_radius < 4.0
                 || a.sensor_radius > 48.0
             {
                 return Err("Invalid primitive-world body checkpoint".into());
             }
         }
-        let genes: &[f32] = bytemuck::cast_slice(&data[8]);
-        for genome in genes.chunks_exact(GENOME_SIZE) {
-            crate::brain::validate(genome)?;
+        let bank0: &[f32] = bytemuck::cast_slice(&data[8]);
+        let bank1: &[f32] = bytemuck::cast_slice(&data[9]);
+        for slot in 0..MAX_AGENTS as usize {
+            let mut genome = [0.0; GENOME_SIZE];
+            genome[..GENOME_BANK_STRIDE].copy_from_slice(
+                &bank0[slot * GENOME_BANK_STRIDE..(slot + 1) * GENOME_BANK_STRIDE],
+            );
+            genome[GENOME_BANK_STRIDE..].copy_from_slice(
+                &bank1[slot * GENOME_BANK_STRIDE
+                    ..slot * GENOME_BANK_STRIDE + GENOME_SIZE - GENOME_BANK_STRIDE],
+            );
+            crate::brain::validate(&genome)?;
+        }
+        if data[10..13].iter().any(|bytes| {
+            bytes
+                .chunks_exact(4)
+                .map(|v| f32::from_le_bytes(v.try_into().unwrap()))
+                .any(|v| !v.is_finite() || v.abs() > 1.0)
+        }) {
+            return Err("Invalid checkpoint learned memory state".into());
         }
         if data[2]
             .chunks_exact(4)
@@ -566,6 +653,8 @@ impl Simulation {
                     .chain(&d.scores)
                     .chain(&d.hidden)
                     .chain(&d.inputs)
+                    .chain(&d.candidate)
+                    .chain(&d.outputs)
                     .any(|v| !v.is_finite())
             {
                 return Err("Invalid checkpoint decision".into());
@@ -590,9 +679,32 @@ impl Simulation {
                 .map_err(|e| e.to_string())?;
             populations.push(genes);
         }
+        let mut trait_populations = Vec::new();
+        for expected in [
+            settings.population as usize,
+            if metadata.progress.phase == crate::evolution::Phase::Challenger {
+                settings.population as usize
+            } else {
+                0
+            },
+        ] {
+            let mut length = [0; 8];
+            file.read_exact(&mut length).map_err(|e| e.to_string())?;
+            if u64::from_le_bytes(length)
+                != (expected * std::mem::size_of::<CognitiveTraits>()) as u64
+            {
+                return Err("Invalid founding cognitive-trait length".into());
+            }
+            let mut traits = vec![CognitiveTraits::zeroed(); expected];
+            file.read_exact(bytemuck::cast_slice_mut(&mut traits))
+                .map_err(|e| e.to_string())?;
+            trait_populations.push(traits);
+        }
         let search = crate::evolution::Search {
             challenger: populations.pop().unwrap(),
             incumbent: populations.pop().unwrap(),
+            challenger_traits: trait_populations.pop().unwrap(),
+            incumbent_traits: trait_populations.pop().unwrap(),
         };
         search.validate(settings.population, metadata.progress.phase)?;
         let counters: &[u32] = bytemuck::cast_slice(&data[4]);
@@ -675,6 +787,12 @@ pub struct InteractionEvent {
     pub actor_lineage: u32,
     pub other_lineage: u32,
     pub position: [f32; 2],
+    /// Diagnostic context for memory samples: carried food and local resource.
+    pub context: [f32; 2],
+    /// For memory samples, the action selected with memory retained.
+    /// Other event kinds leave this zero.
+    pub actual_action: u32,
+    pub padding: u32,
 }
 impl Simulation {
     pub fn recent_events(

@@ -1,7 +1,7 @@
 @group(0) @binding(6) var<storage,read_write> events:array<InteractionEvent>;
 fn record(actor:u32,other:u32,action:u32,amount:f32,position:vec2<f32>) {
   let sequence=atomicAdd(&stats[8],1u);
-  events[sequence%65536u]=InteractionEvent(params.tick,actor,other,action,amount,sequence,agents[actor].lineage_id,agents[other].lineage_id,position);
+  events[sequence%65536u]=InteractionEvent(params.tick,actor,other,action,amount,sequence,agents[actor].lineage_id,agents[other].lineage_id,position,vec2<f32>(0.0),0u,0u);
 }
 @group(0) @binding(5) var<storage, read_write> ground: array<Ground>;
 @group(0) @binding(0) var<storage, read_write> agents: array<Agent>;

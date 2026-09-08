@@ -24,14 +24,10 @@ guard never count as extinction or a losing score. GPU batches can finish up to
 31 empty ticks after extinction; those ticks count as executed work but do not
 increase the recorded world duration.
 
-At effective environment age zero, worlds begin with movement and collection only. Each additional action unlocks
-independently for an increasing, neutral hash-selected share of living bodies:
-reproduction over ticks 0–2,500. Social actions wait through the 50,000-tick
-survival bootstrap: transfer unlocks over 52,500–65,000, signals over
-65,000–80,000, and force over 80,000–100,000. At each interval's midpoint,
-roughly half of the bodies can select that action; at its end, every body can.
-The draw is stable for each body and has no connection to its energy, behavior,
-genome quality, ancestry, or success. Their ordinary food patches start 100%
+All actions are selectable from the first tick under the configured world
+switches. Reproduction still requires maturity, energy, and its ordinary cooldown;
+transfer, signals, and force retain their physical costs and local constraints.
+There is no timed action-unlock curriculum. Ordinary food patches start 100%
 wider and recede to normal size while metabolism rises from .01 to .06. From
 50,000 to 250,000, the normal-sized food territory becomes progressively more
 mobile without changing metabolism or total normalized habitat. Habitat then
@@ -40,7 +36,7 @@ preserving its keyframe mean; regional lean seasons strengthen through 750,000
 while moving abundance elsewhere. Each pressure then remains capped. This shared
 deterministic environmental schedule is not a reward, score, or different
 comparison condition. Every new world begins at effective environment age zero,
-so actions and ecological pressures restart from the same baseline.
+so ecological pressures restart from the same baseline.
 
 World duration and effective environment age both begin at zero for every
 comparison. A matched challenger shares that same fresh age with its incumbent;
@@ -62,7 +58,7 @@ position's genome and the group's mixture and multiplicities. Default New Game
 and headless runs create one seed-specific random genome per founding body.
 An explicitly imported current-format bank repeats across founding positions.
 
-Every challenger founder inherits an existing genome and then varies from it.
+Challenger founders retain a controller together with its topology and plasticity traits.
 After an incumbent world ends naturally, a uniform sample of its terminal
 descendant genomes supplies up to 10% of the inherited sources (floor, minimum
 one); those sampled descendants remain unchanged as viable anchors. Up to 5% of
@@ -71,12 +67,15 @@ the incumbent. Neither anchors nor immigrants use an individual score,
 direction, or authored behavior. There is no identity ranking, genetic
 clustering, novelty score or separate learned selector.
 
-The same mutation law applies to challenger founders and paid births. Each
-inherited genome independently samples a continuous log-uniform mutation
-temperature from 1/8 to 8. That temperature scales both the chance that each
-parameter changes (base .02) and its step size (base .03), bounded to [-4,4].
-Thus most inherited brains receive slight variation while a few receive much
-larger changes. At least one parameter changes in every inherited genome.
+The same mutation law applies to mutated challenger founders and paid births.
+Each samples a log-uniform temperature in [1/8, 8]. Its square root times the
+inherited mutation scale multiplies an expected 23.76 parameter updates and a
+.03 step size. The budget is independent of active capacity; expressed parameters
+are sampled uniformly with replacement and bounded to [-4,4]. At least one
+controller value changes. Eligible topology activation and retirement each have
+a 1% chance. Activation clones an expressed unit with bounded perturbation and
+splits its outgoing weights. One active plasticity rate and both retention traits
+vary; mutation scale drifts by up to 3%.
 
 **Within-world descendant genomes are retained as potential, not automatically
 accepted, founders.** At natural extinction, each terminal descendant slot has
@@ -89,7 +88,8 @@ preventing a reset from discarding all evolved mutations.
 Fresh founders and biological newborns retain their existing different endowments.
 All new bodies start with zero recurrent memory. Founding is initialization, not a
 paid birth. Biological births still require maturity, energy, recovery and a slot.
-Weights are fixed during each life; gated private state changes every tick.
+Inherited weights remain fixed during each life. Bounded local learned deltas,
+activity traces, and gated recurrent state change during life and reset at birth.
 
 ## State and progress
 
@@ -108,8 +108,8 @@ terrain are rebuilt. Manual ecological intervention is saved as part of the worl
 and remains eligible for population comparison; outcomes record whether they were
 assisted. Read-only diagnostic observers do not alter eligibility.
 
-There is one current model, `primitive-v24-delayed-social-fresh-worlds`: checkpoint 37,
-game receipt 4, founder bank 13. Noncurrent files are rejected, never converted,
+There is one current model, `primitive-v26-masked-plastic-16`: checkpoint 39,
+game receipt 4, founder bank 15. Noncurrent files are rejected, never converted,
 executed through a compatibility path, overwritten or deleted.
 
 The viewer saves on explicit Save, menu, close and every five minutes of changed
@@ -118,9 +118,6 @@ library is capped at 16 GiB while protecting each experiment's newest valid
 snapshot. `--prune-saves` applies that retention policy on demand. A crash can lose
 progress since the last save, including completed worlds. Raw headless checkpoints
 are written when requested.
-
-`--purge-legacy-saves` is an explicit cleanup for paired receipts that identify a
-different model. Current-format retention never removes incompatible data on its own.
 
 ## Command line
 

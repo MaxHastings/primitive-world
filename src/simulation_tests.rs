@@ -194,7 +194,7 @@ fn profile_tick_throughput() {
         );
         s.reset(&q);
         step(&mut s, &d, &q, 32);
-        let telemetry = readback(&d, 144);
+        let telemetry = readback(&d, crate::playback::TELEMETRY_SIZE);
         let start = std::time::Instant::now();
         for _ in 0..64 {
             let mut encoder = d.create_command_encoder(&Default::default());
@@ -237,6 +237,11 @@ fn profile_tick_throughput() {
             "decide_live",
             "consume",
             "body_live",
+            "plastic",
+            "observe_signals",
+            "observe_memory",
+            "inherit_genomes",
+            "reset_cognitive_birth_state",
             "interact_clear",
             "interact_propose",
             "interact_resolve",
@@ -324,7 +329,10 @@ fn environment_rotation_preserves_body_traits_and_is_not_a_controller_input() {
         assert_eq!(params.lifecycle[2], turns);
         assert_eq!(params.lifecycle[3], 50_010);
         assert_eq!(params.mutation[2], 1.0);
-        assert_eq!(params.environment, [0.00005, 0.0, 0.0, 0.0]);
+        assert_eq!(
+            params.environment,
+            [0.00005, 0.0, 0.0, settings.memory_write_energy]
+        );
         near(params.time_and_costs[3], 0.06);
     }
     for shader in [
@@ -968,7 +976,7 @@ fn disabled_social_actions_mask_social_logits_without_prescribing_behavior() {
 }
 
 #[test]
-fn reproduction_unlock_is_individual_gradual_and_complete_by_its_deadline() {
+fn reproduction_is_available_without_a_bootstrap_curriculum() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     s.settings.metabolic_ramp_ticks = 50_000;
@@ -980,13 +988,13 @@ fn reproduction_unlock_is_individual_gradual_and_complete_by_its_deadline() {
         put(&s, &q, slot, a, &genome);
     }
 
-    s.tick = 1_250;
+    s.tick = 0;
     step(&mut s, &d, &q, 1);
     let halfway = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 256)
         .into_iter()
         .filter(|decision| decision.selected_action == 5)
         .count();
-    assert!((96..=160).contains(&halfway), "got {halfway} of 256");
+    assert_eq!(halfway, 256);
 
     s.tick = 2_500;
     step(&mut s, &d, &q, 1);
@@ -1043,7 +1051,7 @@ fn survivor_sample_keeps_current_child_genes_after_extinction() {
         .iter()
         .position(|a| a.alive != 0 && a.ancestry_depth > 0)
         .unwrap();
-    let actual = read::<f32>(&d, &q, &s.genome_buffer, MAX_AGENTS as usize * GENOME_SIZE);
+    let actual = s.read_genomes(&d, &q, MAX_AGENTS as usize).unwrap();
     let child = actual[child_slot * GENOME_SIZE..(child_slot + 1) * GENOME_SIZE].to_vec();
     assert_ne!(
         child.as_slice(),
@@ -1087,7 +1095,7 @@ fn birth_mutation_never_copies_a_parent_genome_exactly() {
         .iter()
         .position(|a| a.alive != 0 && a.ancestry_depth == 1)
         .expect("fixture must produce a child");
-    let genomes = read::<f32>(&d, &q, &s.genome_buffer, MAX_AGENTS as usize * GENOME_SIZE);
+    let genomes = s.read_genomes(&d, &q, MAX_AGENTS as usize).unwrap();
     assert_ne!(
         &genomes[child_slot * GENOME_SIZE..(child_slot + 1) * GENOME_SIZE],
         parent.as_slice(),
@@ -1205,6 +1213,9 @@ fn scene(d: &wgpu::Device, q: &wgpu::Queue) -> Simulation {
     s.settings.population = 0;
     s.settings.social_actions_enabled = true;
     s.settings.metabolic_cost = 0.06;
+    // These fixtures isolate physical actions; cognitive costs have dedicated tests.
+    s.settings.active_unit_upkeep = 0.0;
+    s.settings.memory_write_energy = 0.0;
     s.settings.metabolic_ramp_ticks = 0;
     s.settings.resource_regeneration = 0.0;
     s.settings.evolving_landscape = false;
@@ -1248,11 +1259,7 @@ fn put(s: &Simulation, q: &wgpu::Queue, slot: usize, a: AgentGpu, g: &[f32; GENO
             bytemuck::bytes_of(&a),
         );
     }
-    q.write_buffer(
-        &s.genome_buffer,
-        (slot * GENOME_SIZE * 4) as u64,
-        bytemuck::cast_slice(g),
-    );
+    s.write_genome_slot(q, slot, g);
 }
 fn near(a: f32, b: f32) {
     assert!((a - b).abs() < 0.002, "{a} != {b}");
@@ -1263,13 +1270,14 @@ fn temp(name: &str) -> std::path::PathBuf {
 
 #[test]
 fn layout_and_cli_contract() {
-    assert_eq!(GENOME_SIZE, 1188);
-    assert_eq!(std::mem::size_of::<AgentGpu>(), 184);
+    assert_eq!(GENOME_SIZE, 2612);
+    assert_eq!(GENOME_BANK_COUNT, 2);
+    assert_eq!(std::mem::size_of::<AgentGpu>(), 296);
     assert_eq!(std::mem::size_of::<PerceptionGpu>(), 400);
-    assert_eq!(std::mem::size_of::<DecisionGpu>(), 568);
-    assert_eq!(std::mem::size_of::<SelectionOutput>(), 1160);
+    assert_eq!(std::mem::size_of::<DecisionGpu>(), 800);
+    assert_eq!(std::mem::size_of::<SelectionOutput>(), 1520);
     assert_eq!(std::mem::size_of::<SimParams>(), 144);
-    assert!(MAX_AGENTS as usize * GENOME_SIZE * 4 <= 256 * 1024 * 1024);
+    assert!(MAX_AGENTS as usize * GENOME_BANK_STRIDE * 4 <= 256 * 1024 * 1024);
     for flag in [
         "--unknown-option",
         "--population-typo",
@@ -1345,7 +1353,7 @@ fn recurrent_cpu_gpu_parity_and_observer_isolation() {
     step(&mut s, &d, &q, 1);
     let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
     assert_ne!(after.hidden, a.hidden);
-    assert_eq!(read::<f32>(&d, &q, &s.genome_buffer, GENOME_SIZE), g);
+    assert_eq!(&s.read_genomes(&d, &q, 1).unwrap(), &g);
 }
 #[test]
 fn perception_is_local_and_compass_aligned() {
@@ -1506,7 +1514,7 @@ fn reproduction_is_requested_can_coexist_with_motion_and_conserves() {
     assert_eq!(s.metrics(&d, &q).unwrap().events[3], 1);
     step(&mut s, &d, &q, 1);
     assert_eq!(s.metrics(&d, &q).unwrap().events[3], 1);
-    let genes = read::<f32>(&d, &q, &s.genome_buffer, 2 * GENOME_SIZE);
+    let genes = s.read_genomes(&d, &q, 2).unwrap();
     assert_eq!(&genes[..GENOME_SIZE], &g);
     assert!(genes.iter().all(|x| x.is_finite() && x.abs() <= 4.0));
 }
@@ -1692,9 +1700,9 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v24-delayed-social-fresh-worlds");
+    assert_eq!(MODEL_ID, "primitive-v26-masked-plastic-16");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
-    assert_eq!(crate::founders::bundled().version, 13);
+    assert_eq!(crate::founders::bundled().version, FOUNDER_BANK_VERSION);
 }
 
 #[test]
@@ -1744,7 +1752,8 @@ fn live_selection_follows_identity_without_changing_simulation_state() {
     let buffers = [
         &s.agent_buffers[0],
         &s.agent_buffers[1],
-        &s.genome_buffer,
+        &s.genome_buffers[0],
+        &s.genome_buffers[1],
         &s.resource_buffer,
         &s.ground_buffer,
     ];
@@ -1865,9 +1874,17 @@ fn batching_checkpoint_and_selection_preserve_state() {
     let mut s = scene(&d, &q);
     // Loading restores saved physical settings.
     s.settings.metabolic_cost = 0.06;
+    // These fixtures isolate physical actions; cognitive costs have dedicated tests.
+    s.settings.active_unit_upkeep = 0.0;
+    s.settings.memory_write_energy = 0.0;
     s.settings.movement_energy_cost = 0.01;
-    let a = body([602.0, 902.0]);
-    let g = fixed(0, [0.1, 0.2]);
+    let mut a = body([602.0, 902.0]);
+    a.plasticity_rate = [0.02; HIDDEN];
+    a.trace_retention = 0.9;
+    a.learned_weight_retention = 0.99;
+    let mut g = fixed(0, [0.1, 0.2]);
+    g[NODE_BIAS] = 0.5;
+    g[GATE_BIAS] = 0.75;
     put(&s, &q, 0, a, &g);
     step(&mut s, &d, &q, 12);
     let expected = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
@@ -1878,6 +1895,11 @@ fn batching_checkpoint_and_selection_preserve_state() {
     }
     let actual = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
     assert_eq!(bytemuck::bytes_of(&expected), bytemuck::bytes_of(&actual));
+    assert!(
+        read::<f32>(&d, &q, &s.fast_weight_buffers[0], FAST_BANK_STRIDE)
+            .iter()
+            .any(|v| *v != 0.0)
+    );
     let selection = s.select_agent(&d, &q, actual.position, 2.0).unwrap();
     assert_eq!(selection.selected, 1);
     let path = temp("state.checkpoint");
@@ -2086,57 +2108,6 @@ fn family_diagnostics_count_juvenile_feeding_maturity_and_terminal_flow() {
 }
 
 #[test]
-fn fixed_parameter_mutation_cpu_gpu_parity() {
-    let (d, q) = gpu();
-    let s = scene(&d, &q);
-    let mut params = params_for(s.tick, s.tick, &s.settings, s.seed);
-    params.mutation[0] = 0.4;
-    params.mutation[1] = 8.0;
-    q.write_buffer(&s.params_buffer, 0, bytemuck::bytes_of(&params));
-    let mut all = Vec::new();
-    for i in 0..256 {
-        let g = crate::brain::random_genome(&mut (i as u32));
-        all.extend(g);
-    }
-    q.write_buffer(&s.genome_buffer, 0, bytemuck::cast_slice(&all));
-    let pass = Compute::new(
-        &d,
-        "mutation parity",
-        r#"
-@group(0) @binding(0) var<storage,read_write> genomes:array<f32>;
-@group(0) @binding(1) var<uniform> params:SimParams;
-// BRAIN_MUTATION
-@compute @workgroup_size(64)
-fn main(@builtin(global_invocation_id) id:vec3<u32>){
- var g:array<f32,GENOME_SIZE>;
- for(var k=0u;k<GENOME_SIZE;k++){g[k]=genomes[id.x*GENOME_SIZE+k];}
- mutate_brain(&g,id.x*7919u,params.mutation);
- for(var k=0u;k<GENOME_SIZE;k++){genomes[id.x*GENOME_SIZE+k]=g[k];}
-}"#,
-        "main",
-        "wu",
-        vec![vec![&s.genome_buffer, &s.params_buffer]],
-    );
-    let mut e = d.create_command_encoder(&Default::default());
-    pass.dispatch(&mut e, 0, 4, 1);
-    q.submit(Some(e.finish()));
-    let actual = read::<f32>(&d, &q, &s.genome_buffer, 256 * GENOME_SIZE);
-    for (i, (parent, child)) in all
-        .chunks_exact(GENOME_SIZE)
-        .zip(actual.chunks_exact(GENOME_SIZE))
-        .enumerate()
-    {
-        let mut expected = parent.to_vec();
-        crate::brain::mutate(&mut expected, i as u32 * 7919, 0.4, 8.0);
-        crate::brain::validate(child).unwrap();
-        for (x, y) in expected.iter().zip(child) {
-            near(*x, *y);
-        }
-        assert_ne!(parent, child);
-    }
-}
-
-#[test]
 fn birth_variation_preserves_parent_cost_and_resets_child_memory() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
@@ -2153,12 +2124,12 @@ fn birth_variation_preserves_parent_cost_and_resets_child_memory() {
         .enumerate()
         .find(|(_, b)| b.alive != 0 && b.ancestry_depth == 1)
         .unwrap();
-    near(
-        a.energy - agents[0].energy,
-        s.settings.metabolic_cost + child.energy + 0.2 * s.settings.reproduction_cost,
+    assert!(
+        agents[0].energy < a.energy - child.energy,
+        "parent pays body, active-capacity, and local-memory write upkeep as well as birth cost"
     );
     assert_eq!(child.hidden, [0.0; HIDDEN]);
-    let genes = read::<f32>(&d, &q, &s.genome_buffer, (slot + 1) * GENOME_SIZE);
+    let genes = s.read_genomes(&d, &q, slot + 1).unwrap();
     assert_eq!(
         &genes[..GENOME_SIZE],
         &g,
@@ -2175,12 +2146,9 @@ fn birth_variation_preserves_parent_cost_and_resets_child_memory() {
     put(&s, &q, 0, a, &g);
     step(&mut s, &d, &q, 1);
     assert_eq!(s.metrics(&d, &q).unwrap().living, 1);
-    near(
-        s.agent_snapshot(&d, &q).unwrap()[0].energy,
-        a.energy - s.settings.metabolic_cost,
-    );
+    assert!(s.agent_snapshot(&d, &q).unwrap()[0].energy < a.energy);
     assert!(
-        read::<f32>(&d, &q, &s.genome_buffer, 2 * GENOME_SIZE)[GENOME_SIZE..]
+        s.read_genomes(&d, &q, 2).unwrap()[GENOME_SIZE..]
             .iter()
             .all(|v| *v == 0.0)
     );

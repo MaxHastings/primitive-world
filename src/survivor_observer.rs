@@ -2,7 +2,7 @@
 //! This never supplies information or changes weights inside a running world.
 use crate::{
     founders::FounderBank,
-    simulation::{AgentGpu, GENOME_SIZE, Simulation, observability::read_buffer},
+    simulation::{AgentGpu, GENOME_SIZE, Simulation},
 };
 use serde::{Deserialize, Serialize};
 
@@ -83,27 +83,8 @@ pub fn observe_cached(
         .collect();
     let mut genomes = Vec::new();
     if !missing.is_empty() {
-        let stride = (GENOME_SIZE * std::mem::size_of::<f32>()) as u64;
-        let packed = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("read-only survivor genomes"),
-            size: stride * missing.len() as u64,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-        let mut encoder = device.create_command_encoder(&Default::default());
-        for (out, &slot) in missing.iter().enumerate() {
-            encoder.copy_buffer_to_buffer(
-                &sim.genome_buffer,
-                slot as u64 * stride,
-                &packed,
-                out as u64 * stride,
-                stride,
-            );
-        }
-        queue.submit(Some(encoder.finish()));
-        let bytes = read_buffer(device, queue, &packed)?;
-        let genes: &[f32] = bytemuck::cast_slice(&bytes);
-        genomes = genes
+        genomes = sim
+            .read_genome_slots(device, queue, &missing)?
             .chunks_exact(GENOME_SIZE)
             .map(<[f32]>::to_vec)
             .collect();
@@ -127,6 +108,10 @@ pub fn observe_cached(
             source_seed: sim.seed,
             source_tick: sim.tick,
             genomes,
+            traits: chosen.iter().map(|&slot| {
+                let a = agents[slot];
+                crate::model::CognitiveTraits { active_mask: a.active_mask, padding: [0; 3], plasticity_rate: a.plasticity_rate, trace_retention: a.trace_retention, learned_weight_retention: a.learned_weight_retention, mutation_scale: a.mutation_scale }
+            }).collect(),
         },
         source_population: agents.iter().filter(|a| a.alive != 0).count(),
         bodies: chosen

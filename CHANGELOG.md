@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — masked local learning
+
+- Introduce 1–16 active recurrent units, inherited topology and local-plasticity traits, and paid lifetime-only learned connection deltas.
+- Evaluate cognition cooperatively on the GPU; keep whole-world survival as the selection criterion and remove action-unlock curricula.
+- Preserve complete inherited traits in descendant anchors, promotion, export and persistence; reset learned state only for newborns.
+- Fix release-only decision-pass startup, banked storage limits, diagnostic event wiring and telemetry/timestamp overlap.
+- Keep inheritance random helpers in the current shader and remove the obsolete mutation shader and legacy-save cleanup command.
+- Standardize documented wallpaper, resume, and startup installation commands on `Play.cmd` and its current-source play build.
+- Use model `primitive-v26-masked-plastic-16`, checkpoint 39 and founder bank 15; previous files remain untouched and are rejected.
+
+
 ## Descendant founder carryover
 
 - Preserve a uniform sample of terminal descendant genomes as sparse candidate-founder replacements after a natural extinction. Whole founding populations still compete only on matched completed-world duration; no individual descendant score is introduced.

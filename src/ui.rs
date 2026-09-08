@@ -455,7 +455,7 @@ fn draw_new(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                     ui.checkbox(&mut state.ui.setup.evolving_landscape, "Evolving geography");
                     ui.checkbox(
                         &mut state.ui.setup.social_actions_enabled,
-                        "Unlock social actions after the 50,000-tick survival bootstrap",
+                        "Social actions available",
                     );
                     ui.checkbox(&mut state.ui.setup.force_enabled, "Contact force available");
                     ui.checkbox(

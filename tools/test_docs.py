@@ -18,7 +18,7 @@ class DocumentationTests(unittest.TestCase):
                     self.assertTrue((path.parent / target.split("#")[0]).exists())
 
     def test_documented_tools_exist(self):
-        for path in ["backup_run.py", "analyze_departures.py", "audit_checkpoint_communication.py"]:
+        for path in ["backup_run.py", "analyze_departures.py"]:
             self.assertTrue((ROOT / "tools" / path).is_file())
 
     def test_front_page_has_portable_launch_commands(self):

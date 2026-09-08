@@ -290,7 +290,7 @@ fn evolved_gates_can_store_a_cue_retain_through_distraction_and_replace_it() {
     let replaced = run(&p, 1);
     assert_eq!(replaced.hidden[0], 0.0);
     assert_eq!(replaced.update_gates[0], 1.0);
-    assert_eq!(read::<f32>(&d, &q, &s.genome_buffer, GENOME_SIZE), genes);
+    assert_eq!(s.read_genomes(&d, &q, 1).unwrap(), genes);
 }
 
 #[test]

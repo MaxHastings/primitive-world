@@ -1,5 +1,6 @@
-//! Fixed eight-unit gated recurrent brains. Only weights and biases are inherited.
-//! Mutation draw order and arithmetic match shaders/brain_mutation.wgsl.
+//! Masked sixteen-unit gated recurrent brains.  Controller weights are
+//! inherited; runtime memory and learned deltas are deliberately not.
+//! Mutation draw order and arithmetic match the GPU inheritance pass.
 use crate::model::*;
 pub type Genome = [f32; GENOME_SIZE];
 #[cfg(test)]
@@ -26,45 +27,216 @@ pub fn random_genome(rng: &mut u32) -> Genome {
     }
     g
 }
+
+/// Fresh founders choose capacity uniformly, then choose unit locations without
+/// giving low-numbered units any special meaning.
+pub fn random_active_mask(rng: &mut u32) -> u32 {
+    let capacity = 1 + (draw(rng) * HIDDEN as f32) as usize % HIDDEN;
+    let mut slots: Vec<_> = (0..HIDDEN).collect();
+    for i in 0..capacity {
+        let j = i + ((draw(rng) * (HIDDEN - i) as f32) as usize % (HIDDEN - i));
+        slots.swap(i, j);
+    }
+    slots[..capacity]
+        .iter()
+        .fold(0u32, |mask, &h| mask | (1u32 << h))
+}
+
+pub fn random_plasticity(rng: &mut u32) -> ([f32; HIDDEN], f32, f32, f32) {
+    let rates = std::array::from_fn(|_| (draw(rng) * 2.0 - 1.0) * 0.01);
+    // Traces and learned state begin reasonably persistent but evolution owns
+    // their exact time scale.
+    let trace_retention = 0.8 + draw(rng) * 0.19;
+    let learned_weight_retention = 0.9 + draw(rng) * 0.099;
+    // Log-uniform founders give evolution both conservative and exploratory
+    // lineages without treating either as the privileged default.
+    let mutation_scale = 0.25 * 16.0f32.powf(draw(rng));
+    (
+        rates,
+        trace_retention,
+        learned_weight_retention,
+        mutation_scale,
+    )
+}
 pub fn validate(g: &[f32]) -> Result<(), String> {
     if g.len() != GENOME_SIZE || g.iter().any(|v| !v.is_finite() || v.abs() > 4.0) {
-        return Err("Invalid fixed brain: expected 1188 finite parameters in [-4, 4]".into());
+        return Err(format!(
+            "Invalid masked brain: expected {GENOME_SIZE} finite parameters in [-4, 4]"
+        ));
     }
     Ok(())
 }
-/// Apply one individual, continuously scaled mutation. The temperature is
-/// log-uniform, so most variation stays local while rare genomes take a larger
-/// step. This exact draw order is shared with the birth shader.
-pub fn mutate(g: &mut [f32], seed: u32, base_probability: f32, base_magnitude: f32) {
-    assert!(!g.is_empty());
-    let mut rng = seed;
-    let temperature = MUTATION_TEMPERATURE_MIN
-        * (MUTATION_TEMPERATURE_MAX / MUTATION_TEMPERATURE_MIN).powf(draw(&mut rng));
-    let scale = temperature.sqrt();
-    let probability = (base_probability * scale).clamp(0.0, 1.0);
-    let magnitude = (base_magnitude * scale).max(0.000_001);
-    let mut changed = false;
-    for value in g.iter_mut() {
-        if draw(&mut rng) < probability {
-            let next = (*value + (draw(&mut rng) * 2.0 - 1.0) * magnitude).clamp(-4.0, 4.0);
-            changed |= next != *value;
-            *value = next;
-        }
+
+pub fn active(mask: u32, unit: usize) -> bool {
+    mask & (1u32 << unit) != 0
+}
+
+/// Apply a fixed expected mutation budget over expressed circuitry only.  The
+/// number of random draws does not grow with capacity, so a larger brain is not
+/// automatically subjected to more genomic damage.
+fn clone_activated_unit(
+    genome: &mut [f32],
+    donor: usize,
+    new_unit: usize,
+    active_mask: u32,
+    rng: &mut u32,
+) {
+    let jitter =
+        |value: f32, rng: &mut u32| (value + (draw(rng) * 2.0 - 1.0) * 0.01).clamp(-4.0, 4.0);
+    genome[NODE_BIAS + new_unit] = jitter(genome[NODE_BIAS + donor], rng);
+    genome[GATE_BIAS + new_unit] = jitter(genome[GATE_BIAS + donor], rng);
+    for input in 0..INPUTS {
+        genome[INPUT_BASE + new_unit * INPUTS + input] =
+            jitter(genome[INPUT_BASE + donor * INPUTS + input], rng);
     }
-    if !changed {
-        let index = (draw(&mut rng) * g.len() as f32) as usize % g.len();
-        let direction = if draw(&mut rng) < 0.5 { -1.0 } else { 1.0 };
-        let value = g[index];
-        let next = (value + direction * magnitude).clamp(-4.0, 4.0);
-        g[index] = if next == value {
-            (value - direction * magnitude).clamp(-4.0, 4.0)
-        } else {
-            next
-        };
-        debug_assert_ne!(g[index], value);
+    for other in 0..HIDDEN {
+        if active_mask & (1 << other) == 0 {
+            continue;
+        }
+        genome[RECURRENT_BASE + new_unit * HIDDEN + other] =
+            jitter(genome[RECURRENT_BASE + donor * HIDDEN + other], rng);
+        genome[GATE_BASE + new_unit * HIDDEN + other] =
+            jitter(genome[GATE_BASE + donor * HIDDEN + other], rng);
+    }
+    for other in 0..HIDDEN {
+        if !active(active_mask, other) {
+            continue;
+        }
+        let recurrent = genome[RECURRENT_BASE + other * HIDDEN + donor] * 0.5;
+        genome[RECURRENT_BASE + other * HIDDEN + donor] = recurrent;
+        genome[RECURRENT_BASE + other * HIDDEN + new_unit] = recurrent;
+        let gate = genome[GATE_BASE + other * HIDDEN + donor] * 0.5;
+        genome[GATE_BASE + other * HIDDEN + donor] = gate;
+        genome[GATE_BASE + other * HIDDEN + new_unit] = gate;
+    }
+    for base in [RECURRENT_BASE, GATE_BASE] {
+        let value = genome[base + new_unit * HIDDEN + donor] * 0.5;
+        genome[base + new_unit * HIDDEN + donor] = value;
+        genome[base + new_unit * HIDDEN + new_unit] = value;
+    }
+    for output in 0..OUTPUTS {
+        let value = genome[OUTPUT_BASE + output * HIDDEN + donor] * 0.5;
+        genome[OUTPUT_BASE + output * HIDDEN + donor] = value;
+        genome[OUTPUT_BASE + output * HIDDEN + new_unit] = value;
     }
 }
-/// Test fixtures address connections by their logical endpoints.
+
+fn mutate_traits(genome: &mut [f32], traits: &mut CognitiveTraits, rng: &mut u32) {
+    let capacity = traits.active_mask.count_ones();
+    if capacity > 1 && draw(rng) < 0.01 {
+        let nth = (draw(rng) * capacity as f32) as u32;
+        let mut seen = 0;
+        for h in 0..HIDDEN {
+            if traits.active_mask & (1 << h) != 0 {
+                if seen == nth {
+                    traits.active_mask &= !(1 << h);
+                    break;
+                }
+                seen += 1;
+            }
+        }
+    }
+    let capacity = traits.active_mask.count_ones();
+    if capacity < HIDDEN as u32 && draw(rng) < 0.01 {
+        let donor_nth = (draw(rng) * capacity as f32) as u32;
+        let empty_nth = (draw(rng) * (HIDDEN as u32 - capacity) as f32) as u32;
+        let (mut donor, mut target, mut seen_on, mut seen_off) = (0usize, 0usize, 0u32, 0u32);
+        for h in 0..HIDDEN {
+            if traits.active_mask & (1 << h) != 0 {
+                if seen_on == donor_nth {
+                    donor = h;
+                }
+                seen_on += 1;
+            } else {
+                if seen_off == empty_nth {
+                    target = h;
+                }
+                seen_off += 1;
+            }
+        }
+        clone_activated_unit(genome, donor, target, traits.active_mask, rng);
+        traits.active_mask |= 1 << target;
+        traits.plasticity_rate[target] = traits.plasticity_rate[donor];
+    }
+}
+fn mutate_expressed(
+    g: &mut [f32],
+    mask: u32,
+    plasticity: &mut [f32; HIDDEN],
+    trace_retention: &mut f32,
+    learned_weight_retention: &mut f32,
+    mutation_scale: &mut f32,
+    rng: &mut u32,
+) {
+    assert!(mask != 0 && g.len() == GENOME_SIZE);
+    let temperature = MUTATION_TEMPERATURE_MIN
+        * (MUTATION_TEMPERATURE_MAX / MUTATION_TEMPERATURE_MIN).powf(draw(rng));
+    let scale = temperature.sqrt() * *mutation_scale;
+    let magnitude = (BASE_MUTATION_MAGNITUDE * scale).max(0.000_001);
+    let expected = 23.76 * scale;
+    let draws = expected.floor() as usize + usize::from(draw(rng) < expected.fract());
+    let mut expressed = Vec::with_capacity(GENOME_SIZE);
+    for h in 0..HIDDEN {
+        if active(mask, h) {
+            expressed.push(NODE_BIAS + h);
+            expressed.push(GATE_BIAS + h);
+            for k in 0..INPUTS {
+                expressed.push(INPUT_BASE + h * INPUTS + k);
+            }
+            for k in 0..HIDDEN {
+                if active(mask, k) {
+                    expressed.push(RECURRENT_BASE + h * HIDDEN + k);
+                    expressed.push(GATE_BASE + h * HIDDEN + k);
+                }
+            }
+            for o in 0..OUTPUTS {
+                expressed.push(OUTPUT_BASE + o * HIDDEN + h);
+            }
+        }
+    }
+    expressed.extend(OUTPUT_BIAS..OUTPUT_BIAS + OUTPUTS);
+    let mut changed = false;
+    for _ in 0..draws.max(1) {
+        let choice = (draw(rng) * expressed.len() as f32) as usize;
+        let index = expressed[choice];
+        let old = g[index];
+        g[index] = (old + (draw(rng) * 2.0 - 1.0) * magnitude).clamp(-4.0, 4.0);
+        changed |= old != g[index];
+    }
+    if !changed {
+        let index = expressed[(draw(rng) * expressed.len() as f32) as usize];
+        let old = g[index];
+        let direction = if draw(rng) < 0.5 { -1.0 } else { 1.0 };
+        let value = (old + direction * magnitude).clamp(-4.0, 4.0);
+        g[index] = if value == old {
+            (old - direction * magnitude).clamp(-4.0, 4.0)
+        } else {
+            value
+        };
+    }
+    let units: Vec<_> = (0..HIDDEN).filter(|&h| active(mask, h)).collect();
+    let h = units[(draw(rng) * units.len() as f32) as usize];
+    plasticity[h] = (plasticity[h] + (draw(rng) * 2.0 - 1.0) * magnitude).clamp(-0.2, 0.2);
+    *trace_retention = (*trace_retention + (draw(rng) * 2.0 - 1.0) * magnitude).clamp(0.0, 0.9999);
+    *learned_weight_retention =
+        (*learned_weight_retention + (draw(rng) * 2.0 - 1.0) * magnitude).clamp(0.0, 0.9999);
+    *mutation_scale = (*mutation_scale * (0.97 + 0.06 * draw(rng))).clamp(0.25, 4.0);
+}
+
+pub fn mutate_inherited(g: &mut [f32], traits: &mut CognitiveTraits, seed: u32) {
+    let mut rng = seed;
+    mutate_traits(g, traits, &mut rng);
+    mutate_expressed(
+        g,
+        traits.active_mask,
+        &mut traits.plasticity_rate,
+        &mut traits.trace_retention,
+        &mut traits.learned_weight_retention,
+        &mut traits.mutation_scale,
+        &mut rng,
+    );
+}
+
 #[cfg(test)]
 pub fn add_edge(g: &mut [f32], source: usize, destination: usize, weight: f32) -> bool {
     let index = if destination < HIDDEN {
@@ -123,24 +295,51 @@ mod tests {
     fn inheritance_mutation_is_bounded_reproducible_and_never_exact() {
         let parent = random_genome(&mut 17);
         let mut child = parent;
-        mutate(
-            &mut child,
-            9,
-            BASE_MUTATION_PROBABILITY,
-            BASE_MUTATION_MAGNITUDE,
-        );
+        mutate_inherited(&mut child, &mut AgentGpu::default().cognitive_traits(), 9);
         validate(&child).unwrap();
         assert_ne!(child, parent);
         let mut again = parent;
-        mutate(
-            &mut again,
-            9,
-            BASE_MUTATION_PROBABILITY,
-            BASE_MUTATION_MAGNITUDE,
-        );
+        mutate_inherited(&mut again, &mut AgentGpu::default().cognitive_traits(), 9);
         assert_eq!(again, child);
         assert!(validate(&vec![0.0; 1686]).is_err());
         child[0] = f32::NAN;
         assert!(validate(&child).is_err());
+    }
+
+    #[test]
+    fn founder_masks_are_nonempty_and_not_position_biased() {
+        let mut rng = 71;
+        let mut seen = 0u32;
+        for _ in 0..4096 {
+            let mask = random_active_mask(&mut rng);
+            assert_ne!(mask, 0);
+            seen |= mask;
+        }
+        assert_eq!(seen, ACTIVE_MASK_ALL);
+    }
+
+    #[test]
+    fn expressed_mutation_leaves_inactive_circuitry_latent() {
+        let mut rng = 91;
+        let mut genome = random_genome(&mut rng);
+        let before = genome;
+        let mut rates = [0.0; HIDDEN];
+        let mut trace = 0.9;
+        let mut retention = 0.99;
+        let mut mutation_scale = 1.0;
+        mutate_expressed(
+            &mut genome,
+            1,
+            &mut rates,
+            &mut trace,
+            &mut retention,
+            &mut mutation_scale,
+            &mut 7,
+        );
+        for h in 1..HIDDEN {
+            assert_eq!(genome[NODE_BIAS + h], before[NODE_BIAS + h]);
+            assert_eq!(genome[GATE_BIAS + h], before[GATE_BIAS + h]);
+            assert_eq!(rates[h], 0.0);
+        }
     }
 }

@@ -19,7 +19,8 @@ Primitive World currently targets **Windows**. Install [Rust 1.93.1 or newer](ht
 .\Play.cmd --wallpaper
 ```
 
-That builds the project and attaches a fixed-camera habitat to the desktop. A
+That builds the current source into `target/play/release/primitive_world.exe`
+and attaches a fixed-camera habitat to the desktop. A
 small HUD shows population and world state; use its menus to change the lens or
 biological speed. Click empty habitat to add food, and use the tray menu to
 pause or quit.
@@ -27,11 +28,12 @@ pause or quit.
 To have the newest saved experiment resume when you sign in:
 
 ```powershell
-cargo build --release
-.\target\release\primitive_world.exe --install-startup
+.\Play.cmd --install-startup
 ```
 
-Remove the startup entry with `--uninstall-startup`. Wallpaper mode uses one
+Resume manually with `.\Play.cmd --wallpaper --resume`. After updating the
+source, use `Play.cmd` again to rebuild the executable used at login.
+Remove the startup entry with `.\Play.cmd --uninstall-startup`. Wallpaper mode uses one
 native desktop host, so multi-monitor layouts should be verified on the target
 machine. The detailed [wallpaper guide](docs/play.md) covers saves, controls,
 desktop behavior, and recovery.
@@ -65,18 +67,27 @@ information, memory, and the ecology.
 
 ## Inside an agent
 
-Every body uses the same fixed neural architecture: **108 local inputs → 8 gated
-recurrent units → 20 outputs** (**1,188 inherited parameters**). The recurrent
-state is private to one life and resets at birth. Weights remain fixed during a
-life; inherited parameters can mutate at paid births and when a new candidate
-population is created.
+Every body has the same 16-unit potential gated-recurrent substrate: **108 local
+inputs → 1–16 active recurrent units → 20 outputs** (**2,612 inherited controller
+values**). A heritable active mask decides capacity; inactive units are inert.
+Recurrent state, traces, and learned connection deltas are private to one life
+and reset at birth. Inherited local plasticity can alter only active connections
+through local activity, and each actual update pays energy.
 
 Inputs include energy, nearby food and bodies, recent outcomes, coarse
 near/far food regions, and the nearest neighbor in each of eight directions.
 Outputs select an action, movement, amount, contact target and displacement, or
 the value of a signal. This is a compact controller with no global map, lineage
-score, scripted food-seeking, online optimizer, or semantic communication
+score, scripted food-seeking, online optimizer, curriculum, or semantic communication
 channel. Read the exact [agent interface](docs/agents.md).
+
+All modes use model `primitive-v26-masked-plastic-16`. Saves from other model
+layouts are incompatible; start a new world. Current saves retain inherited
+controllers and lifetime learning so the same experiment can resume.
+
+At 32x, playback requests 1,920 ticks/s; actual throughput depends on population,
+rendering, and GPU load. Headless tests on an RTX 4070 SUPER reached 1,194–1,250
+ticks/s with 1,000 starting bodies. See the [measurement conditions](docs/performance.md).
 
 ## Evolution without a scoreboard
 

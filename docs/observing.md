@@ -60,7 +60,7 @@ python tools/analyze_departures.py reports/journeys.jsonl --metabolic-cost 0.06 
 
 Supply the actual checkpoint costs, including metabolism for body and brain.
 Range estimates remain optimistic bounds rather than full budgets.
-The tool uses only the standard library. `tools/audit_checkpoint_communication.py`
+The tools use only the standard library.
 additionally requires NumPy (`python -m pip install -r tools/requirements.txt`).
 It audits checkpoint counters and provable action suppression; it does not
 establish that communication helps receivers or that unsuppressed actions occur.
@@ -111,3 +111,10 @@ archives elsewhere yourself, and preserve checksums/source settings when sharing
   bitwise replay across devices or schedules.
 - Changed physical settings or manual food interventions confound simple
   before/after comparisons. Preserve that context instead of labeling it learning.
+
+The current controller has 1–16 active units. Evolution snapshots include the
+capacity distribution and per-living-body sums of absolute recurrent and learned
+state. Cognitive upkeep and write-energy counters are quantized to thousandths.
+Memory samples use the effective inherited-plus-learned readout; their context
+contains carried food and underfoot resource, and actual_action records the
+selected action. None of these diagnostics feeds the controller or selector.

@@ -167,7 +167,11 @@ pub struct Simulation {
     pub environment_start_age: u32,
     pub assisted: bool,
     pub current_buffer: usize,
-    pub(crate) genome_buffer: wgpu::Buffer,
+    pub(crate) genome_buffers: [wgpu::Buffer; GENOME_BANK_COUNT],
+    /// Non-inherited local plasticity state.  This is cleared for every child.
+    pub(crate) fast_weight_buffers: [wgpu::Buffer; 2],
+    pub(crate) trace_buffer: wgpu::Buffer,
+    pub(crate) learned_summary_buffer: wgpu::Buffer,
     pub agent_buffers: [wgpu::Buffer; 2],
     pub resource_buffer: wgpu::Buffer,
     pub resource_display_buffer: wgpu::Buffer,
@@ -179,6 +183,7 @@ pub struct Simulation {
     pub family_observer: Option<crate::family_observer::FamilyObserver>,
     pub(crate) active_indices: wgpu::Buffer,
     birth_dispatch: wgpu::Buffer,
+    cognitive_dispatch: wgpu::Buffer,
     birth_flags: wgpu::Buffer,
     pub(crate) decision_buffer: wgpu::Buffer,
     fertility_buffer: wgpu::Buffer,
@@ -203,16 +208,36 @@ impl Simulation {
             "GPU storage limit below primitive-world body budget"
         );
         assert!(
-            MAX_AGENTS as u64 * GENOME_SIZE as u64 * 4
+            MAX_AGENTS as u64 * GENOME_BANK_STRIDE as u64 * 4
                 <= u64::from(device.limits().max_storage_buffer_binding_size)
                     .min(device.limits().max_buffer_size),
-            "GPU storage limit below the fixed-brain genome budget"
+            "GPU storage limit below one masked-brain genome bank"
         );
-        let genome_buffer = buffer(
+        let genome_buffers = std::array::from_fn(|bank| {
+            buffer(
+                device,
+                if bank == 0 {
+                    "inherited genomes bank 0"
+                } else {
+                    "inherited genomes bank 1"
+                },
+                MAX_AGENTS as u64 * GENOME_BANK_STRIDE as u64 * 4,
+            )
+        });
+        let fast_weight_buffers = std::array::from_fn(|_| {
+            buffer(
+                device,
+                "lifetime learned connection bank",
+                MAX_AGENTS as u64 * FAST_BANK_STRIDE as u64 * 4,
+            )
+        });
+        let trace_buffer = buffer(
             device,
-            "inherited genomes",
-            MAX_AGENTS as u64 * GENOME_SIZE as u64 * 4,
+            "local activity traces",
+            MAX_AGENTS as u64 * TRACE_COUNT as u64 * 4,
         );
+        let learned_summary_buffer =
+            buffer(device, "learned magnitude summaries", MAX_AGENTS as u64 * 4);
         let agent_buffers = [
             buffer(device, "bodies A", agent_size),
             buffer(device, "bodies B", agent_size),
@@ -248,6 +273,12 @@ impl Simulation {
             mapped_at_creation: false,
         });
         let free_indices = buffer(device, "free slots", MAX_AGENTS as u64 * 4);
+        let cognitive_dispatch = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("cooperative cognitive work count"),
+            size: 12,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::INDIRECT,
+            mapped_at_creation: false,
+        });
         let birth_dispatch = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("eligible birth work count"),
             size: 12,
@@ -257,7 +288,11 @@ impl Simulation {
         let parents = buffer(device, "parents", MAX_AGENTS as u64 * 4);
         let claims = buffer(device, "interaction claims", MAX_AGENTS as u64 * 4);
         let death_stats_buffer = buffer(device, "counters", DEATH_STATS_COUNT as u64 * 4);
-        let event_buffer = buffer(device, "event ring", EVENT_RING_SIZE as u64 * 40);
+        let event_buffer = buffer(
+            device,
+            "event ring",
+            EVENT_RING_SIZE as u64 * std::mem::size_of::<observability::InteractionEvent>() as u64,
+        );
         let summary_buffer = buffer(device, "summaries", 4096 * 64);
         let params_buffer = uniform(
             device,
@@ -372,16 +407,70 @@ impl Simulation {
             "decide",
             "../shaders/decide.wgsl",
             "main",
-            "rrwurrww",
+            "rrwurrrr",
             pair(|s| vec![
                 &agent_buffers[s],
                 &perception_buffer,
                 &decision_buffer,
                 &params_buffer,
-                &genome_buffer,
-                &active_indices,
+                &genome_buffers[0],
+                &genome_buffers[1],
+                &fast_weight_buffers[0],
+                &fast_weight_buffers[1],
+            ])
+        );
+        passes.insert(
+            "decide_live".into(),
+            Compute::new(
+                device,
+                "decide_live",
+                include_str!("../shaders/decide_parallel.wgsl"),
+                "main",
+                "rrwurrrrr",
+                pair(|s| {
+                    vec![
+                        &agent_buffers[s],
+                        &perception_buffer,
+                        &decision_buffer,
+                        &params_buffer,
+                        &genome_buffers[0],
+                        &genome_buffers[1],
+                        &fast_weight_buffers[0],
+                        &fast_weight_buffers[1],
+                        &active_indices,
+                    ]
+                }),
+            ),
+        );
+        add!(
+            "observe_signals",
+            "../shaders/observe_signals.wgsl",
+            "main",
+            "rrruww",
+            pair(|s| vec![
+                &agent_buffers[s],
+                &perception_buffer,
+                &decision_buffer,
+                &params_buffer,
+                &event_buffer,
+                &death_stats_buffer
+            ])
+        );
+        add!(
+            "observe_memory",
+            "../shaders/observe_memory.wgsl",
+            "main",
+            "rrrrrrwwu",
+            pair(|s| vec![
+                &agent_buffers[s],
+                &decision_buffer,
+                &genome_buffers[0],
+                &genome_buffers[1],
+                &fast_weight_buffers[0],
+                &fast_weight_buffers[1],
                 &event_buffer,
                 &death_stats_buffer,
+                &params_buffer
             ])
         );
         passes.insert(
@@ -403,28 +492,6 @@ impl Simulation {
                         &perception_buffer,
                         &params_buffer,
                         &active_indices,
-                    ]
-                }),
-            ),
-        );
-        passes.insert(
-            "decide_live".into(),
-            Compute::new(
-                device,
-                "decide_live",
-                &live_source(include_str!("../shaders/decide.wgsl"), 5),
-                "main",
-                "rrwurrww",
-                pair(|s| {
-                    vec![
-                        &agent_buffers[s],
-                        &perception_buffer,
-                        &decision_buffer,
-                        &params_buffer,
-                        &genome_buffer,
-                        &active_indices,
-                        &event_buffer,
-                        &death_stats_buffer,
                     ]
                 }),
             ),
@@ -521,14 +588,15 @@ impl Simulation {
             "free_compact",
             "../shaders/compact_slots.wgsl",
             "main",
-            "rrwwww",
+            "rrwwwww",
             vec![vec![
                 &free_flags,
                 &free_prefix,
                 &free_indices,
                 &active_indices,
                 &perception_buffer,
-                &decision_buffer
+                &decision_buffer,
+                &cognitive_dispatch
             ]]
         );
         add!(
@@ -548,7 +616,7 @@ impl Simulation {
             "birth",
             "../shaders/apply_births.wgsl",
             "main",
-            "wrrrruwrw",
+            "wrrrruwr",
             pair(|s| vec![
                 &agent_buffers[s],
                 &free_indices,
@@ -557,8 +625,66 @@ impl Simulation {
                 &birth_prefix,
                 &params_buffer,
                 &death_stats_buffer,
+                &decision_buffer
+            ])
+        );
+        add!(
+            "inherit_genomes",
+            "../shaders/inherit_genomes.wgsl",
+            "main",
+            "wrrrruwww",
+            pair(|s| vec![
+                &agent_buffers[s],
+                &free_indices,
+                &free_prefix,
+                &parents,
+                &birth_prefix,
+                &params_buffer,
+                &genome_buffers[0],
+                &genome_buffers[1],
+                &death_stats_buffer,
+            ])
+        );
+        add!(
+            "plastic",
+            "../shaders/plasticity.wgsl",
+            "main",
+            "rwrwwwuwr",
+            pair(|s| vec![
+                &agent_buffers[s],
+                &agent_buffers[1 - s],
                 &decision_buffer,
-                &genome_buffer
+                &fast_weight_buffers[0],
+                &fast_weight_buffers[1],
+                &trace_buffer,
+                &params_buffer,
+                &death_stats_buffer,
+                &active_indices,
+            ])
+        );
+        add!(
+            "summarize_learning",
+            "../shaders/summarize_learning.wgsl",
+            "main",
+            "rrrw",
+            pair(|s| vec![
+                &agent_buffers[s],
+                &fast_weight_buffers[0],
+                &fast_weight_buffers[1],
+                &learned_summary_buffer
+            ])
+        );
+        add!(
+            "reset_cognitive_birth_state",
+            "../shaders/reset_cognitive_birth_state.wgsl",
+            "main",
+            "rwwwu",
+            pair(|s| vec![
+                &agent_buffers[s],
+                &fast_weight_buffers[0],
+                &fast_weight_buffers[1],
+                &trace_buffer,
+                &params_buffer,
             ])
         );
         add!(
@@ -636,7 +762,10 @@ impl Simulation {
             environment_start_age: 0,
             assisted: false,
             current_buffer: 0,
-            genome_buffer,
+            genome_buffers,
+            fast_weight_buffers,
+            trace_buffer,
+            learned_summary_buffer,
             agent_buffers,
             resource_buffer,
             resource_display_buffer,
@@ -649,6 +778,7 @@ impl Simulation {
             decision_buffer,
             active_indices,
             birth_dispatch,
+            cognitive_dispatch,
             birth_flags,
             fertility_buffer,
             terrain_buffer,
@@ -668,23 +798,35 @@ impl Simulation {
         sim
     }
     pub fn reset(&mut self, queue: &wgpu::Queue) {
-        self.reset_with_genomes_at(queue, None, 0);
+        self.reset_with_population_at(queue, None, None, 0);
     }
+    #[cfg(test)]
     pub(crate) fn reset_with_genomes_at(
         &mut self,
         queue: &wgpu::Queue,
         founders: Option<&[f32]>,
         environment_start_age: u32,
     ) {
+        self.reset_with_population_at(queue, founders, None, environment_start_age);
+    }
+    pub(crate) fn reset_with_population_at(
+        &mut self,
+        queue: &wgpu::Queue,
+        founders: Option<&[f32]>,
+        founder_traits: Option<&[CognitiveTraits]>,
+        environment_start_age: u32,
+    ) {
         // Clear unused storage on the GPU; upload only the founding population.
         let mut clear = self.device.create_command_encoder(&Default::default());
-        for buffer in [
-            &self.genome_buffer,
+        for buffer in self.genome_buffers.iter().chain([
+            &self.fast_weight_buffers[0],
+            &self.fast_weight_buffers[1],
+            &self.trace_buffer,
             &self.event_buffer,
             &self.death_stats_buffer,
             &self.perception_buffer,
             &self.decision_buffer,
-        ] {
+        ]) {
             clear.clear_buffer(buffer, 0, None);
         }
         queue.submit(Some(clear.finish()));
@@ -701,13 +843,19 @@ impl Simulation {
             }
         };
         if !genes.is_empty() {
-            queue.write_buffer(&self.genome_buffer, 0, bytemuck::cast_slice(genes));
+            self.write_genomes(queue, genes);
         }
+        let traits = founder_traits.map_or_else(
+            || build_traits(self.seed, &self.settings),
+            ToOwned::to_owned,
+        );
         self.search = crate::evolution::Search {
             incumbent: genes.to_vec(),
             challenger: Vec::new(),
+            incumbent_traits: traits.clone(),
+            challenger_traits: Vec::new(),
         };
-        let data = build_agents(self.seed, &self.settings);
+        let data = build_agents_with_traits(self.seed, &self.settings, &traits);
         for b in &self.agent_buffers {
             queue.write_buffer(b, 0, bytemuck::cast_slice(&data));
         }
@@ -783,6 +931,80 @@ impl Simulation {
                 self.seed,
             )),
         );
+    }
+    /// Upload a packed CPU population into the controller's fixed-size GPU
+    /// banks.  The split is a storage detail; every caller still deals in one
+    /// complete 2,612-value genome per organism.
+    pub(crate) fn write_genomes(&self, queue: &wgpu::Queue, genomes: &[f32]) {
+        assert_eq!(genomes.len() % GENOME_SIZE, 0);
+        let rows = genomes.len() / GENOME_SIZE;
+        for bank in 0..GENOME_BANK_COUNT {
+            let start = bank * GENOME_BANK_STRIDE;
+            let width = (GENOME_SIZE - start).min(GENOME_BANK_STRIDE);
+            let mut packed = vec![0.0f32; rows * GENOME_BANK_STRIDE];
+            for row in 0..rows {
+                packed[row * GENOME_BANK_STRIDE..row * GENOME_BANK_STRIDE + width].copy_from_slice(
+                    &genomes[row * GENOME_SIZE + start..row * GENOME_SIZE + start + width],
+                );
+            }
+            queue.write_buffer(&self.genome_buffers[bank], 0, bytemuck::cast_slice(&packed));
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn write_genome_slot(&self, queue: &wgpu::Queue, slot: usize, genome: &[f32]) {
+        assert_eq!(genome.len(), GENOME_SIZE);
+        for bank in 0..GENOME_BANK_COUNT {
+            let start = bank * GENOME_BANK_STRIDE;
+            let width = (GENOME_SIZE - start).min(GENOME_BANK_STRIDE);
+            queue.write_buffer(
+                &self.genome_buffers[bank],
+                (slot * GENOME_BANK_STRIDE * std::mem::size_of::<f32>()) as u64,
+                bytemuck::cast_slice(&genome[start..start + width]),
+            );
+        }
+    }
+    pub(crate) fn read_genomes(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        rows: usize,
+    ) -> Result<Vec<f32>, String> {
+        self.read_genome_slots(device, queue, &(0..rows).collect::<Vec<_>>())
+    }
+    pub(crate) fn read_genome_slots(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        slots: &[usize],
+    ) -> Result<Vec<f32>, String> {
+        if slots.is_empty() {
+            return Ok(Vec::new());
+        }
+        if slots.iter().any(|&slot| slot >= MAX_AGENTS as usize) {
+            return Err("Genome slot out of range".into());
+        }
+        let packed = buffer(
+            device,
+            "sampled inherited genomes",
+            (slots.len() * GENOME_SIZE * 4) as u64,
+        );
+        let mut encoder = device.create_command_encoder(&Default::default());
+        for (row, &slot) in slots.iter().enumerate() {
+            for bank in 0..GENOME_BANK_COUNT {
+                let start = bank * GENOME_BANK_STRIDE;
+                let width = (GENOME_SIZE - start).min(GENOME_BANK_STRIDE);
+                encoder.copy_buffer_to_buffer(
+                    &self.genome_buffers[bank],
+                    (slot * GENOME_BANK_STRIDE * 4) as u64,
+                    &packed,
+                    ((row * GENOME_SIZE + start) * 4) as u64,
+                    (width * 4) as u64,
+                );
+            }
+        }
+        queue.submit(Some(encoder.finish()));
+        observability::read_buffer(device, queue, &packed)
+            .map(|bytes| bytemuck::cast_slice(&bytes).to_vec())
     }
     fn dispatch(&self, e: &mut wgpu::CommandEncoder, name: &str, group: usize, x: u32, y: u32) {
         self.passes[name].dispatch(e, group, x, y);
@@ -862,7 +1084,9 @@ impl Simulation {
             self.dispatch(e, "cursors", 0, 1024, 1);
             self.dispatch(e, "scatter", s, groups, 1);
             self.passes["perceive_live"].dispatch_indirect(e, s, &self.active_indices);
-            self.passes["decide_live"].dispatch_indirect(e, s, &self.active_indices);
+            self.passes["decide_live"].dispatch_indirect(e, s, &self.cognitive_dispatch);
+            self.dispatch(e, "observe_signals", s, groups, 1);
+            self.dispatch(e, "observe_memory", s, groups, 1);
             self.dispatch(e, "consume", s, groups, 1);
             // Preserve dead records (including slot generations) with a bulk GPU
             // copy. Only living bodies need the expensive structured update.
@@ -875,12 +1099,18 @@ impl Simulation {
             );
             e.clear_buffer(&self.birth_flags, 0, None);
             self.passes["body_live"].dispatch_indirect(e, s, &self.active_indices);
+            // Decisions act with the previous lifetime state.  Only after the
+            // body update do local traces and fast weights change, and their
+            // exact write cost is debited before interaction or birth.
+            self.passes["plastic"].dispatch_indirect(e, s, &self.cognitive_dispatch);
             for n in ["interact_clear", "interact_propose", "interact_resolve"] {
                 self.dispatch(e, n, d, groups, 1);
             }
             self.scan(e, "birth", MAX_AGENTS);
             self.dispatch(e, "birth_compact", 0, groups, 1);
             self.passes["birth"].dispatch_indirect(e, d, &self.birth_dispatch);
+            self.passes["inherit_genomes"].dispatch_indirect(e, d, &self.birth_dispatch);
+            self.dispatch(e, "reset_cognitive_birth_state", d, groups, 1);
             self.dispatch(e, "release", d, groups, 1);
             if let Some(observer) = &self.family_observer {
                 observer.encode(e, d);
@@ -1125,9 +1355,7 @@ fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> S
             f32::from(s.force_enabled),
             f32::from(s.communication_enabled),
             s.motor_response_gain,
-            // The decision shader uses this duration to spread each action's
-            // availability across individual agents during the bootstrap.
-            s.metabolic_ramp_ticks as f32,
+            0.0,
         ],
         lifecycle: [
             seed,
@@ -1139,41 +1367,92 @@ fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> S
             BASE_MUTATION_PROBABILITY,
             BASE_MUTATION_MAGNITUDE,
             f32::from(s.evolving_landscape),
-            0.0,
+            s.active_unit_upkeep,
         ],
-        environment: ecological_pressures(environment_tick),
+        environment: {
+            let mut pressure = ecological_pressures(environment_tick);
+            pressure[3] = s.memory_write_energy;
+            pressure
+        },
     }
 }
+#[cfg(test)]
 fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
+    let traits = build_traits(seed, s);
+    build_agents_with_traits(seed, s, &traits)
+}
+fn build_agents_with_traits(
+    seed: u32,
+    s: &SimSettings,
+    traits: &[CognitiveTraits],
+) -> Vec<AgentGpu> {
     let mut rng = seed.max(1);
     (0..MAX_AGENTS)
-        .map(|i| AgentGpu {
-            position: crate::environment::rotate_point_rect(
-                [
-                    random01(&mut rng) * s.habitat_width,
-                    random01(&mut rng) * s.habitat_height,
-                ],
-                s.habitat_width,
-                s.habitat_height,
-                s.environment_rotation,
-            ),
-            energy: 65.0,
-            food: if i < s.population { 2.0 } else { 0.0 },
-            age: random01(&mut rng) * 300.0,
-            max_speed: 1.2,
-            sensor_radius: s.sensor_radius,
-            max_age: 9000.0 + random01(&mut rng) * 2000.0,
-            rng: rng ^ i,
-            alive: u32::from(i < s.population),
-            generation: 1,
-            target: MAX_AGENTS,
-            lineage_id: i + 1,
-            founder_family: if s.founder_genomes.is_empty() {
-                i
+        .map(|i| {
+            let trait_index = (i as usize).min(traits.len().saturating_sub(1));
+            let trait_data = traits.get(trait_index).copied().unwrap_or(CognitiveTraits {
+                active_mask: 1,
+                padding: [0; 3],
+                plasticity_rate: [0.0; HIDDEN],
+                trace_retention: 0.9,
+                learned_weight_retention: 0.99,
+                mutation_scale: 1.0,
+            });
+            AgentGpu {
+                position: crate::environment::rotate_point_rect(
+                    [
+                        random01(&mut rng) * s.habitat_width,
+                        random01(&mut rng) * s.habitat_height,
+                    ],
+                    s.habitat_width,
+                    s.habitat_height,
+                    s.environment_rotation,
+                ),
+                energy: 65.0,
+                food: if i < s.population { 2.0 } else { 0.0 },
+                age: random01(&mut rng) * 300.0,
+                max_speed: 1.2,
+                sensor_radius: s.sensor_radius,
+                max_age: 9000.0 + random01(&mut rng) * 2000.0,
+                rng: rng ^ i,
+                alive: u32::from(i < s.population),
+                generation: 1,
+                target: MAX_AGENTS,
+                lineage_id: i + 1,
+                founder_family: if s.founder_genomes.is_empty() {
+                    i
+                } else {
+                    (i as usize % s.founder_genomes.len()) as u32
+                },
+                active_mask: trait_data.active_mask,
+                plasticity_rate: trait_data.plasticity_rate,
+                trace_retention: trait_data.trace_retention,
+                learned_weight_retention: trait_data.learned_weight_retention,
+                mutation_scale: trait_data.mutation_scale,
+                ..Default::default()
+            }
+        })
+        .collect()
+}
+fn build_traits(seed: u32, s: &SimSettings) -> Vec<CognitiveTraits> {
+    let mut rng = seed ^ 0x6d2b_79f5;
+    (0..s.population as usize)
+        .map(|i| {
+            if !s.founder_traits.is_empty() {
+                s.founder_traits[i % s.founder_traits.len()]
             } else {
-                (i as usize % s.founder_genomes.len()) as u32
-            },
-            ..Default::default()
+                let active_mask = crate::brain::random_active_mask(&mut rng);
+                let (plasticity_rate, trace_retention, learned_weight_retention, mutation_scale) =
+                    crate::brain::random_plasticity(&mut rng);
+                CognitiveTraits {
+                    active_mask,
+                    padding: [0; 3],
+                    plasticity_rate,
+                    trace_retention,
+                    learned_weight_retention,
+                    mutation_scale,
+                }
+            }
         })
         .collect()
 }
@@ -1438,6 +1717,10 @@ pub fn shader_source(source: &str) -> String {
         ("HIDDEN_COUNT", HIDDEN),
         ("OUTPUT_COUNT", OUTPUTS),
         ("GENOME_SIZE", GENOME_SIZE),
+        ("GENOME_BANK_STRIDE", GENOME_BANK_STRIDE),
+        ("CONNECTION_COUNT", CONNECTION_COUNT),
+        ("FAST_BANK_STRIDE", FAST_BANK_STRIDE),
+        ("TRACE_COUNT", TRACE_COUNT),
         ("NODE_BIAS", NODE_BIAS),
         ("GATE_BIAS", GATE_BIAS),
         ("OUTPUT_BIAS", OUTPUT_BIAS),
@@ -1449,10 +1732,6 @@ pub fn shader_source(source: &str) -> String {
     ]
     .map(|(name, value)| format!("const {name}:u32={value}u;"))
     .join("\n");
-    let source = source.replace(
-        "// BRAIN_MUTATION",
-        include_str!("../shaders/brain_mutation.wgsl"),
-    );
     format!(
         "{constants}\n{}\n{source}",
         include_str!("../shaders/common.wgsl")

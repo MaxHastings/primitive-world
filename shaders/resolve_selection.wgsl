@@ -1,4 +1,4 @@
-struct SelectionOutput{agent:Agent,perception:Perception,decision:Decision,selected:u32,padding:u32,};
+struct SelectionOutput{agent:Agent,perception:Perception,decision:Decision,selected:u32,padding:u32,selection_padding:array<u32,2>,};
 @group(0) @binding(0) var<storage,read> agents:array<Agent>;
 @group(0) @binding(1) var<storage,read> perceptions:array<Perception>;
 @group(0) @binding(2) var<storage,read> decisions:array<Decision>;

@@ -12,17 +12,18 @@ The numeric constants below are declared modeling choices, not discovered laws.
 | Capacity | 16,384 GPU body slots, not a target population |
 | Reserves | Up to 100 energy and 8 carried food |
 | Body upkeep / movement | .01 energy/tick at world start, rising linearly to .06 by tick 50,000; .01 energy per actual voluntary distance |
-| Brain upkeep | Included in the time-varying metabolic cost |
-| Genome construction | Included in fixed reproduction overhead (.2 times B) |
+| Cognitive upkeep | .0005 energy per active unit per tick; inactive units cost nothing |
+| Memory writes | Absolute recurrent/trace/learned-weight change × .0001 energy |
+| Genome construction | No separate length charge; controller state is inherited in two GPU banks |
 | Movement | Adult maximum 1.2 units/tick; juvenile speed .6–1 of adult through age 400 |
 | Collection | Requested, at most .025 food × amount/tick, limited by stock/capacity |
 | Digestion | Automatic, at most .1 carried food/tick; 8 energy/food, energy-headroom limited |
 | Local contact | Transfer and force require a currently valid target within 6 units |
 | Signal | One scalar emission per chosen emit action, .02 energy; no target/cooldown |
-| Social-action availability | Transfer, force and signal logits unlock by effective environment age 50,000; collection and reproduction are available from effective age 0 |
+| Social-action availability | Transfer, force and signal are normal selectable actions whenever their existing world switches are enabled; no cognitive curriculum |
 | Reproduction | Chosen, age at least 400; 240-tick recovery; paid energy investment |
 | Aging | Death at a freshly sampled maximum age of 9,000–11,000 ticks |
-| Sensing / state | Radius 24, eight sectors and two distance bands, nearest body per sector, eight gated recurrent values |
+| Sensing / state | Radius 24, eight sectors and two distance bands, nearest body per sector, 1–16 active gated recurrent values |
 
 Digestion does not harvest for the agent. Finite throughput and reserves create
 tradeoffs. Development, recovery, aging, sensory geometry and their exact values
@@ -78,15 +79,16 @@ communications.
 
 With reproductive cost B=50 and controller amount a:
 child energy = .8 × B × a; construction dissipation = .2 × B.
-Construction includes copying the fixed brain; no separate genome-length charge applies.
+Construction has no separate genome-length charge; cognition instead pays its
+active capacity and actual within-life write cost each tick.
 The actual mutated child must be affordable before reserves or its slot change. No extra inventory prerequisite or
 mandatory food transfer exists; the child starts with zero inventory. Thus birth
 does not create food, nor require stockpiling while automatic digestion consumes
 the same stock. Parents may exhaust themselves; the world does not prevent it.
 
 Children spawn two units from the parent in a hashed direction, boundary-clipped,
-with age/state/signals cleared. Only the next tick can act on them. Fixed-brain weights copy
-with ordinary world-level mutation; speed and sensory capacity copy without mutation.
+with age/state/signals and learned cognitive state cleared. Only the next tick can act on them.
+Inherited masked-controller weights and topology mutate at birth; speed and sensory capacity copy without mutation.
 Free slots are allocated with a tick-rotated parent priority so low storage slots
 do not always win at capacity. Unallocated requests do not spend reserves.
 Resource provision to fresh founders (65 energy, 2 food, age 0–300) is explicit
@@ -131,8 +133,8 @@ baseline. Agent ages and survival duration also begin at zero.
 
 ## Persistence, observation, and limits
 
-Checkpoints use format 37; founder banks use format 13. The fixed
-primitive-v24-delayed-social-fresh-worlds model rejects older layouts without rewriting them.
+Checkpoints use format 39; founder banks use format 15. The
+primitive-v26-masked-plastic-16 model rejects older layouts without rewriting them.
 Checkpoints preserve settings, bodies, genomes, food, soil, event counters,
 controller traces, current/candidate founding groups, paired outcomes/history and search RNG. Derived indexing/terrain is rebuilt after load. Loading
 validates before mutating the world. Save/export refuses existing destinations.

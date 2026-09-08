@@ -19,13 +19,13 @@ def checkpoint_header(path):
     size = path.stat().st_size
     with path.open("rb") as stream:
         magic = stream.read(12)
-        if magic != b"PRIMWORLD037":
+        if magic != b"PRIMWORLD039":
             raise ValueError(f"Unexpected checkpoint version: {path}")
         seed, tick, settings_size = struct.unpack("<III", stream.read(12))
         if not 1 <= settings_size <= 32 * 1024 * 1024:
             raise ValueError("Invalid settings length")
         json.loads(stream.read(settings_size))
-        for _ in range(11):
+        for _ in range(17):
             length, = struct.unpack("<Q", stream.read(8))
             if stream.tell() + length > size:
                 raise ValueError("Incomplete checkpoint buffer")
@@ -83,7 +83,7 @@ def run(run_dir, destination):
                 continue
             try:
                 record = read(receipt)
-                if record.get("version") != 4 or record.get("model") != "primitive-v24-delayed-social-fresh-worlds":
+                if record.get("version") != 4 or record.get("model") != "primitive-v26-masked-plastic-16":
                     raise ValueError("Unsupported game receipt")
                 name = record["checkpoint"]
                 if Path(name).name != name or any(c in name for c in '/\\:') or not name.endswith('.checkpoint'):
