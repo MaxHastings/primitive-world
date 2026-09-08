@@ -67,9 +67,10 @@ information, memory, and the ecology.
 
 ## Inside an agent
 
-Every body has the same 16-unit potential gated-recurrent substrate: **108 local
-inputs → 1–16 active recurrent units → 20 outputs** (**2,612 inherited controller
-values**). A heritable active mask decides capacity; inactive units are inert.
+Every body has the same 16-unit potential gated-recurrent substrate: **108 input
+slots (101 active local measurements) → 1–16 active recurrent units → 20 outputs**
+(**2,612 inherited controller values**). A heritable active mask decides capacity;
+inactive units are inert.
 Recurrent state, traces, and learned connection deltas are private to one life
 and reset at birth. Inherited local plasticity can alter only active connections
 through local activity, and each actual update pays energy.
@@ -81,7 +82,7 @@ the value of a signal. This is a compact controller with no global map, lineage
 score, scripted food-seeking, online optimizer, curriculum, or semantic communication
 channel. Read the exact [agent interface](docs/agents.md).
 
-All modes use model `primitive-v29-composable-reservoir`. Saves from other model
+All modes use model `primitive-v30-raw-physical-reservoir`. Saves from other model
 layouts are incompatible; start a new world. Current saves retain inherited
 controllers and lifetime learning so the same experiment can resume.
 
@@ -101,7 +102,9 @@ random replacement. After natural extinction, fresh bodies sample unchanged
 records from that pool. Lifetime learning is never inherited.
 
 Gathering can compose with movement, reproduction and other actions; it remains
-controlled by the organism. Environmental dynamics operate from tick zero
+controlled by the organism. Brains receive body state, changes in their own body
+state, movement, local fields, and nearby signals—not labels such as “collected,”
+“successful,” or “received.” Environmental dynamics operate from tick zero
 without a curriculum. Body upkeep alone rises from .01 to .06 over a fresh
 world's first 50,000 ticks, providing limited founding runway without granting
 food or energy. Extinction remains a valid outcome; a world

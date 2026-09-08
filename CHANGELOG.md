@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — raw physical feedback
+
+- Replace controller-visible collection, digestion, spending, received-transfer,
+  and prior-gathering labels with own energy/inventory deltas and actual body
+  displacement, including contact displacement.
+- Keep the recurrent update gate for state only; local plasticity now uses
+  inherited signed rate, pre/post activity, and retention without gate
+  modulation.
+- Remove redundant primary collection selection: gathering is output 1's
+  independent effort channel, while movement remains composable with one
+  discrete primary action. Checkpoint format 43 and founder bank 18 reject
+  prior layouts.
+
 ## Unreleased — reachable possibilities and blind continuity
 
 - Replace lifespan comparisons with blind hereditary replacement at births and

@@ -790,6 +790,38 @@ fn fresh_world_defaults_match_documented_physical_settings() {
 }
 
 #[test]
+fn controller_feedback_uses_raw_state_changes_not_accounting_labels() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut a = body([602.0, 902.0]);
+    a.energy = 50.0;
+    a.food = 2.0;
+    a.velocity = [0.3, -0.4];
+    a.moved = [0.1, -0.2];
+    a.physical_previous = [40.0f32.to_bits(), 3.0f32.to_bits()];
+    a.lived_ticks = 1;
+    // These accounting values remain available to observers, but must not be
+    // controller inputs now that feedback is raw body state and displacement.
+    a.collected = 7.0;
+    a.ingested = 6.0;
+    a.spent = 5.0;
+    a.received = 4.0;
+    put(&s, &q, 0, a, &fixed(0, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    let decision = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 1)[0];
+    near(decision.inputs[4], 0.3 / 1.2);
+    near(decision.inputs[5], -0.4 / 1.2);
+    near(decision.inputs[6], 0.1);
+    near(decision.inputs[7], -0.125);
+    near(decision.inputs[8], 0.1 / 1.2);
+    near(decision.inputs[9], -0.2 / 1.2);
+    assert_eq!(decision.inputs[10], 0.0);
+    assert_eq!(decision.inputs[11], 0.0);
+    assert_eq!(decision.inputs[12], 0.0);
+    assert!(decision.inputs[13..20].iter().all(|&value| value == 0.0));
+}
+
+#[test]
 fn settings_require_explicit_motor_response_and_reject_bad_gains() {
     let mut value = serde_json::to_value(SimSettings::default()).unwrap();
     value.as_object_mut().unwrap().remove("motor_response_gain");
@@ -1732,7 +1764,7 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v29-composable-reservoir");
+    assert_eq!(MODEL_ID, "primitive-v30-raw-physical-reservoir");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
     assert_eq!(crate::founders::bundled().version, FOUNDER_BANK_VERSION);
 }

@@ -5,8 +5,9 @@ same implementation in interactive and headless worlds.
 
 ## Computation and memory
 
-Each organism has a 16-unit potential gated-recurrent substrate, 108 senses,
-and 20 outputs. A heritable 32-bit active mask expresses from one to 16 units;
+Each organism has a 16-unit potential gated-recurrent substrate, 108 input slots
+(101 active local measurements and seven reserved zeros), and 20 outputs. A
+heritable 32-bit active mask expresses from one to 16 units;
 inactive units have no state, gates, readout, write, or energy effect. The dense
 full controller has 2,612 inherited float32 values, stored in GPU banks without
 reducing the population cap. No capacity is privileged.
@@ -18,21 +19,21 @@ one replaces, and intermediate values blend. Outputs project the next state.
 Fresh gate biases center on .5; inherited parameters may close gates completely.
 No mandatory forgetting floor is imposed.
 
-Birth resets recurrent, trace, and learned-weight state. It mutates expressed
-weights under a fixed per-birth budget and independently may activate or retire
-a unit. Activation clones a live unit's connections with a bounded perturbation;
-inactive values remain inherited but latent. Each active unit also has an
-inherited signed local-plasticity rate, with inherited trace and fast-weight
-retention. During life, only local pre/post activity, trace, and gate modulation
-update fast connection deltas; those deltas are bounded, never inherited, and
-pay write energy. There is no optimizer, semantic slot, curriculum, reward, or
-authored action incentive.
+Birth resets recurrent, trace, and learned-weight state. It may mutate expressed
+weights and independently may activate or retire a unit. Activation clones a
+live unit's connections with a bounded perturbation; inactive values remain
+inherited but latent. Each active unit also has an inherited signed
+local-plasticity rate, with inherited trace and fast-weight retention. During
+life, local pre/post activity and retention update fast connection deltas; the
+recurrent update gate is a state mechanism, not a learning modulator. Those
+deltas are bounded, never inherited, and pay write energy. There is no optimizer,
+semantic slot, curriculum, reward, or authored action incentive.
 
 Each organism also carries one bounded mutation-scale trait (0.25–4). It
-multiplies its fixed, capacity-independent birth-mutation budget and can itself
-drift slightly at birth. This lets lineages evolve conservative or exploratory
-inheritance without adding a cognitive input, action, reward, or lifecycle
-state.
+multiplies the chance and magnitude of its capacity-independent birth mutation
+and can itself drift slightly when a mutation occurs. This lets lineages evolve
+conservative or exploratory inheritance without adding a cognitive input, action,
+reward, or lifecycle state.
 
 Energy is body upkeep plus active-unit upkeep times active capacity, plus the
 actual absolute change in recurrent, trace, and learned-weight state times the
@@ -44,7 +45,7 @@ a separate running cost.
 | Inputs | Measurement |
 | --- | --- |
 | 0–3 | Energy/100, inventory/8, food underfoot, age/10,000 |
-| 4–5 | Previous voluntary velocity/1.2 |
+| 4–5 | Previous self-propelled displacement/1.2 |
 | 6–7 | Net change in own energy/100 and inventory/8 since the previous tick; zero at birth |
 | 8–9 | Previous actual displacement/1.2, including contact displacement |
 | 10–11 | Own last emitted scalar and time since emission/1,000; zero before first emission |
@@ -87,18 +88,23 @@ global population input.
 
 | Outputs | Capability |
 | --- | --- |
-| 0–5 | Primary-action logits: none, collect, transfer, force, emit, reproduce; output 1 also drives independent gathering |
+| 0, 2–5 | Primary-action logits: none, transfer, force, emit, reproduce |
+| 1 | Independent gathering effort, clamped to [0,1]; it is not a primary action |
 | 6–7 | Voluntary movement vector |
 | 8 | Collection/transfer amount or offspring energy investment, sigmoid [0,1] |
 | 9 | Emitted scalar, tanh [-1,1] |
 | 10–17 | Target logits over the eight sector neighbors |
 | 18–19 | Contact displacement vector |
 
-Largest action logit wins; ties favor the earlier slot. Movement and independently requested gathering can accompany the primary
-body action. Target choice applies to transfer and force, not local emissions.
-The shared amount/target outputs are a compact actuator interface, not a rule
-about when to help, attack, reproduce or migrate. Impossible finite intentions
-are not replaced with sensible ones.
+The largest enabled primary-action logit wins; ties favor the earlier slot.
+Movement and independently requested gathering can accompany the primary body
+action. Transfer, force,
+signal, and reproduction deliberately share one primary effector for the tick;
+this is a finite body-action constraint, not a preference among their meanings.
+Target choice applies to transfer and force, not local emissions. The shared
+amount/target outputs are a compact actuator interface, not a rule about when to
+help, attack, reproduce or migrate. Impossible finite intentions are not replaced
+with sensible ones.
 
 Movement applies radial tanh saturation at gain 4, scaled by maximum body speed.
 Force uses radial tanh saturation at gain 1, scaled to at most three units.

@@ -1,10 +1,10 @@
 //! primitive-world: fixed-frame sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
 /// Persistence accepts only this model's controller and lifetime-state layout.
-pub const MODEL_ID: &str = "primitive-v29-composable-reservoir";
-pub const FOUNDER_BANK_VERSION: u32 = 17;
-pub const CHECKPOINT_VERSION: u32 = 42;
-pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD042";
+pub const MODEL_ID: &str = "primitive-v30-raw-physical-reservoir";
+pub const FOUNDER_BANK_VERSION: u32 = 18;
+pub const CHECKPOINT_VERSION: u32 = 43;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD043";
 /// Initial body upkeep while a fresh world establishes its first life cycles.
 pub const METABOLIC_START_COST: f32 = 0.01;
 pub const DEFAULT_METABOLIC_RAMP_TICKS: u32 = 50_000;
@@ -85,7 +85,14 @@ impl CognitiveTraits {
                 .all(|v| v.is_finite() && v.abs() <= 0.2)
     }
 }
-pub const ACTION_NAMES: [&str; 6] = ["none", "collect", "transfer", "force", "emit", "reproduce"];
+pub const ACTION_NAMES: [&str; 6] = [
+    "none",
+    "gather effort",
+    "transfer",
+    "force",
+    "emit",
+    "reproduce",
+];
 pub const EMIT: u32 = 4;
 /// Event-ring action code for a receiver decision made while a signal was visible.
 pub const SIGNAL_OBSERVED: u32 = 6;
@@ -114,8 +121,8 @@ pub struct AgentGpu {
     pub signal_payload: f32,
     /// One-based tick of emission; zero means never emitted.
     pub signal_tick: u32,
-    /// Bit-encoded previous energy, inventory, and requested gathering effort.
-    pub physical_previous: [u32; 3],
+    /// Bit-encoded previous energy and inventory for raw physical deltas.
+    pub physical_previous: [u32; 2],
     pub collected: f32,
     pub ingested: f32,
     pub spent: f32,

@@ -71,6 +71,11 @@ writes. This bounded matching can underutilize contact opportunities; it is not
 optimal matching. Disabled, stale and out-of-range requests cannot claim a pair.
 Signals do not participate in this arbitration and cannot provide a contact shield.
 
+Movement is continuous and gathering has its own continuous effort channel. The
+remaining discrete acts—transfer, force, emit, and reproduce—share one primary
+body-action channel each tick. This bounds simultaneous body work without giving
+any action an authored social or survival meaning.
+
 Emit pays a full .02 energy and makes a controller-chosen scalar observable on the
 next tick through local neighbor sensing. It works without a target. Zero is a
 valid payload, distinguishable from silence. There is no broadcast of someone
@@ -119,7 +124,7 @@ does not imply equal carrying capacity or guarantee easy founding.
 
 Environment rotation applies quarter-turns to initial positions and the entire
 habitat/weather history. It is never a brain input. These two controls change the
-environment, not the body or weights. Normal play uses contrast .5; the environmental dynamics are mobility, fragmentation, and regional seasonality,
+environment, not the body or weights. Default New Game uses contrast 1; the environmental dynamics are mobility, fragmentation, and regional seasonality,
 not a reward or population rescue. Manual interventions are part of the assisted
 experiment and are recorded in completed outcomes.
 
@@ -130,8 +135,8 @@ baseline. Agent ages and survival duration also begin at zero.
 
 ## Persistence, observation, and limits
 
-Checkpoints use format 42; founder banks use format 17. The
-primitive-v29-composable-reservoir model rejects older layouts without rewriting them.
+Checkpoints use format 43; founder banks use format 18. The
+primitive-v30-raw-physical-reservoir model rejects older layouts without rewriting them.
 Checkpoints preserve settings, bodies, genomes, food, soil, event counters,
 controller traces, the hereditary pool, world history and independent hereditary RNG streams. Derived indexing/terrain is rebuilt after load. Loading
 validates before mutating the world. Save/export refuses existing destinations.

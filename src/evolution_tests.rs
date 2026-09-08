@@ -435,3 +435,27 @@ fn gathering_composes_with_reproduction_but_requires_a_neural_request() {
         assert_eq!(agents[0].collected > 0.0, effort > 0.0);
     }
 }
+
+#[test]
+fn gathering_effort_is_not_a_redundant_primary_action() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut g = fixed(0, [0.0; 2]);
+    g[OUTPUT_BIAS + 1] = 3.0;
+    put(&s, &q, 0, body([602.0, 902.0]), &g);
+    q.write_buffer(
+        &s.resource_buffer,
+        (225 * 512 + 150) * 4,
+        bytemuck::bytes_of(&1000u32),
+    );
+    step(&mut s, &d, &q, 1);
+    let agent = s.agent_snapshot(&d, &q).unwrap()[0];
+    assert_eq!(
+        agent.action, 0,
+        "gathering leaves the primary action as none"
+    );
+    assert!(
+        agent.collected > 0.0,
+        "gathering effort still harvests food"
+    );
+}

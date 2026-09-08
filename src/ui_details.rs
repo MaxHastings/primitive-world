@@ -89,11 +89,14 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
                     ));
                 }
             });
-            ui.collapsing("Action logits (not rewards)", |ui| {
-                for (name, v) in model::ACTION_NAMES.iter().zip(s.decision.scores) {
-                    ui.label(format!("{name}: {v:.3}"));
-                }
-            });
+            ui.collapsing(
+                "Primary-action logits and gathering effort (not rewards)",
+                |ui| {
+                    for (name, v) in model::ACTION_NAMES.iter().zip(s.decision.scores) {
+                        ui.label(format!("{name}: {v:.3}"));
+                    }
+                },
+            );
             ui.collapsing("Internal recurrent state", |ui| {
                 for (i, v) in s
                     .agent

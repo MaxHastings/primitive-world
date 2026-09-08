@@ -19,19 +19,17 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  if(a.alive==0u){decisions[i]=d;return;}d.evaluated=1u;
  var x:array<f32,INPUT_COUNT>;
  x[0]=a.energy/100.0;x[1]=a.food/8.0;x[2]=p.resource_here;x[3]=a.age/10000.0;x[4]=a.velocity.x/1.2;x[5]=a.velocity.y/1.2;
- // Physical state and deltas only: no named outcome, action, or cooldown inputs.
- // The body exposes local physical fluxes, not whether an action was
- // successful.  Collection, conversion, costs and movement are all ordinary
- // consequences an organism may use, ignore, or combine through memory.
- x[6]=a.collected/0.025;x[7]=a.ingested/0.1;
- x[8]=a.spent/50.0;x[9]=a.received/8.0;x[10]=a.moved.x/1.2;
- x[11]=a.moved.y/1.2;x[12]=a.signal_payload;
- x[13]=select(0.0,f32(params.tick-a.signal_tick)/1000.0,a.signal_tick!=0u);
- x[14]=p.nearby_count/16.0;
- x[15]=select(0.0,(a.energy-bitcast<f32>(a.physical_previous[0]))/100.0,a.lived_ticks!=0u);
- x[16]=select(0.0,(a.food-bitcast<f32>(a.physical_previous[1]))/8.0,a.lived_ticks!=0u);
- x[17]=bitcast<f32>(a.physical_previous[2]);
- for(var k=18u;k<20u;k++){x[k]=0.0;}
+ // Raw body state and consequences only: no named outcome, action, or
+ // cooldown inputs. Self-propelled velocity and total displacement differ
+ // when another body applies force, exposing contact as physics rather than
+ // a labelled interaction result.
+ x[6]=select(0.0,(a.energy-bitcast<f32>(a.physical_previous[0]))/100.0,a.lived_ticks!=0u);
+ x[7]=select(0.0,(a.food-bitcast<f32>(a.physical_previous[1]))/8.0,a.lived_ticks!=0u);
+ x[8]=a.moved.x/1.2;x[9]=a.moved.y/1.2;
+ x[10]=a.signal_payload;
+ x[11]=select(0.0,f32(params.tick-a.signal_tick)/1000.0,a.signal_tick!=0u);
+ x[12]=p.nearby_count/16.0;
+ for(var k=13u;k<20u;k++){x[k]=0.0;}
  for(var k=0u;k<16u;k++){x[20u+k*2u]=p.regions[k].food;x[21u+k*2u]=p.regions[k].bodies/16.0;}
  for(var k=0u;k<8u;k++){let b=p.bodies[k];let n=52u+k*7u;if(b.slot<INVALID){x[n]=b.offset.x/a.sensor_radius;x[n+1u]=b.offset.y/a.sensor_radius;x[n+2u]=b.velocity.x/1.2;x[n+3u]=b.velocity.y/1.2;x[n+4u]=b.signal;x[n+5u]=1.0;x[n+6u]=b.signal_present;}}
  for(var k=0u;k<INPUT_COUNT;k++){if(!finite(x[k])){d.invalid=1u;x[k]=0.0;}x[k]=clamp(x[k],-8.0,8.0);d.inputs[k]=x[k];}
@@ -48,8 +46,9 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
   d.hidden[h]=(1.0-gate)*a.hidden[h]+gate*d.candidate[h];if(!finite(d.hidden[h])){d.invalid=1u;d.hidden[h]=0.0;}
  }
  for(var o=0u;o<OUTPUT_COUNT;o++){var value=gene(i,OUTPUT_BIAS+o);for(var h=0u;h<HIDDEN_COUNT;h++){if(unit_active(a.active_mask,h)){value+=effective(gene(i,OUTPUT_BASE+o*HIDDEN_COUNT+h),i,fast_output(o,h))*d.hidden[h];}}if(!finite(value)){d.invalid=1u;value=0.0;}d.outputs[o]=value;}
- var best=-3.4e38;
- for(var k=0u;k<6u;k++){d.scores[k]=d.outputs[k];if(k==TRANSFER && params.resource_and_noise.w<0.5){continue;}if(k==EMIT && (params.resource_and_noise.w<0.5 || params.physical.y<0.5)){continue;}if(k==APPLY_FORCE && (params.resource_and_noise.w<0.5 || params.physical.x<0.5)){continue;}if(d.outputs[k]>best){best=d.outputs[k];d.selected_action=k;}}
+ for(var k=0u;k<6u;k++){d.scores[k]=d.outputs[k];}
+ var best=d.outputs[NONE];d.selected_action=NONE;
+ for(var k=TRANSFER;k<6u;k++){if(k==TRANSFER && params.resource_and_noise.w<0.5){continue;}if(k==EMIT && (params.resource_and_noise.w<0.5 || params.physical.y<0.5)){continue;}if(k==APPLY_FORCE && (params.resource_and_noise.w<0.5 || params.physical.x<0.5)){continue;}if(d.outputs[k]>best){best=d.outputs[k];d.selected_action=k;}}
  let raw=vec2<f32>(d.outputs[6],d.outputs[7]);d.movement=unit_vector(raw)*tanh(length(raw)*params.physical.z);d.amount=1.0/(1.0+exp(-clamp(d.outputs[8],-20.0,20.0)));d.payload=tanh(d.outputs[9]);
  let force_raw=vec2<f32>(d.outputs[FORCE_OUTPUT],d.outputs[FORCE_OUTPUT+1u]);d.force=unit_vector(force_raw)*tanh(length(force_raw));best=-3.4e38;
  for(var k=0u;k<8u;k++){if(p.bodies[k].slot<INVALID && d.outputs[10u+k]>best){best=d.outputs[10u+k];d.target_id=p.bodies[k].slot;d.target_generation=p.bodies[k].generation;}}

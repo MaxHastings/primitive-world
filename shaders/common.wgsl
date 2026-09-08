@@ -2,13 +2,13 @@
 const INVALID:u32=16384u;
 const FOOD_CAPACITY:f32=8.0;
 const INTERACTION_RADIUS:f32=6.0;
-const NONE:u32=0u; const COLLECT:u32=1u;
+const NONE:u32=0u;
 const TRANSFER:u32=2u; const APPLY_FORCE:u32=3u; const EMIT:u32=4u; const REPRODUCE:u32=5u; const SIGNAL_OBSERVED:u32=6u; const SIGNAL_CONTROL:u32=7u; const MEMORY_SAMPLE:u32=8u;
 struct Agent {
  position:vec2<f32>, velocity:vec2<f32>, energy:f32, age:f32, max_speed:f32, sensor_radius:f32,
  food:f32, action:u32, target_id:u32, alive:u32,
  body_padding:f32,rng:u32,generation:u32,next_birth:u32,
- max_age:f32,signal_payload:f32,signal_tick:u32,physical_previous:array<u32,3>,
+ max_age:f32,signal_payload:f32,signal_tick:u32,physical_previous:array<u32,2>,
  collected:f32,ingested:f32,
  spent:f32,received:f32,moved:vec2<f32>,
  lineage_id:u32,parent_lineage:u32,birth_tick:u32,birth_parent_slot:u32,
