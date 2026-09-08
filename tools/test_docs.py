@@ -21,11 +21,12 @@ class DocumentationTests(unittest.TestCase):
         for path in ["backup_run.py", "analyze_departures.py", "audit_checkpoint_communication.py"]:
             self.assertTrue((ROOT / "tools" / path).is_file())
 
-    def test_front_page_has_a_portable_evolution_command(self):
+    def test_front_page_has_portable_launch_commands(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertNotIn("C:/Users/", readme)
         self.assertIn("cargo run --release", readme)
-        self.assertIn("New Game and Load Game both retain evolution across worlds", readme)
+        self.assertIn("Play.cmd --wallpaper", readme)
+        self.assertIn("--headless", readme)
         self.assertNotIn("--watch-loop", readme)
 
 
