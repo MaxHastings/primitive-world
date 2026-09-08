@@ -6,9 +6,9 @@ and general adaptation are unverified capabilities.
 ## Build and data formats
 
 - Application version: 0.9.0.
-- Model: `primitive-v26-masked-plastic-16`.
-- Checkpoint format: 39, including founding populations, paired outcomes/history, search RNG, terminal-descendant source counts, and fresh-world environmental age.
-- Founder-bank format: 15; game receipts: 4.
+- Model: `primitive-v29-composable-reservoir`.
+- Checkpoint format: 42, including lifetime state, hereditary pool, RNG streams and world history.
+- Founder-bank format: 17; game receipts: 4.
 - Genome allocation: 163.25 MiB for 16,384 bodies, plus world/render buffers.
 
 These identities are separate from application version. Noncurrent files remain
@@ -18,7 +18,7 @@ still have quadratic neighbor work. See [performance](performance.md) for measur
 
 The current model is checked with the serial release GPU test suite, including
 mutation parity, masked learning and energy costs, newborn state resets, and
-checkpoint replay. A headless throughput measurement exceeded 1,000 ticks/s at
+checkpoint replay. A historical v26 headless throughput measurement exceeded 1,000 ticks/s at
 1,000 starting bodies on an RTX 4070 SUPER; see [performance](performance.md).
 The previous 32-unit model's saves are incompatible with the 16-unit layout.
 Existing files are preserved.

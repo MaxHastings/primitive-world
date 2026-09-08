@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — reachable possibilities and blind continuity
+
+- Replace lifespan comparisons with blind hereditary replacement at births and
+  unchanged pool sampling after extinction; remove the ecology curriculum.
+- Make gathering composable with other actions and restore a narrow .01→.06
+  body-upkeep ramp over each world's first 50,000 ticks.
+- Replace named action/outcome inputs with own physical deltas.
+- Resolve concurrent pool writes as whole records; checkpoint format 42 preserves
+  both hereditary RNG streams, pool records and lifetime state.
+- Fix fresh-world history validation, empty diagnostics and engine-limit handling.
+- Add inheritance/continuation regressions and a resumable long-run harness.
+
+
 ## Unreleased — masked local learning
 
 - Introduce 1–16 active recurrent units, inherited topology and local-plasticity traits, and paid lifetime-only learned connection deltas.

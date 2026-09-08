@@ -36,7 +36,8 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
                 s.decision.movement[1]
             ));
             ui.small(format!(
-                "Requested amount {:.3} · signal {:.3} · target {}:{}",
+                "Gather effort {:.3} · amount {:.3} · signal {:.3} · target {}:{}",
+                s.decision.outputs[1].clamp(0.0, 1.0),
                 s.decision.amount,
                 s.decision.payload,
                 s.decision.target,
@@ -162,15 +163,20 @@ pub fn physics(ui: &mut egui::Ui, state: &mut AppState) {
     ui.collapsing("World rules", |ui| {
         let s = &state.simulation.settings;
         ui.small("Configure a New Game to change world rules.");
-        ui.small("Saves keep all revisions (~115–120 MB each at 1,000 founders); autosave every five minutes. No automatic deletion.");
+        ui.small("Autosave every five minutes; the save library retains six recent snapshots per experiment.");
         ui.label(format!("Founding bodies: {}", s.population));
         ui.label(format!("Food regeneration: {:.3}", s.resource_regeneration));
         ui.label(format!(
-            "Body upkeep: .010 → {:.3} · unit upkeep: {:.5} · write energy: {:.5} · movement cost: {:.3}",
-            s.metabolic_cost, s.active_unit_upkeep, s.memory_write_energy, s.movement_energy_cost
+            "Body upkeep: {:.3} → {:.3} over {} ticks · unit upkeep: {:.5} · write energy: {:.5} · movement cost: {:.3}",
+            crate::model::METABOLIC_START_COST,
+            s.metabolic_cost,
+            s.metabolic_ramp_ticks,
+            s.active_unit_upkeep,
+            s.memory_write_energy,
+            s.movement_energy_cost
         ));
         ui.small(format!("Social actions: {}", if s.social_actions_enabled { "available under ordinary world rules" } else { "disabled" }));
-        ui.small("Food patches start broader and recede to their normal footprint by the ramp cap.");
+        ui.small("Only metabolism has a world-start ramp; environmental dynamics have fixed strength from tick zero.");
         ui.small("Active units and actual memory writes are paid; reproduction overhead remains physical construction.");
     });
 }

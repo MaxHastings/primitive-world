@@ -8,7 +8,7 @@ struct Agent {
  position:vec2<f32>, velocity:vec2<f32>, energy:f32, age:f32, max_speed:f32, sensor_radius:f32,
  food:f32, action:u32, target_id:u32, alive:u32,
  body_padding:f32,rng:u32,generation:u32,next_birth:u32,
- max_age:f32,signal_payload:f32,signal_tick:u32,signal_padding:array<u32,3>,
+ max_age:f32,signal_payload:f32,signal_tick:u32,physical_previous:array<u32,3>,
  collected:f32,ingested:f32,
  spent:f32,received:f32,moved:vec2<f32>,
  lineage_id:u32,parent_lineage:u32,birth_tick:u32,birth_parent_slot:u32,

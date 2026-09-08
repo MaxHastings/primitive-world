@@ -26,9 +26,19 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
  if(h==0u){let a=agents[i];let p=perceptions[i];
 
  x[0]=a.energy/100.0;x[1]=a.food/8.0;x[2]=p.resource_here;x[3]=a.age/10000.0;x[4]=a.velocity.x/1.2;x[5]=a.velocity.y/1.2;
- x[6]=a.collected;x[7]=a.ingested;x[8]=a.spent;x[9]=a.received;x[10]=a.moved.x/1.2;x[11]=a.moved.y/1.2;x[12]=p.nearby_count/16.0;
- x[13]=f32(a.next_birth-min(a.next_birth,params.tick))/240.0;
- for(var k=0u;k<6u;k++){x[14u+k]=f32(a.action==k);}
+ // Physical state and deltas only: no named outcome, action, or cooldown inputs.
+ // The body exposes local physical fluxes, not whether an action was
+ // successful.  Collection, conversion, costs and movement are all ordinary
+ // consequences an organism may use, ignore, or combine through memory.
+ x[6]=a.collected/0.025;x[7]=a.ingested/0.1;
+ x[8]=a.spent/50.0;x[9]=a.received/8.0;x[10]=a.moved.x/1.2;
+ x[11]=a.moved.y/1.2;x[12]=a.signal_payload;
+ x[13]=select(0.0,f32(params.tick-a.signal_tick)/1000.0,a.signal_tick!=0u);
+ x[14]=p.nearby_count/16.0;
+ x[15]=select(0.0,(a.energy-bitcast<f32>(a.physical_previous[0]))/100.0,a.lived_ticks!=0u);
+ x[16]=select(0.0,(a.food-bitcast<f32>(a.physical_previous[1]))/8.0,a.lived_ticks!=0u);
+ x[17]=bitcast<f32>(a.physical_previous[2]);
+ for(var k=18u;k<20u;k++){x[k]=0.0;}
  for(var k=0u;k<16u;k++){x[20u+k*2u]=p.regions[k].food;x[21u+k*2u]=p.regions[k].bodies/16.0;}
  for(var k=0u;k<8u;k++){let b=p.bodies[k];let n=52u+k*7u;if(b.slot<INVALID){x[n]=b.offset.x/a.sensor_radius;x[n+1u]=b.offset.y/a.sensor_radius;x[n+2u]=b.velocity.x/1.2;x[n+3u]=b.velocity.y/1.2;x[n+4u]=b.signal;x[n+5u]=1.0;x[n+6u]=b.signal_present;}}
  for(var k=0u;k<INPUT_COUNT;k++){if(!finite(x[k])){atomicStore(&fault,1u);x[k]=0.0;}x[k]=clamp(x[k],-8.0,8.0);}

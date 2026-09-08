@@ -10,6 +10,7 @@
 fn main(@builtin(global_invocation_id) id:vec3<u32>){
  let i=id.x;if(i>=INVALID){return;}var a=source[i];births[i]=0u;if(a.alive==0u){destination[i]=a;return;}let d=decisions[i];a.lived_ticks++;
  if(id.x==0u){atomicStore(&stats[18],params.tick+1u);}atomicAdd(&stats[24u+d.selected_action],1u);atomicAdd(&stats[31],d.invalid);
+ a.physical_previous[0]=bitcast<u32>(a.energy);a.physical_previous[1]=bitcast<u32>(a.food);a.physical_previous[2]=bitcast<u32>(clamp(d.outputs[1],0.0,1.0));
  a.collected=f32(requests[i])/1000.0;a.ingested=0.0;a.spent=0.0;a.received=0.0;a.food+=a.collected;
  let amount=min(min(a.food,0.1),max(0.0,100.0-a.energy)/params.resource_and_noise.y);a.food-=amount;a.energy+=amount*params.resource_and_noise.y;a.ingested=amount;
  let food_units=u32(round(amount*1000.0));let food_before=atomicAdd(&stats[0],food_units);if(food_before>0xffffffffu-food_units){atomicAdd(&stats[14],1u);}

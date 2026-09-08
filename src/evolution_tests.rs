@@ -39,6 +39,8 @@ fn masked_inheritance_matches_gpu_across_capacities_and_topology_changes() {
     let mut expected = Vec::new();
     let mut expansions = 0;
     let mut retirements = 0;
+    let mut exact = 0;
+    let mut mutated = 0;
     for i in 0..COUNT {
         let mut rng = i as u32 * 7919 + 31;
         let g = crate::brain::random_genome(&mut rng);
@@ -88,7 +90,8 @@ fn masked_inheritance_matches_gpu_across_capacities_and_topology_changes() {
     for (i, (parent, child, traits)) in expected.iter().enumerate() {
         assert_eq!(&actual[i * GENOME_SIZE..(i + 1) * GENOME_SIZE], parent);
         let actual_child = &actual[(i + COUNT) * GENOME_SIZE..(i + COUNT + 1) * GENOME_SIZE];
-        assert_ne!(actual_child, parent);
+        exact += usize::from(actual_child == parent);
+        mutated += usize::from(actual_child != parent);
         for (x, y) in actual_child.iter().zip(child) {
             assert!((x - y).abs() < 0.00001, "genome {i}: {x} != {y}");
         }
@@ -109,6 +112,7 @@ fn masked_inheritance_matches_gpu_across_capacities_and_topology_changes() {
         );
         near(actual_traits.mutation_scale, traits.mutation_scale);
     }
+    assert!(exact > 0 && mutated > 0);
 }
 
 #[test]
@@ -267,5 +271,167 @@ fn cooperative_decisions_match_serial_reference_with_masks_and_learning() {
         {
             assert!((x - y).abs() < 0.00001);
         }
+    }
+}
+
+#[test]
+fn simultaneous_births_replace_whole_reservoir_records_deterministically() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    const COUNT: usize = 512;
+    for i in 0..COUNT {
+        let mut g = fixed(5, [0.0; 2]);
+        g[0] = i as f32 / COUNT as f32;
+        let mut a = body([
+            100.0 + (i % 32) as f32 * 30.0,
+            100.0 + (i / 32) as f32 * 30.0,
+        ]);
+        a.lineage_id = i as u32 + 1;
+        a.hidden = [0.25; HIDDEN];
+        put(&s, &q, i, a, &g);
+    }
+    let before = s.reservoir_snapshot(&d, &q).unwrap();
+    step(&mut s, &d, &q, 1);
+    let after = s.reservoir_snapshot(&d, &q).unwrap();
+    let agents = s.agent_snapshot(&d, &q).unwrap();
+    let genes = s.read_genomes(&d, &q, COUNT * 2).unwrap();
+    let hash = |mut v: u32| {
+        v = (v ^ 61) ^ (v >> 16);
+        v = v.wrapping_add(v << 3);
+        v ^= v >> 4;
+        v = v.wrapping_mul(0x27d4eb2d);
+        v ^ (v >> 15)
+    };
+    let mut winners = std::collections::BTreeMap::new();
+    for rank in 0..COUNT {
+        assert_eq!(agents[COUNT + rank].ancestry_depth, 1);
+        winners.insert(
+            hash(before.2.wrapping_add(rank as u32)) as usize % HEREDITARY_RESERVOIR_SIZE as usize,
+            COUNT + rank,
+        );
+    }
+    assert!(
+        winners.len() < COUNT,
+        "fixture exercises replacement collisions"
+    );
+    assert_eq!(after.2, before.2.wrapping_add(COUNT as u32));
+    for slot in 0..HEREDITARY_RESERVOIR_SIZE as usize {
+        let range = slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE;
+        if let Some(&child) = winners.get(&slot) {
+            assert_eq!(
+                &after.0[range],
+                &genes[child * GENOME_SIZE..(child + 1) * GENOME_SIZE]
+            );
+            assert_eq!(after.1[slot], agents[child].cognitive_traits());
+        } else {
+            assert_eq!(&after.0[range.clone()], &before.0[range]);
+            assert_eq!(after.1[slot], before.1[slot]);
+        }
+    }
+    // Cooldown prevents another birth; private learning cannot alter the pool.
+    step(&mut s, &d, &q, 1);
+    assert_eq!(s.reservoir_snapshot(&d, &q).unwrap(), after);
+}
+
+#[test]
+fn reservoir_and_world_transitions_resume_without_observer_selection() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings.population = 4;
+    s.settings.metabolic_cost = 100.0;
+    s.reset(&q);
+    let original = s.reservoir_snapshot(&d, &q).unwrap();
+    step(&mut s, &d, &q, 4);
+    s.complete_world(&d, &q).unwrap();
+    let path = temp("reservoir-resume.checkpoint");
+    s.save_checkpoint(&d, &q, &path).unwrap();
+    let observations = s.progress.clone();
+    s.advance_world(&d, &q).unwrap();
+    let founders = s.read_genomes(&d, &q, 4).unwrap();
+    let bodies = s.agent_snapshot(&d, &q).unwrap();
+    let seed = s.seed;
+    assert_eq!(s.reservoir_snapshot(&d, &q).unwrap(), original);
+    // Prior long durations must be valid even at tick zero of a fresh world.
+    s.checkpoint_metadata().unwrap();
+    s.load_checkpoint(&q, &path).unwrap();
+    assert_eq!(s.progress, observations);
+    assert_eq!(s.reservoir_snapshot(&d, &q).unwrap(), original);
+    for o in s
+        .progress
+        .history
+        .iter_mut()
+        .chain(s.progress.completed.iter_mut())
+    {
+        o.food_ingested += 123.0;
+        o.food_collected += 456.0;
+        o.energy += 789.0;
+    }
+    s.advance_world(&d, &q).unwrap();
+    assert_eq!(s.seed, seed);
+    assert_eq!(s.read_genomes(&d, &q, 4).unwrap(), founders);
+    assert_eq!(
+        bytemuck::cast_slice::<AgentGpu, u8>(&s.agent_snapshot(&d, &q).unwrap()),
+        bytemuck::cast_slice::<AgentGpu, u8>(&bodies)
+    );
+    for (g, body) in founders.chunks_exact(GENOME_SIZE).zip(bodies.iter()) {
+        assert!(
+            original
+                .0
+                .chunks_exact(GENOME_SIZE)
+                .zip(&original.1)
+                .any(|(stored, traits)| stored == g && *traits == body.cognitive_traits())
+        );
+        assert_eq!(body.hidden, [0.0; HIDDEN]);
+    }
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn capacity_exhaustion_is_not_extinction_or_hereditary_selection() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    // Exercise a full body allocator without running thousands of brains.
+    q.write_buffer(&s.birth_flags, 0, bytemuck::bytes_of(&1u32));
+    let bodies = vec![body([100.0, 100.0]); MAX_AGENTS as usize];
+    q.write_buffer(&s.agent_buffers[0], 0, bytemuck::cast_slice(&bodies));
+    let before = s.reservoir_snapshot(&d, &q).unwrap();
+    let mut e = d.create_command_encoder(&Default::default());
+    s.dispatch(&mut e, "free", 0, MAX_AGENTS.div_ceil(64), 1);
+    s.scan(&mut e, "free", MAX_AGENTS);
+    s.scan(&mut e, "birth", MAX_AGENTS);
+    s.dispatch(&mut e, "birth_compact", 0, 1, 1);
+    q.submit(Some(e.finish()));
+    assert!(s.refresh_engine_status(&d, &q).unwrap());
+    assert_eq!(read::<u32>(&d, &q, &s.birth_dispatch, 3)[0], 0);
+    assert!(s.complete_world(&d, &q).is_err());
+    assert!(s.advance_world(&d, &q).is_err());
+    assert!(s.progress.history.is_empty());
+    assert_eq!(s.reservoir_snapshot(&d, &q).unwrap(), before);
+}
+
+#[test]
+fn gathering_composes_with_reproduction_but_requires_a_neural_request() {
+    let (d, q) = gpu();
+    for effort in [0.0, 0.25, 1.0] {
+        let mut s = scene(&d, &q);
+        let mut g = fixed(5, [0.0; 2]);
+        g[OUTPUT_BIAS + 1] = effort;
+        let mut parent = body([602.0, 902.0]);
+        parent.food = 0.0;
+        put(&s, &q, 0, parent, &g);
+        q.write_buffer(
+            &s.resource_buffer,
+            (225 * 512 + 150) * 4,
+            bytemuck::bytes_of(&1000u32),
+        );
+        step(&mut s, &d, &q, 1);
+        let agents = s.agent_snapshot(&d, &q).unwrap();
+        assert_eq!(agents[0].action, 5);
+        assert_eq!(agents[1].ancestry_depth, 1);
+        near(
+            agents[0].collected,
+            (25.0 * (1.0 / (1.0 + (-3.0f32).exp())) * effort) as u32 as f32 / 1000.0,
+        );
+        assert_eq!(agents[0].collected > 0.0, effort > 0.0);
     }
 }

@@ -1,20 +1,21 @@
 //! primitive-world: fixed-frame sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
 /// Persistence accepts only this model's controller and lifetime-state layout.
-pub const MODEL_ID: &str = "primitive-v26-masked-plastic-16";
-pub const FOUNDER_BANK_VERSION: u32 = 15;
-pub const CHECKPOINT_VERSION: u32 = 39;
-pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD039";
+pub const MODEL_ID: &str = "primitive-v29-composable-reservoir";
+pub const FOUNDER_BANK_VERSION: u32 = 17;
+pub const CHECKPOINT_VERSION: u32 = 42;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD042";
+/// Initial body upkeep while a fresh world establishes its first life cycles.
 pub const METABOLIC_START_COST: f32 = 0.01;
 pub const DEFAULT_METABOLIC_RAMP_TICKS: u32 = 50_000;
+/// Fixed rolling hereditary storage; independent of body-engine capacity.
+pub const HEREDITARY_RESERVOIR_SIZE: u32 = 4_096;
 /// Incremental maintenance paid for each expressed recurrent unit.
 pub const DEFAULT_ACTIVE_UNIT_UPKEEP: f32 = 0.0005;
 /// Energy paid for each unit of actual bounded memory-state change.
 pub const DEFAULT_MEMORY_WRITE_ENERGY: f32 = 0.0001;
-/// Every inherited genome samples its own log-uniform multiplier in this range.
-pub const MUTATION_TEMPERATURE_MIN: f32 = 0.125;
-pub const MUTATION_TEMPERATURE_MAX: f32 = 8.0;
-pub const BASE_MUTATION_PROBABILITY: f32 = 0.02;
+/// Blind per-birth connection mutation probability and bounded magnitude.
+pub const BASE_MUTATION_PROBABILITY: f32 = 0.25;
 pub const BASE_MUTATION_MAGNITUDE: f32 = 0.03;
 pub const MAX_AGENTS: u32 = 16_384;
 /// Reserve room for the largest permitted birth cooldown in shader tick arithmetic.
@@ -25,7 +26,7 @@ pub const OCCUPANCY_GRID: u32 = 256;
 pub const SPATIAL_CELL_COUNT: u32 = OCCUPANCY_GRID * OCCUPANCY_GRID;
 pub const WORLD_SIZE: f32 = 2048.0;
 /// Cumulative physical and cognitive accounting counters.
-pub const DEATH_STATS_COUNT: u32 = 36;
+pub const DEATH_STATS_COUNT: u32 = 37;
 pub const EVENT_RING_SIZE: u32 = 65_536;
 pub const SECTORS: usize = 8;
 pub const SECTOR_NAMES: [&str; SECTORS] = ["E", "SE", "S", "SW", "W", "NW", "N", "NE"];
@@ -113,7 +114,8 @@ pub struct AgentGpu {
     pub signal_payload: f32,
     /// One-based tick of emission; zero means never emitted.
     pub signal_tick: u32,
-    pub signal_padding: [u32; 3],
+    /// Bit-encoded previous energy, inventory, and requested gathering effort.
+    pub physical_previous: [u32; 3],
     pub collected: f32,
     pub ingested: f32,
     pub spent: f32,
@@ -158,6 +160,7 @@ impl Default for AgentGpu {
     }
 }
 impl AgentGpu {
+    #[cfg(test)]
     pub fn cognitive_traits(&self) -> CognitiveTraits {
         CognitiveTraits {
             active_mask: self.active_mask,
@@ -292,8 +295,11 @@ pub struct SimSettings {
     pub population: u32,
     pub resource_regeneration: f32,
     pub movement_energy_cost: f32,
-    /// The metabolism reached after the deterministic world-start ramp.
+    /// Metabolism reached after the deterministic world-start ramp.
     pub metabolic_cost: f32,
+    /// Missing in flat-metabolism format-42 checkpoints; zero preserves their
+    /// original physics instead of silently turning them into a hybrid ramp.
+    #[serde(default)]
     pub metabolic_ramp_ticks: u32,
     pub active_unit_upkeep: f32,
     pub memory_write_energy: f32,
@@ -413,6 +419,7 @@ fn default_habitat_width() -> f32 {
 fn default_habitat_height() -> f32 {
     WORLD_SIZE
 }
+
 /// Fixed recurrent brains with random inherited parameters.
 pub fn random_genome(rng: &mut u32) -> [f32; GENOME_SIZE] {
     crate::brain::random_genome(rng)

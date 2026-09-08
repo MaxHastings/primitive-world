@@ -140,18 +140,17 @@ impl AppState {
             self.service_completed_world();
             return;
         }
-        let mut ticks = if self.step_requested {
+        let ticks = if self.step_requested {
             self.step_requested = false;
             1
         } else {
             self.scheduler.take(now, self.speed_index)
         }
         .min(model::MAX_WORLD_TICKS.saturating_sub(self.simulation.tick));
-        if let Some(until_win) = self.simulation.ticks_until_challenger_can_win() {
-            ticks = ticks.min(until_win);
-        }
-
-        if self.simulation.tick >= model::MAX_WORLD_TICKS {
+        if self.simulation.progress.engine_saturated
+            || self.simulation.tick >= model::MAX_WORLD_TICKS
+        {
+            self.simulation.record_engine_saturation();
             self.paused = true;
             self.file_status =
                 "World tick capacity reached. Save is available; this is not an extinction.".into();
@@ -263,6 +262,13 @@ impl AppState {
         self.age_deaths = u32_at(12);
         self.births = u32_at(16);
         self.interaction_stats = [u32_at(20), u32_at(24), u32_at(28), u32_at(32)];
+        if u32_at(4 + 36 * 4) != 0 || self.simulation.tick >= model::MAX_WORLD_TICKS {
+            self.simulation.record_engine_saturation();
+            self.paused = true;
+            self.file_status =
+                "Engine capacity reached; experiment paused. Save and start a new experiment."
+                    .into();
+        }
         if let Some(timing) = &self.gpu_timing {
             let start = bytemuck::pod_read_unaligned::<u64>(
                 &mapped[TIMING_OFFSET as usize..TIMING_OFFSET as usize + 8],
@@ -322,30 +328,21 @@ impl AppState {
     }
 
     fn service_completed_world(&mut self) {
-        if self.living_agents != 0 {
-            match self
-                .simulation
-                .promote_challenger_if_outlived(u64::from(self.living_agents))
-            {
-                Ok(true) => {
-                    self.world_revision = self.world_revision.saturating_add(1);
-                    self.file_status =
-                        "Candidate outlived its incumbent and is now the live population.".into();
-                }
-                Ok(false) => {}
-                Err(e) => {
-                    self.paused = true;
-                    self.file_status = format!("Evolution paused: {e}");
-                    return;
-                }
+        if self.simulation.progress.engine_saturated {
+            if self.experiment.is_some() {
+                self.file_status = match self.save_experiment() {
+                    Ok(_) => "Engine capacity reached; paused and saved for diagnosis.".into(),
+                    Err(e) => format!("Engine capacity reached; save failed: {e}"),
+                };
             }
+            return;
         }
         if self.living_agents == 0 && self.simulation.progress.completed.is_none() {
             match self.simulation.complete_world(&self.device, &self.queue) {
                 Ok(()) => self.world_revision = self.world_revision.saturating_add(1),
                 Err(e) => {
                     self.paused = true;
-                    self.file_status = format!("Population comparison paused: {e}");
+                    self.file_status = format!("World transition paused: {e}");
                     return;
                 }
             }
@@ -357,8 +354,8 @@ impl AppState {
                 self.clear_world_observers();
                 self.refresh_metrics()?;
                 self.file_status = format!(
-                    "World {}: {:?} population evaluation",
-                    self.simulation.progress.world, self.simulation.progress.phase
+                    "World {} started from the hereditary reservoir",
+                    self.simulation.progress.world
                 );
                 Ok(())
             })();

@@ -10,9 +10,6 @@
 fn mutation_draw(rng:ptr<function,u32>)->f32 {
  *rng=(*rng)*1664525u+1013904223u;return f32((*rng)>>8u)/16777216.0;
 }
-fn mutation_temperature(rng:ptr<function,u32>)->f32 {
- return 0.125*pow(64.0,mutation_draw(rng));
-}
 fn gene(slot:u32,index:u32)->f32 {let local=index%GENOME_BANK_STRIDE;let at=slot*GENOME_BANK_STRIDE+local;if(index<GENOME_BANK_STRIDE){return genomes0[at];}return genomes1[at];}
 fn set_gene(slot:u32,index:u32,value:f32) {let local=index%GENOME_BANK_STRIDE;let at=slot*GENOME_BANK_STRIDE+local;if(index<GENOME_BANK_STRIDE){genomes0[at]=value;}else{genomes1[at]=value;}}
 fn nth_set(mask:u32,n:u32)->u32 {var seen=0u;for(var h=0u;h<HIDDEN_COUNT;h++){if(unit_active(mask,h)){if(seen==n){return h;}seen++;}}return 0u;}
@@ -68,26 +65,22 @@ fn inherit_child(ci:u32,pi:u32,seed:u32) {
   clone_unit(ci,donor,new_unit,child.active_mask,&rng);
   child.active_mask|=1u<<new_unit;child.plasticity_rate[new_unit]=child.plasticity_rate[donor];atomicAdd(&stats[32],1u);
  }}
- let scale=sqrt(mutation_temperature(&rng))*child.mutation_scale;
- let magnitude=max(0.03*scale,0.000001);let expected=23.76*scale;
- let draws=max(1u,u32(floor(expected))+u32(mutation_draw(&rng)<fract(expected)));
+ // A birth may be an exact copy. Mutation events include small scale drift;
+ // no per-birth temperature redraw or compulsory mutation is applied.
+ let scale=child.mutation_scale;
+ let magnitude=max(0.03*scale,0.000001);
+ let draws=u32(mutation_draw(&rng)<min(0.25*scale,1.0));
  let expressed_count=countOneBits(child.active_mask);
  let count=expressed_count*(2u+INPUT_COUNT+2u*expressed_count+OUTPUT_COUNT)+OUTPUT_COUNT;
- var changed=false;
  for(var n=0u;n<draws;n++){
   let k=expressed_index(u32(mutation_draw(&rng)*f32(count)),child.active_mask);let old=gene(ci,k);
-  let value=clamp(old+(mutation_draw(&rng)*2.0-1.0)*magnitude,-4.0,4.0);set_gene(ci,k,value);changed=changed || old!=value;
+  let value=clamp(old+(mutation_draw(&rng)*2.0-1.0)*magnitude,-4.0,4.0);set_gene(ci,k,value);
  }
- if(!changed){
-  let k=expressed_index(u32(mutation_draw(&rng)*f32(count)),child.active_mask);let old=gene(ci,k);
-  let direction=select(-1.0,1.0,mutation_draw(&rng)>=0.5);let value=clamp(old+direction*magnitude,-4.0,4.0);
-  set_gene(ci,k,select(value,clamp(old-direction*magnitude,-4.0,4.0),value==old));
- }
- let h=nth_set(child.active_mask,u32(mutation_draw(&rng)*f32(expressed_count)));
- child.plasticity_rate[h]=clamp(child.plasticity_rate[h]+(mutation_draw(&rng)*2.0-1.0)*magnitude,-0.2,0.2);
- child.trace_retention=clamp(child.trace_retention+(mutation_draw(&rng)*2.0-1.0)*magnitude,0.0,0.9999);
- child.learned_weight_retention=clamp(child.learned_weight_retention+(mutation_draw(&rng)*2.0-1.0)*magnitude,0.0,0.9999);
- child.mutation_scale=clamp(child.mutation_scale*(0.97+0.06*mutation_draw(&rng)),0.25,4.0);
+ if(draws!=0u){let h=nth_set(child.active_mask,u32(mutation_draw(&rng)*f32(expressed_count)));
+  child.plasticity_rate[h]=clamp(child.plasticity_rate[h]+(mutation_draw(&rng)*2.0-1.0)*magnitude,-0.2,0.2);
+  child.trace_retention=clamp(child.trace_retention+(mutation_draw(&rng)*2.0-1.0)*magnitude,0.0,0.9999);
+  child.learned_weight_retention=clamp(child.learned_weight_retention+(mutation_draw(&rng)*2.0-1.0)*magnitude,0.0,0.9999);
+  child.mutation_scale=clamp(child.mutation_scale*(0.97+0.06*mutation_draw(&rng)),0.25,4.0);}
  agents[ci]=child;
 }
 @compute @workgroup_size(64)

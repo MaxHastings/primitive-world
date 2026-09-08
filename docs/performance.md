@@ -8,7 +8,7 @@ barriers. All biological ticks and active connections are evaluated at every spe
 Inherited genomes and lifetime learned deltas each use two GPU banks. At 16,384
 slots they occupy 163.25 MiB and 160 MiB respectively; paired body buffers use
 9.25 MiB, perception 6.25 MiB, decisions 12.5 MiB, and activity traces 9 MiB.
-Two CPU founding groups at 1,000 bodies use about 20 MiB plus cognitive traits.
+The 4,096-record hereditary pool adds 40.8125 MiB of GPU genome storage plus traits.
 These are allocations, not total process-memory measurements. Sparse descendant
 sampling reads only selected genomes; learned-magnitude observation reduces on
 GPU before reading compact totals.
@@ -19,7 +19,7 @@ Requested speed does not override hardware throughput. Rendering, other GPU
 applications, body count, dense neighbors, and reproduction all affect speed.
 Full saves can pause playback while complete state is read and written.
 
-## Measured on September 8, 2026
+## Historical v26 measurements on September 8, 2026
 
 Windows, RTX 4070 SUPER, NVIDIA 591.86, Vulkan, release build, seed 42. Each case
 resets, warms for 32 ticks, then measures 512 ticks. The population grows during
@@ -44,3 +44,6 @@ Reproduce with the ignored `simulation::tests::profile_tick_throughput` test.
 The profiler includes all cognitive passes and keeps telemetry separate from
 GPU timestamps. Full survivor snapshots every eight ticks add substantial
 readback overhead and are diagnostic, not the ordinary playback path.
+
+These historical throughput values predate the composable hereditary-pool model.
+Use the long-run reports for current timing; they include checkpoint/restart overhead.

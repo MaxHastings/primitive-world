@@ -154,20 +154,21 @@ fn readback(device: &wgpu::Device, size: u64) -> wgpu::Buffer {
 }
 pub struct Simulation {
     device: wgpu::Device,
-    pub search: crate::evolution::Search,
-    /// Headless-only founder mixture controls; intentionally not checkpoint state.
-    pub founder_descendant_percent: usize,
-    pub founder_random_percent: usize,
     pub progress: crate::evolution::Progress,
     pub settings: SimSettings,
     pub seed: u32,
     pub tick: u32,
+    /// Retained only for old diagnostics; ecology no longer escalates by age.
+    pub environment_start_age: u32,
     /// Environment/action time at this world's tick zero. This is separate
     /// from tick so every world's survival duration is measured from zero.
-    pub environment_start_age: u32,
     pub assisted: bool,
     pub current_buffer: usize,
     pub(crate) genome_buffers: [wgpu::Buffer; GENOME_BANK_COUNT],
+    pub(crate) reservoir_genome_buffers: [wgpu::Buffer; GENOME_BANK_COUNT],
+    pub(crate) reservoir_traits_buffer: wgpu::Buffer,
+    pub(crate) reservoir_rng_buffer: wgpu::Buffer,
+    reservoir_claims_buffer: wgpu::Buffer,
     /// Non-inherited local plasticity state.  This is cleared for every child.
     pub(crate) fast_weight_buffers: [wgpu::Buffer; 2],
     pub(crate) trace_buffer: wgpu::Buffer,
@@ -224,6 +225,28 @@ impl Simulation {
                 MAX_AGENTS as u64 * GENOME_BANK_STRIDE as u64 * 4,
             )
         });
+        let reservoir_genome_buffers = std::array::from_fn(|bank| {
+            buffer(
+                device,
+                if bank == 0 {
+                    "rolling hereditary genomes 0"
+                } else {
+                    "rolling hereditary genomes 1"
+                },
+                HEREDITARY_RESERVOIR_SIZE as u64 * GENOME_BANK_STRIDE as u64 * 4,
+            )
+        });
+        let reservoir_traits_buffer = buffer(
+            device,
+            "rolling hereditary traits",
+            HEREDITARY_RESERVOIR_SIZE as u64 * std::mem::size_of::<CognitiveTraits>() as u64,
+        );
+        let reservoir_rng_buffer = buffer(device, "rolling hereditary rng", 4);
+        let reservoir_claims_buffer = buffer(
+            device,
+            "reservoir replacement claims",
+            HEREDITARY_RESERVOIR_SIZE as u64 * 4,
+        );
         let fast_weight_buffers = std::array::from_fn(|_| {
             buffer(
                 device,
@@ -282,7 +305,9 @@ impl Simulation {
         let birth_dispatch = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("eligible birth work count"),
             size: 12,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::INDIRECT,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::INDIRECT
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
         let parents = buffer(device, "parents", MAX_AGENTS as u64 * 4);
@@ -603,13 +628,14 @@ impl Simulation {
             "birth_compact",
             "../shaders/compact_agent_indices.wgsl",
             "main",
-            "rrwrw",
+            "rrwrww",
             vec![vec![
                 &birth_flags,
                 &birth_prefix,
                 &parents,
                 &free_prefix,
-                &birth_dispatch
+                &birth_dispatch,
+                &death_stats_buffer
             ]]
         );
         add!(
@@ -645,6 +671,33 @@ impl Simulation {
                 &death_stats_buffer,
             ])
         );
+        for (name, entry) in [
+            ("claim_reservoir", "claim"),
+            ("update_reservoir", "main"),
+            ("advance_reservoir", "advance"),
+        ] {
+            add!(
+                name,
+                "../shaders/update_reservoir.wgsl",
+                entry,
+                "rrrrrurrwwwww",
+                pair(|s| vec![
+                    &agent_buffers[s],
+                    &free_indices,
+                    &free_prefix,
+                    &parents,
+                    &birth_prefix,
+                    &params_buffer,
+                    &genome_buffers[0],
+                    &genome_buffers[1],
+                    &reservoir_genome_buffers[0],
+                    &reservoir_genome_buffers[1],
+                    &reservoir_traits_buffer,
+                    &reservoir_rng_buffer,
+                    &reservoir_claims_buffer,
+                ])
+            );
+        }
         add!(
             "plastic",
             "../shaders/plasticity.wgsl",
@@ -752,9 +805,6 @@ impl Simulation {
         );
         let mut sim = Self {
             device: device.clone(),
-            search: crate::evolution::Search::default(),
-            founder_descendant_percent: crate::evolution::DESCENDANT_FOUNDER_PERCENT,
-            founder_random_percent: crate::evolution::RANDOM_FOUNDER_PERCENT,
             progress: crate::evolution::Progress::initial(seed),
             settings: SimSettings::default(),
             seed,
@@ -763,6 +813,10 @@ impl Simulation {
             assisted: false,
             current_buffer: 0,
             genome_buffers,
+            reservoir_genome_buffers,
+            reservoir_traits_buffer,
+            reservoir_rng_buffer,
+            reservoir_claims_buffer,
             fast_weight_buffers,
             trace_buffer,
             learned_summary_buffer,
@@ -799,6 +853,33 @@ impl Simulation {
     }
     pub fn reset(&mut self, queue: &wgpu::Queue) {
         self.reset_with_population_at(queue, None, None, 0);
+        // Seed the pool by uniform founder sampling with replacement.
+        // The pool holds inherited state only.
+        let mut pool_settings = self.settings.clone();
+        pool_settings.population = pool_settings.population.max(1);
+        let genes = build_genomes(self.seed, &pool_settings);
+        let traits = build_traits(self.seed, &pool_settings);
+        let mut rng = self.seed ^ 0x85eb_ca6b;
+        let mut pool = vec![0.0; HEREDITARY_RESERVOIR_SIZE as usize * GENOME_SIZE];
+        let mut pool_traits = Vec::with_capacity(HEREDITARY_RESERVOIR_SIZE as usize);
+        for slot in 0..HEREDITARY_RESERVOIR_SIZE as usize {
+            let source =
+                ((random01(&mut rng) * traits.len() as f32) as usize).min(traits.len() - 1);
+            pool[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE]
+                .copy_from_slice(&genes[source * GENOME_SIZE..(source + 1) * GENOME_SIZE]);
+            pool_traits.push(traits[source]);
+        }
+        self.write_banked(queue, &self.reservoir_genome_buffers, &pool);
+        queue.write_buffer(
+            &self.reservoir_traits_buffer,
+            0,
+            bytemuck::cast_slice(&pool_traits),
+        );
+        queue.write_buffer(
+            &self.reservoir_rng_buffer,
+            0,
+            bytemuck::bytes_of(&(self.seed ^ 0x9e37_79b9)),
+        );
     }
     #[cfg(test)]
     pub(crate) fn reset_with_genomes_at(
@@ -849,29 +930,18 @@ impl Simulation {
             || build_traits(self.seed, &self.settings),
             ToOwned::to_owned,
         );
-        self.search = crate::evolution::Search {
-            incumbent: genes.to_vec(),
-            challenger: Vec::new(),
-            incumbent_traits: traits.clone(),
-            challenger_traits: Vec::new(),
-        };
         let data = build_agents_with_traits(self.seed, &self.settings, &traits);
         for b in &self.agent_buffers {
             queue.write_buffer(b, 0, bytemuck::cast_slice(&data));
         }
         self.environment_start_age = environment_start_age;
         let environment_epoch = environment_start_age / 8192;
-        let terrain_a = build_habitat_at(
-            self.seed,
-            environment_epoch,
-            self.settings.habitat_contrast,
-            self.settings.metabolic_ramp_ticks,
-        );
+        let terrain_a =
+            build_habitat_at(self.seed, environment_epoch, self.settings.habitat_contrast);
         let terrain_b = build_habitat_at(
             self.seed,
             environment_epoch + 1,
             self.settings.habitat_contrast,
-            self.settings.metabolic_ramp_ticks,
         );
         let terrain_phase = (environment_start_age % 8192) as f32 / 8192.0;
         let terrain_blend = terrain_phase * terrain_phase * (3.0 - 2.0 * terrain_phase);
@@ -920,6 +990,16 @@ impl Simulation {
         self.terrain_epoch = environment_epoch;
         self.update_params(queue);
     }
+    pub(crate) fn reset_live_world(
+        &mut self,
+        queue: &wgpu::Queue,
+        genomes: &[f32],
+        traits: &[CognitiveTraits],
+    ) {
+        let progress = self.progress.clone();
+        self.reset_with_population_at(queue, Some(genomes), Some(traits), 0);
+        self.progress = progress;
+    }
     pub fn update_params(&self, queue: &wgpu::Queue) {
         queue.write_buffer(
             &self.params_buffer,
@@ -936,9 +1016,17 @@ impl Simulation {
     /// banks.  The split is a storage detail; every caller still deals in one
     /// complete 2,612-value genome per organism.
     pub(crate) fn write_genomes(&self, queue: &wgpu::Queue, genomes: &[f32]) {
+        self.write_banked(queue, &self.genome_buffers, genomes);
+    }
+    fn write_banked(
+        &self,
+        queue: &wgpu::Queue,
+        banks: &[wgpu::Buffer; GENOME_BANK_COUNT],
+        genomes: &[f32],
+    ) {
         assert_eq!(genomes.len() % GENOME_SIZE, 0);
         let rows = genomes.len() / GENOME_SIZE;
-        for bank in 0..GENOME_BANK_COUNT {
+        for (bank, buffer) in banks.iter().enumerate() {
             let start = bank * GENOME_BANK_STRIDE;
             let width = (GENOME_SIZE - start).min(GENOME_BANK_STRIDE);
             let mut packed = vec![0.0f32; rows * GENOME_BANK_STRIDE];
@@ -947,7 +1035,7 @@ impl Simulation {
                     &genomes[row * GENOME_SIZE + start..row * GENOME_SIZE + start + width],
                 );
             }
-            queue.write_buffer(&self.genome_buffers[bank], 0, bytemuck::cast_slice(&packed));
+            queue.write_buffer(buffer, 0, bytemuck::cast_slice(&packed));
         }
     }
     #[cfg(test)]
@@ -1050,12 +1138,7 @@ impl Simulation {
                 let staging = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("terrain update"),
                     contents: bytemuck::cast_slice(&crate::environment::rotate_grid(
-                        build_terrain_pair(
-                            self.seed,
-                            epoch,
-                            self.settings.habitat_contrast,
-                            self.settings.metabolic_ramp_ticks,
-                        ),
+                        build_terrain_pair(self.seed, epoch, self.settings.habitat_contrast),
                         RESOURCE_GRID as usize,
                         self.settings.environment_rotation,
                     )),
@@ -1110,6 +1193,10 @@ impl Simulation {
             self.dispatch(e, "birth_compact", 0, groups, 1);
             self.passes["birth"].dispatch_indirect(e, d, &self.birth_dispatch);
             self.passes["inherit_genomes"].dispatch_indirect(e, d, &self.birth_dispatch);
+            e.clear_buffer(&self.reservoir_claims_buffer, 0, None);
+            self.passes["claim_reservoir"].dispatch_indirect(e, d, &self.birth_dispatch);
+            self.passes["update_reservoir"].dispatch_indirect(e, d, &self.birth_dispatch);
+            self.dispatch(e, "advance_reservoir", d, 1, 1);
             self.dispatch(e, "reset_cognitive_birth_state", d, groups, 1);
             self.dispatch(e, "release", d, groups, 1);
             if let Some(observer) = &self.family_observer {
@@ -1305,30 +1392,14 @@ pub(crate) fn metabolic_cost_at(tick: u32, s: &SimSettings) -> f32 {
     if s.metabolic_ramp_ticks == 0 {
         return s.metabolic_cost;
     }
-    let progress = (tick.min(s.metabolic_ramp_ticks) as f32) / s.metabolic_ramp_ticks as f32;
+    let progress = tick.min(s.metabolic_ramp_ticks) as f32 / s.metabolic_ramp_ticks as f32;
     METABOLIC_START_COST + (s.metabolic_cost - METABOLIC_START_COST) * progress
 }
 
-pub(crate) const MOBILITY_START_TICK: u32 = 50_000;
-pub(crate) const MOBILITY_CAP_TICK: u32 = 250_000;
-pub(crate) const FRAGMENTATION_CAP_TICK: u32 = 500_000;
-pub(crate) const SEASONALITY_CAP_TICK: u32 = 750_000;
-
-fn pressure_between(age: u32, start: u32, end: u32) -> f32 {
-    debug_assert!(start < end);
-    (age.saturating_sub(start).min(end - start) as f32) / (end - start) as f32
-}
-
-/// The effective environment age controls only deterministic ecology. Every
-/// pressure ramps smoothly to one and remains capped thereafter. Each world
-/// starts from age zero; no earned floor carries pressure between worlds.
+/// Environmental dynamics operate at fixed strength, independent of progress.
 pub(crate) fn ecological_pressures(age: u32) -> [f32; 4] {
-    [
-        pressure_between(age, MOBILITY_START_TICK, MOBILITY_CAP_TICK),
-        pressure_between(age, MOBILITY_CAP_TICK, FRAGMENTATION_CAP_TICK),
-        pressure_between(age, FRAGMENTATION_CAP_TICK, SEASONALITY_CAP_TICK),
-        0.0,
-    ]
+    let _ = age;
+    [1.0, 1.0, 1.0, 0.0]
 }
 
 fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> SimParams {
@@ -1408,9 +1479,13 @@ fn build_agents_with_traits(
                     s.habitat_height,
                     s.environment_rotation,
                 ),
-                energy: 65.0,
-                food: if i < s.population { 2.0 } else { 0.0 },
-                age: random01(&mut rng) * 300.0,
+                // Founders receive enough reserve to mature and explore, but
+                // not enough to fund an ordinary offspring without converting
+                // local material into energy.  This is a symmetric physical
+                // initial condition, not a food-seeking policy.
+                energy: 35.0,
+                food: 0.0,
+                age: 0.0,
                 max_speed: 1.2,
                 sensor_radius: s.sensor_radius,
                 max_age: 9000.0 + random01(&mut rng) * 2000.0,
@@ -1469,9 +1544,9 @@ fn build_genomes(seed: u32, s: &SimSettings) -> Vec<f32> {
     }
     genes
 }
-fn build_terrain_pair(seed: u32, epoch: u32, contrast: f32, ramp_ticks: u32) -> Vec<[f32; 4]> {
-    let a = build_habitat_at(seed, epoch, contrast, ramp_ticks);
-    let b = build_habitat_at(seed, epoch.wrapping_add(1), contrast, ramp_ticks);
+fn build_terrain_pair(seed: u32, epoch: u32, contrast: f32) -> Vec<[f32; 4]> {
+    let a = build_habitat_at(seed, epoch, contrast);
+    let b = build_habitat_at(seed, epoch.wrapping_add(1), contrast);
     terrain_pair(&a, &b)
 }
 fn terrain_pair(a: &[f32], b: &[f32]) -> Vec<[f32; 4]> {
@@ -1483,28 +1558,12 @@ fn terrain_pair(a: &[f32], b: &[f32]) -> Vec<[f32; 4]> {
         .collect()
 }
 
-fn build_habitat_at(seed: u32, epoch: u32, contrast: f32, ramp_ticks: u32) -> Vec<f32> {
+fn build_habitat_at(seed: u32, epoch: u32, contrast: f32) -> Vec<f32> {
     let mut rng = seed ^ 0xa341_316c;
     let mut patches: Vec<[f32; 7]> = Vec::new();
-    let elapsed = epoch.saturating_mul(8192);
-    let bootstrap = if ramp_ticks == 0 {
-        0.0
-    } else {
-        1.0 - (elapsed.min(ramp_ticks) as f32) / ramp_ticks as f32
-    };
-    // After the forgiving start, territory—not total food or body costs—becomes
-    // progressively more mobile through the 250,000-tick mobility cap.
-    let migration_pressure = if ramp_ticks == 0 {
-        pressure_between(elapsed, 0, MOBILITY_CAP_TICK)
-    } else {
-        let mobility_window = MOBILITY_CAP_TICK.saturating_sub(ramp_ticks);
-        if mobility_window == 0 {
-            0.0
-        } else {
-            elapsed.saturating_sub(ramp_ticks).min(mobility_window) as f32 / mobility_window as f32
-        }
-    };
-    let fragmentation = ecological_pressures(elapsed)[1];
+    // Territory moves at constant strength from the first tick.
+    let migration_pressure = 1.0;
+    let fragmentation = 1.0;
     for i in 0..24 {
         let mut center = [0.5; 2];
         for _ in 0..64 {
@@ -1524,7 +1583,7 @@ fn build_habitat_at(seed: u32, epoch: u32, contrast: f32, ramp_ticks: u32) -> Ve
         } else {
             0.02 + random01(&mut rng) * 0.025
         };
-        let radius = base_radius * (1.0 + bootstrap);
+        let radius = base_radius;
         let angle = random01(&mut rng) * std::f32::consts::TAU;
         patches.push([
             center[0],

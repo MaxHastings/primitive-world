@@ -7,16 +7,16 @@ The numeric constants below are declared modeling choices, not discovered laws.
 
 | Mechanism | Rule |
 | --- | --- |
-| Space | Bounded 2048-unit square; no wrapping |
+| Space | 2048-unit square by default; bodies wrap across edges |
 | Food / spatial cells | 512² vegetation cells / 256² neighbor cells |
 | Capacity | 16,384 GPU body slots, not a target population |
 | Reserves | Up to 100 energy and 8 carried food |
-| Body upkeep / movement | .01 energy/tick at world start, rising linearly to .06 by tick 50,000; .01 energy per actual voluntary distance |
+| Body upkeep / movement | .01→.06 energy/tick over the first 50,000 world ticks; .01 energy per actual voluntary distance |
 | Cognitive upkeep | .0005 energy per active unit per tick; inactive units cost nothing |
 | Memory writes | Absolute recurrent/trace/learned-weight change × .0001 energy |
 | Genome construction | No separate length charge; controller state is inherited in two GPU banks |
 | Movement | Adult maximum 1.2 units/tick; juvenile speed .6–1 of adult through age 400 |
-| Collection | Requested, at most .025 food × amount/tick, limited by stock/capacity |
+| Collection | Independent request, at most .025 food × amount × effort/tick, limited by stock/capacity |
 | Digestion | Automatic, at most .1 carried food/tick; 8 energy/food, energy-headroom limited |
 | Local contact | Transfer and force require a currently valid target within 6 units |
 | Signal | One scalar emission per chosen emit action, .02 energy; no target/cooldown |
@@ -93,9 +93,9 @@ Children spawn two units from the parent in a hashed direction, wrapping across
 world edges when necessary,
 with age/state/signals and learned cognitive state cleared. Only the next tick can act on them.
 Inherited masked-controller weights and topology mutate at birth; speed and sensory capacity copy without mutation.
-Free slots are allocated with a tick-rotated parent priority so low storage slots
-do not always win at capacity. Unallocated requests do not spend reserves.
-Resource provision to fresh founders (65 energy, 2 food, age 0–300) is explicit
+Free slots use a tick-rotated allocation order. Exceeding available slots flags
+an engine limitation and stops the run; the censored world cannot seed a successor.
+Resource provision to fresh founders (35 energy, no food, age 0) is explicit
 initialization, not the rule for later births.
 
 Vegetation/drop stock uses thousandths; body inventory uses float32. Death drops
@@ -108,15 +108,9 @@ must balance births against starvation, aging and contact-actor exhaustion.
 
 Seeded hubs, irregular low-yield regions, barren gaps, weather, seasonal growth,
 soil recovery and harvest depletion create the ecological environment. The same
-patches begin 100% wider and smoothly recede to their ordinary footprint by tick
-50,000; no second food layer is added. From tick 50,000 to 250,000, those same
-normal-sized patches migrate progressively faster and farther. From 250,000 to
-500,000, the same normalized habitat progressively fragments into smaller food pockets while
-its keyframe mean is preserved. From 500,000 to 750,000, regional lean seasons
-grow stronger: scarcity in one region coincides with abundance elsewhere. All
-three pressures cap at their interval endpoints. Resource geography interpolates
-keyframes every 8,192 ticks, so relocations remain gradual rather than food
-teleports.
+patches move and fragment, and regional lean seasons operate at constant strength
+from tick zero. Keyframes interpolate every 8,192 ticks. No environmental
+parameter depends on agent progress or an authored learning sequence.
 
 Habitat contrast in [0,1] mixes geography with its spatial mean: zero is uniform
 distribution, one the complete patch/gap field. Total mean habitat is preserved,
@@ -125,22 +119,21 @@ does not imply equal carrying capacity or guarantee easy founding.
 
 Environment rotation applies quarter-turns to initial positions and the entire
 habitat/weather history. It is never a brain input. These two controls change the
-environment, not the body or weights. Normal play uses contrast 1; the capped
-post-bootstrap pressures are mobility, fragmentation, and regional seasonality,
+environment, not the body or weights. Normal play uses contrast .5; the environmental dynamics are mobility, fragmentation, and regional seasonality,
 not a reward or population rescue. Manual interventions are part of the assisted
 experiment and are recorded in completed outcomes.
 
 An evolution run does not retain an earned environmental age floor. Every new
-world and every matched challenger starts at effective environment age zero, so
+world starts at effective environment age zero, so
 terrain, weather, metabolism, and action availability all restart from the same
 baseline. Agent ages and survival duration also begin at zero.
 
 ## Persistence, observation, and limits
 
-Checkpoints use format 39; founder banks use format 15. The
-primitive-v26-masked-plastic-16 model rejects older layouts without rewriting them.
+Checkpoints use format 42; founder banks use format 17. The
+primitive-v29-composable-reservoir model rejects older layouts without rewriting them.
 Checkpoints preserve settings, bodies, genomes, food, soil, event counters,
-controller traces, current/candidate founding groups, paired outcomes/history and search RNG. Derived indexing/terrain is rebuilt after load. Loading
+controller traces, the hereditary pool, world history and independent hereditary RNG streams. Derived indexing/terrain is rebuilt after load. Loading
 validates before mutating the world. Save/export refuses existing destinations.
 Local inspector identity tracking does not modify behavior.
 
@@ -156,3 +149,10 @@ gaps; it is not proof of general adaptation. Population-wide replay is
 not guaranteed bitwise deterministic because atomic contention can vary.
 Long/high-population runs can overflow u32 counters; bounded protocols and
 accounting checks must expose this rather than silently accept it.
+
+Gathering uses a signed neural actuator independently of the primary action.
+Default body metabolism rises linearly from .01 to .06 energy/tick over the
+first 50,000 ticks of each world, then remains at .06. This is limited founding
+runway for basic feeding and reproduction to become reachable under blind
+hereditary search. It does not grant energy, alter food, reward a behavior, or
+weaken the environmental dynamics, and it does not guarantee survival.

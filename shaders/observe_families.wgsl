@@ -27,10 +27,10 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
    if(old.age<params.sensor_and_padding.y){
     atomicAdd(&families[b+27u],1u);
     total(b+16u,a.collected);total(b+18u,a.ingested);
-    atomicAdd(&families[b+26u],u32(a.action==COLLECT));
+    atomicAdd(&families[b+26u],u32(bitcast<f32>(a.physical_previous[2])>0.0));
     if(perceptions[id.x].resource_here>=0.001){
      atomicAdd(&families[b+30u],1u);
-     atomicAdd(&families[b+31u],u32(a.action==COLLECT));
+     atomicAdd(&families[b+31u],u32(bitcast<f32>(a.physical_previous[2])>0.0));
     }
     if(a.alive!=0u && a.age>=params.sensor_and_padding.y){
      atomicAdd(&families[b+7u],1u);total(b+28u,a.energy);

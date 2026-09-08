@@ -74,34 +74,39 @@ Recurrent state, traces, and learned connection deltas are private to one life
 and reset at birth. Inherited local plasticity can alter only active connections
 through local activity, and each actual update pays energy.
 
-Inputs include energy, nearby food and bodies, recent outcomes, coarse
+Inputs include energy, nearby food and bodies, changes in their own energy and inventory, coarse
 near/far food regions, and the nearest neighbor in each of eight directions.
 Outputs select an action, movement, amount, contact target and displacement, or
 the value of a signal. This is a compact controller with no global map, lineage
 score, scripted food-seeking, online optimizer, curriculum, or semantic communication
 channel. Read the exact [agent interface](docs/agents.md).
 
-All modes use model `primitive-v26-masked-plastic-16`. Saves from other model
+All modes use model `primitive-v29-composable-reservoir`. Saves from other model
 layouts are incompatible; start a new world. Current saves retain inherited
 controllers and lifetime learning so the same experiment can resume.
 
 At 32x, playback requests 1,920 ticks/s; actual throughput depends on population,
-rendering, and GPU load. Headless tests on an RTX 4070 SUPER reached 1,194–1,250
-ticks/s with 1,000 starting bodies. See the [measurement conditions](docs/performance.md).
+rendering, and GPU load. See [performance](docs/performance.md) for measurement limits.
 
-## Evolution without a scoreboard
+## A viable search space without a scoreboard
 
-The project’s central rule is intentionally narrow: a population is evaluated
-by how long its world remains biologically populated before natural extinction.
-The current founding population and a mutated candidate face the same seeded
-conditions. A candidate becomes the next population only when it outlives the
-current one; its living world then continues rather than being reset.
+We define a broad, reachable space of possibilities. We avoid defining which
+solution is desirable. The environment determines consequences; evolution
+determines what persists. Read the [core direction](docs/direction.md).
 
-That is not a claim that agents are intelligent, cooperative, or generally
-capable. It is a long-running experiment in what can arise when local controllers
-inherit variation in a changing ecology. Extinction, repetition, and unused
-abilities are valid results. The full [selection and inheritance protocol](docs/evolution.md)
-is deliberately explicit so observations remain falsifiable.
+Selection happens through physical survival and reproduction. There is no
+lifespan contest, behavioral reward, population ranking or optimizer. Successful
+births place complete inherited records into a fixed 4,096-entry pool by blind
+random replacement. After natural extinction, fresh bodies sample unchanged
+records from that pool. Lifetime learning is never inherited.
+
+Gathering can compose with movement, reproduction and other actions; it remains
+controlled by the organism. Environmental dynamics operate from tick zero
+without a curriculum. Body upkeep alone rises from .01 to .06 over a fresh
+world's first 50,000 ticks, providing limited founding runway without granting
+food or energy. Extinction remains a valid outcome; a world
+that closes off nearly every viable life cycle is a design problem to investigate.
+Read the exact [inheritance protocol](docs/evolution.md).
 
 ## Explore and contribute
 
@@ -121,3 +126,6 @@ cargo run --release -- --headless --seed 42 --ticks 200000 --sample 1024 --outpu
 
 Generated runs, reports, checkpoints, and build products stay local; only the
 source and curated documentation belong in the repository.
+
+For a resumable unattended test, see [long-run testing](docs/long-run.md).
+Start a fresh experiment for this model; older saves remain untouched.

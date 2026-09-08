@@ -59,9 +59,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   let drought = drought_active * patch_strength(position, drought_center, 105.0);
 
   let spatial_wave = 0.5 + 0.5 * sin(position.x * 0.037) * cos(position.y * 0.029);
-  // At 500k the regional lean-season amplitude begins to grow. Its spatial
+  // Regional lean seasons operate from tick zero. Their spatial
   // mean remains constant: one region's lean period is another's abundance,
-  // so this tests movement and timing instead of applying a global food tax.
+  // independently of agent behavior.
   let seasonality = params.environment.z;
   let seasonal_phase = mix(
     spatial_wave,

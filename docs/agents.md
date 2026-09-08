@@ -45,11 +45,11 @@ a separate running cost.
 | --- | --- |
 | 0–3 | Energy/100, inventory/8, food underfoot, age/10,000 |
 | 4–5 | Previous voluntary velocity/1.2 |
-| 6–9 | Previous collected food, digested food, spent energy, received food |
-| 10–11 | Previous actual displacement/1.2, including contact displacement |
-| 12 | All other bodies within sensory radius, divided by 16 |
-| 13 | Remaining reproductive recovery ticks/240 |
-| 14–19 | One-hot previous requested action: none, collect, transfer, force, emit, reproduce |
+| 6–7 | Net change in own energy/100 and inventory/8 since the previous tick; zero at birth |
+| 8–9 | Previous actual displacement/1.2, including contact displacement |
+| 10–11 | Own last emitted scalar and time since emission/1,000; zero before first emission |
+| 12 | Nearby body count/16 |
+| 13–19 | Reserved, zero |
 | 20–51 | Sixteen regions, each: mean food, body count/16 |
 | 52–107 | Eight sector neighbors, each: offset x/y, voluntary velocity x/y, signal, body-present, signal-present |
 
@@ -87,14 +87,14 @@ global population input.
 
 | Outputs | Capability |
 | --- | --- |
-| 0–5 | Action logits: none, collect, transfer, force, emit, reproduce |
+| 0–5 | Primary-action logits: none, collect, transfer, force, emit, reproduce; output 1 also drives independent gathering |
 | 6–7 | Voluntary movement vector |
 | 8 | Collection/transfer amount or offspring energy investment, sigmoid [0,1] |
 | 9 | Emitted scalar, tanh [-1,1] |
 | 10–17 | Target logits over the eight sector neighbors |
 | 18–19 | Contact displacement vector |
 
-Largest action logit wins; ties favor the earlier slot. Movement accompanies one
+Largest action logit wins; ties favor the earlier slot. Movement and independently requested gathering can accompany the primary
 body action. Target choice applies to transfer and force, not local emissions.
 The shared amount/target outputs are a compact actuator interface, not a rule
 about when to help, attack, reproduce or migrate. Impossible finite intentions
@@ -121,13 +121,12 @@ noise. It repeats across founding positions; invalid data fails without fallback
 Paid births copy the parent's inherited controller and traits, then apply the
 shared mutation law described in [evolution](evolution.md). Eligible topology
 activation and retirement each have a 1% chance. Expressed parameters receive a
-capacity-independent expected budget of 23.76 draws, scaled by the square root
-of a log-uniform temperature in [1/8, 8] and the inherited mutation scale. Draws
-select expressed parameters uniformly with replacement; step size is .03 times
-the same scale. At least one controller value changes. One active plasticity
-rate and both retention traits also vary, within their bounds.
+probability .25 times inherited mutation scale of a bounded expressed-weight
+perturbation. The same event perturbs one active plasticity rate and both retention
+traits. Exact copies are allowed. Between worlds, unchanged records are sampled
+from the blind hereditary pool; there is no comparison or ranking.
 
-Between worlds, population selection compares complete founding groups. A sparse
-uniform sample of terminal descendants supplies unchanged inherited anchors;
-the other sources are fresh random immigrants or mutated incumbent founders.
-Only the complete candidate group's world duration decides what carries forward.
+Gathering also has an independent actuator: clamp(output 1, 0, 1) scales the
+requested collection amount. It can run alongside the primary selected action,
+including reproduction. A nonpositive output disables gathering even on food.
+No hunger threshold or automatic collection policy is supplied.

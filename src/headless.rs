@@ -5,20 +5,18 @@ use std::{collections::HashMap, io::Write, path::Path};
 pub const HELP: &str = "Primitive World
 Run: primitive_world [--seed N] [--founders PATH]
 Headless: --headless --ticks N --sample N --output PATH
-Default viewer: New Game starts evolution; Load Game resumes it across worlds.
+Default viewer: New Game runs a hereditary ecology; Load Game resumes it across worlds.
 Wallpaper viewer: --wallpaper uses the desktop host as a native-resolution habitat.
 Windows integration: --install-startup registers wallpaper + auto-resume at login; --uninstall-startup removes it; --stop-wallpaper asks the wallpaper to save and close.
 Wallpaper startup: --resume opens the latest saved experiment, or creates one if none exists.
 Save cleanup: --prune-saves retains the newest six snapshots per experiment and caps the library at 16 GiB.
-Headless population comparisons: --headless --ticks N [--comparisons N] [--checkpoint PATH] [--save-checkpoint NEW_PATH]
+Headless rolling worlds: --headless --ticks N [--checkpoint PATH] [--save-checkpoint NEW_PATH]
 Use --headless --single-world for diagnostics that stop at extinction.
   --load-game RECEIPT.json opens a saved experiment in the viewer.
 Playback: --view-fps 10|30|60|120|144|240 (default 30; wallpaper defaults to monitor refresh) --compute-budget 10..100 (default 100)\n  1x targets 60 ticks/second; MAX is uncapped. Budget controls work/idle time, not hardware power.\nOptions: --wallpaper --habitat-contrast X (0..1) --environment-rotation N (0..3)
          --population N --regeneration X --no-force --no-signals --static-landscape
-         --metabolic-cost X (ramp cap) --movement-cost X --motor-gain X
+         --metabolic-cost X (post-ramp upkeep) --movement-cost X --motor-gain X
          --checkpoint PATH --save-checkpoint PATH --export-founders PATH
-         --comparisons N (stop after N completed incumbent/challenger comparisons)
-         --descendant-percent N --random-percent N (headless founder mixture)
 Headless observers:
          --families (fresh worlds, 1..200000 ticks; diagnostic only)
          --journeys PATH [--journey-sample N] (read-only sampled JSONL evidence)
@@ -65,9 +63,6 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
         "--seed",
         "--founders",
         "--ticks",
-        "--comparisons",
-        "--descendant-percent",
-        "--random-percent",
         "--sample",
         "--output",
         "--population",
@@ -154,9 +149,6 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
     if !out.contains_key("--headless") {
         for key in [
             "--ticks",
-            "--comparisons",
-            "--descendant-percent",
-            "--random-percent",
             "--sample",
             "--output",
             "--save-checkpoint",
@@ -201,9 +193,6 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
     }
     if out.contains_key("--single-world") && !out.contains_key("--headless") {
         return Err("--single-world requires --headless".into());
-    }
-    if out.contains_key("--single-world") && out.contains_key("--comparisons") {
-        return Err("--comparisons requires population-comparison headless mode".into());
     }
     if out.contains_key("--headless") && !out.contains_key("--single-world") {
         for key in [
@@ -272,18 +261,6 @@ pub fn configure(sim: &mut Simulation, args: &[String]) -> Result<(), String> {
     }
     if let Some(v) = a.get("--motor-gain") {
         sim.settings.motor_response_gain = v.parse().map_err(|_| "Invalid motor gain")?;
-    }
-    if let Some(v) = a.get("--descendant-percent") {
-        sim.founder_descendant_percent = v.parse().map_err(|_| "Invalid descendant percent")?;
-    }
-    if let Some(v) = a.get("--random-percent") {
-        sim.founder_random_percent = v.parse().map_err(|_| "Invalid random percent")?;
-    }
-    if sim.founder_descendant_percent > 100
-        || sim.founder_random_percent > 100
-        || sim.founder_descendant_percent + sim.founder_random_percent > 100
-    {
-        return Err("Founder mixture percentages must be 0..=100 and sum to at most 100".into());
     }
     sim.settings.force_enabled = !a.contains_key("--no-force");
     sim.settings.communication_enabled = !a.contains_key("--no-signals");
@@ -422,7 +399,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let start = std::time::Instant::now();
     let target = sim.tick.checked_add(ticks).ok_or("Tick overflow")?;
     let mut extinct = history[0].living == 0;
-    while sim.tick < target && !extinct {
+    while sim.tick < target && !extinct && !sim.progress.engine_saturated {
         if sim.tick == famine {
             sim.apply_resource_shock(&device, &queue, [1024.0; 2], famine_radius, famine_delta);
             sim.settings.resource_regeneration = 0.0;
@@ -479,6 +456,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             }
             communication_next_sequence = total;
         }
+        sim.refresh_engine_status(&device, &queue)?;
         extinct = sim
             .read_alive_count(&device)
             .ok_or("Could not read living population; refusing to guess extinction")?
@@ -536,6 +514,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         file.write_all(&serde_json::to_vec(sample).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
     }
+    sim.refresh_engine_status(&device, &queue)?;
     let family_report = sim
         .family_observer
         .as_ref()
@@ -581,9 +560,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
     if let Some(path) = a.get("--save-checkpoint") {
         sim.save_checkpoint(&device, &queue, Path::new(path))?;
     }
-    let report = serde_json::json!({"schema":2,"build_version":env!("CARGO_PKG_VERSION"),"model":MODEL_ID,"checkpoint_version":CHECKPOINT_VERSION,"capacity":MAX_AGENTS,"seed":sim.seed,"environment_start_age":sim.environment_start_age,"earned_environment_floor":sim.progress.environment_age_floor,"effective_environment_tick":sim.tick.saturating_add(sim.environment_start_age),
+    let report = serde_json::json!({"schema":3,"build_version":env!("CARGO_PKG_VERSION"),"model":MODEL_ID,"checkpoint_version":CHECKPOINT_VERSION,"capacity":MAX_AGENTS,"seed":sim.seed,
   "initial_tick":initial_tick,"requested_ticks":ticks,"elapsed_ticks":sim.tick-initial_tick,"adapter":format!("{info:?}"),
-  "termination_reason":if extinct {"extinction"} else if sim.tick >= MAX_WORLD_TICKS {"tick_capacity"} else {"tick_limit"},
+  "termination_reason":if sim.progress.engine_saturated {"engine_capacity"} else if extinct {"extinction"} else if sim.tick >= MAX_WORLD_TICKS {"tick_capacity"} else {"tick_limit"},
   "extinction_detection_max_delay_ticks":31,
   "initial_settings":settings,"final_settings":sim.settings,"history":history,"evolution":evolution,
   "travel_observer":travel.report(sample),
@@ -608,18 +587,8 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
     };
     let ticks = number("--ticks", 10000)?;
     let sample = number("--sample", 1024)?;
-    let comparisons = a
-        .get("--comparisons")
-        .map(|v| {
-            v.parse::<u64>()
-                .map_err(|_| "Invalid --comparisons".to_string())
-        })
-        .transpose()?;
     if ticks > 1_000_000 || sample == 0 {
         return Err("Ticks must be <=1000000 and sample positive".into());
-    }
-    if comparisons == Some(0) {
-        return Err("--comparisons must be positive".into());
     }
     let instance = wgpu::Instance::new(&Default::default());
     let adapter =
@@ -650,7 +619,6 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
             .unwrap_or("evolution-report.json"),
     )?;
     let initial = sim.progress.clone();
-    let initial_comparison = initial.comparison;
     let settings = sim.settings.clone();
     let mut restart_seconds = 0.0;
     let mut simulation_seconds = 0.0;
@@ -658,32 +626,19 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
     let mut history = Vec::new();
     let start = std::time::Instant::now();
     let mut living = sim.metrics(&d, &q)?.living;
-    while elapsed < ticks
-        && comparisons.is_none_or(|target| sim.progress.comparison - initial_comparison < target)
-    {
+    while elapsed < ticks && !sim.progress.engine_saturated {
         if living == 0 {
             let at = std::time::Instant::now();
             sim.advance_world(&d, &q)?;
             restart_seconds += at.elapsed().as_secs_f64();
-            if comparisons
-                .is_some_and(|target| sim.progress.comparison - initial_comparison >= target)
-            {
-                break;
-            }
         }
         let batch_at = std::time::Instant::now();
-        let mut n = (ticks - elapsed)
-            .min(if sim.ticks_until_challenger_can_win().is_some() {
-                32
-            } else {
-                1024
-            })
+        let n = (ticks - elapsed)
+            .min(32)
             .min(sample - elapsed % sample)
             .min(MAX_WORLD_TICKS.saturating_sub(sim.tick));
-        if let Some(until_win) = sim.ticks_until_challenger_can_win() {
-            n = n.min(until_win);
-        }
         if n == 0 {
+            sim.record_engine_saturation();
             break;
         }
         let mut encoder = d.create_command_encoder(&Default::default());
@@ -695,10 +650,9 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
                 .ok_or("Population readback failed")?,
         );
         elapsed += n;
-        if living == 0 {
+        sim.refresh_engine_status(&d, &q)?;
+        if living == 0 && !sim.progress.engine_saturated {
             sim.complete_world(&d, &q)?;
-        } else {
-            sim.promote_challenger_if_outlived(living)?;
         }
         simulation_seconds += batch_at.elapsed().as_secs_f64();
         if living == 0 || elapsed == ticks || elapsed % sample == 0 {
@@ -708,19 +662,17 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
     if let Some(path) = a.get("--save-checkpoint") {
         sim.save_checkpoint(&d, &q, Path::new(path))?;
     }
-    let completed_comparisons = sim.progress.comparison - initial_comparison;
-    let termination_reason = if comparisons.is_some_and(|target| completed_comparisons >= target) {
-        "comparison_limit"
+    let termination_reason = if sim.progress.engine_saturated {
+        "engine_capacity"
     } else if sim.tick >= MAX_WORLD_TICKS {
         "tick_capacity"
     } else {
         "tick_budget"
     };
-    let value = serde_json::json!({"schema":5,"model":MODEL_ID,"build_version":env!("CARGO_PKG_VERSION"),"environment_start_age":sim.environment_start_age,"earned_environment_floor":sim.progress.environment_age_floor,"effective_environment_tick":sim.tick.saturating_add(sim.environment_start_age),
-        "adapter":format!("{info:?}"),"requested_ticks":ticks,"requested_comparisons":comparisons,"completed_comparisons":completed_comparisons,"elapsed_ticks":elapsed,
+    let value = serde_json::json!({"schema":6,"model":MODEL_ID,"build_version":env!("CARGO_PKG_VERSION"),"adapter":format!("{info:?}"),"requested_ticks":ticks,"elapsed_ticks":elapsed,
         "wall_seconds":start.elapsed().as_secs_f64(),"restart_seconds":restart_seconds,"simulation_and_sync_seconds":simulation_seconds,"settings":settings,"initial_progress":initial,"final_progress":sim.progress,
         "history":history,"termination_reason":termination_reason,"extinction_detection_max_delay_ticks":31,
-        "scope":"Founding populations compare natural survival duration on matched seeds. A living challenger is promoted immediately when it outlives its incumbent; observations are not rewards."});
+        "scope":"Fresh founders are uniform samples of one rolling hereditary reservoir. Completed-world observations do not affect heredity."});
     report
         .write_all(&serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())

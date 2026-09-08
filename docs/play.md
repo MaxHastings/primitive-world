@@ -1,8 +1,8 @@
 # Play and save
 
 Run `cargo run --release` or double-click `Play.cmd` on Windows. New Game creates
-seed-specific random founding brains. Load Game resumes the complete population
-comparison and current ecology. Configure population, seed, food growth, metabolism
+seed-specific random founding brains. Load Game resumes the hereditary pool
+and current ecology. Configure population, seed, food growth, metabolism
 and available interactions before starting; the physical rules stay fixed.
 
 Use `Play.cmd --wallpaper` for a fixed-camera desktop terrarium. The launcher
@@ -40,10 +40,8 @@ compatibility manifest needed for that composition path. Older desktop layouts
 use the dedicated background `WorkerW`; an unsupported layout reports an error
 instead of silently attaching behind an opaque background.
 
-The overview shows whether the current population or its candidate is being
-evaluated. Both face the same environment. A living candidate replaces the current
-population as soon as it outlives the incumbent, then continues running. See
-[evolution](evolution.md) for inheritance and comparison.
+The overview shows the current world and physical observations. Natural extinction
+starts a new world from the blind hereditary pool. See [evolution](evolution.md).
 
 ## Viewing
 
@@ -65,8 +63,8 @@ cargo run --release -- --seed 42 --view-speed MAX --view-fps 30
 
 Save, Main menu, close and five-minute autosaves preserve changed state. A failed
 save pauses and leaves earlier complete saves available. Snapshot pairs
-`save-*.json` and `save-*.checkpoint` belong together. Complete founding populations,
-comparison state, current brains/memory, ecology and recent world history are saved.
+`save-*.json` and `save-*.checkpoint` belong together. The hereditary pool,
+its RNG streams, current brains/memory, ecology and recent world history are saved.
 Each experiment retains its six newest complete snapshots. The complete library is
 also capped at 16 GiB; if it reaches that limit, the oldest extra snapshots are
 removed across experiments, while each experiment's newest valid snapshot is always
@@ -81,7 +79,7 @@ overrides it. Import a current receipt with Load Game or:
 cargo run --release -- --load-game path/to/save-123.json
 ```
 
-The current model is `primitive-v26-masked-plastic-16`: receipts 4, checkpoints 39,
-founder banks 15. Noncurrent data is rejected without conversion or deletion.
+The current model is `primitive-v29-composable-reservoir`: receipts 4, checkpoints 42,
+founder banks 17. Noncurrent data is rejected without conversion or deletion.
 Exports require new paths. See [headless observation](observing.md),
 [performance limits](performance.md), and the [implementation checklist](implementation-checklist.md).

@@ -67,13 +67,15 @@ pub fn validate(g: &[f32]) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 pub fn active(mask: u32, unit: usize) -> bool {
     mask & (1u32 << unit) != 0
 }
 
-/// Apply a fixed expected mutation budget over expressed circuitry only.  The
-/// number of random draws does not grow with capacity, so a larger brain is not
-/// automatically subjected to more genomic damage.
+/// Apply an occasional, bounded mutation over expressed circuitry only. A birth
+/// is allowed to be an exact inherited copy; there is no temperature redraw or
+/// compulsory per-birth change.
+#[cfg(test)]
 fn clone_activated_unit(
     genome: &mut [f32],
     donor: usize,
@@ -121,6 +123,7 @@ fn clone_activated_unit(
     }
 }
 
+#[cfg(test)]
 fn mutate_traits(genome: &mut [f32], traits: &mut CognitiveTraits, rng: &mut u32) {
     let capacity = traits.active_mask.count_ones();
     if capacity > 1 && draw(rng) < 0.01 {
@@ -159,6 +162,7 @@ fn mutate_traits(genome: &mut [f32], traits: &mut CognitiveTraits, rng: &mut u32
         traits.plasticity_rate[target] = traits.plasticity_rate[donor];
     }
 }
+#[cfg(test)]
 fn mutate_expressed(
     g: &mut [f32],
     mask: u32,
@@ -169,12 +173,9 @@ fn mutate_expressed(
     rng: &mut u32,
 ) {
     assert!(mask != 0 && g.len() == GENOME_SIZE);
-    let temperature = MUTATION_TEMPERATURE_MIN
-        * (MUTATION_TEMPERATURE_MAX / MUTATION_TEMPERATURE_MIN).powf(draw(rng));
-    let scale = temperature.sqrt() * *mutation_scale;
+    let scale = *mutation_scale;
     let magnitude = (BASE_MUTATION_MAGNITUDE * scale).max(0.000_001);
-    let expected = 23.76 * scale;
-    let draws = expected.floor() as usize + usize::from(draw(rng) < expected.fract());
+    let draws = usize::from(draw(rng) < (BASE_MUTATION_PROBABILITY * scale).min(1.0));
     let mut expressed = Vec::with_capacity(GENOME_SIZE);
     for h in 0..HIDDEN {
         if active(mask, h) {
@@ -195,34 +196,25 @@ fn mutate_expressed(
         }
     }
     expressed.extend(OUTPUT_BIAS..OUTPUT_BIAS + OUTPUTS);
-    let mut changed = false;
-    for _ in 0..draws.max(1) {
+    for _ in 0..draws {
         let choice = (draw(rng) * expressed.len() as f32) as usize;
         let index = expressed[choice];
         let old = g[index];
         g[index] = (old + (draw(rng) * 2.0 - 1.0) * magnitude).clamp(-4.0, 4.0);
-        changed |= old != g[index];
     }
-    if !changed {
-        let index = expressed[(draw(rng) * expressed.len() as f32) as usize];
-        let old = g[index];
-        let direction = if draw(rng) < 0.5 { -1.0 } else { 1.0 };
-        let value = (old + direction * magnitude).clamp(-4.0, 4.0);
-        g[index] = if value == old {
-            (old - direction * magnitude).clamp(-4.0, 4.0)
-        } else {
-            value
-        };
+    if draws != 0 {
+        let units: Vec<_> = (0..HIDDEN).filter(|&h| active(mask, h)).collect();
+        let h = units[(draw(rng) * units.len() as f32) as usize];
+        plasticity[h] = (plasticity[h] + (draw(rng) * 2.0 - 1.0) * magnitude).clamp(-0.2, 0.2);
+        *trace_retention =
+            (*trace_retention + (draw(rng) * 2.0 - 1.0) * magnitude).clamp(0.0, 0.9999);
+        *learned_weight_retention =
+            (*learned_weight_retention + (draw(rng) * 2.0 - 1.0) * magnitude).clamp(0.0, 0.9999);
+        *mutation_scale = (*mutation_scale * (0.97 + 0.06 * draw(rng))).clamp(0.25, 4.0);
     }
-    let units: Vec<_> = (0..HIDDEN).filter(|&h| active(mask, h)).collect();
-    let h = units[(draw(rng) * units.len() as f32) as usize];
-    plasticity[h] = (plasticity[h] + (draw(rng) * 2.0 - 1.0) * magnitude).clamp(-0.2, 0.2);
-    *trace_retention = (*trace_retention + (draw(rng) * 2.0 - 1.0) * magnitude).clamp(0.0, 0.9999);
-    *learned_weight_retention =
-        (*learned_weight_retention + (draw(rng) * 2.0 - 1.0) * magnitude).clamp(0.0, 0.9999);
-    *mutation_scale = (*mutation_scale * (0.97 + 0.06 * draw(rng))).clamp(0.25, 4.0);
 }
 
+#[cfg(test)]
 pub fn mutate_inherited(g: &mut [f32], traits: &mut CognitiveTraits, seed: u32) {
     let mut rng = seed;
     mutate_traits(g, traits, &mut rng);
@@ -292,12 +284,11 @@ pub fn evaluate(
 mod tests {
     use super::*;
     #[test]
-    fn inheritance_mutation_is_bounded_reproducible_and_never_exact() {
+    fn inheritance_mutation_is_bounded_reproducible_and_can_be_exact() {
         let parent = random_genome(&mut 17);
         let mut child = parent;
         mutate_inherited(&mut child, &mut AgentGpu::default().cognitive_traits(), 9);
         validate(&child).unwrap();
-        assert_ne!(child, parent);
         let mut again = parent;
         mutate_inherited(&mut again, &mut AgentGpu::default().cognitive_traits(), 9);
         assert_eq!(again, child);

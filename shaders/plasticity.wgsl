@@ -15,9 +15,9 @@ fn trace_input(k:u32)->u32{return k;}
 fn trace_hidden(h:u32)->u32{return INPUT_COUNT+h;}
 fn trace_output(o:u32)->u32{return INPUT_COUNT+HIDDEN_COUNT+o;}
 
-fn update_fast(slot:u32,index:u32,pre:f32,post:f32,rate:f32,modulation:f32,retention:f32,change:ptr<function,f32>){
+fn update_fast(slot:u32,index:u32,pre:f32,post:f32,rate:f32,retention:f32,change:ptr<function,f32>){
  let old=fast_value(slot,index);
- let next=clamp(retention*old+rate*modulation*pre*post,-1.0,1.0);
+ let next=clamp(retention*old+rate*pre*post,-1.0,1.0);
  (*change)+=abs(next-old);set_fast(slot,index,next);
 }
 
@@ -41,15 +41,15 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
  }
  storageBarrier();
  if(decisions[i].invalid==0u && unit_active(mask,h)){
-  let rate=after[i].plasticity_rate[h];let modulation=2.0*decisions[i].update_gates[h]-1.0;let retention=after[i].learned_weight_retention;
+  let rate=after[i].plasticity_rate[h];let retention=after[i].learned_weight_retention;
   let candidate=decisions[i].candidate[h];
-  for(var k=0u;k<INPUT_COUNT;k++){update_fast(i,fast_input(h,k),traces[trace_base+k],candidate,rate,modulation,retention,&change);}
+  for(var k=0u;k<INPUT_COUNT;k++){update_fast(i,fast_input(h,k),traces[trace_base+k],candidate,rate,retention,&change);}
   for(var k=0u;k<HIDDEN_COUNT;k++){if(unit_active(mask,k)){
    let pre=traces[trace_base+INPUT_COUNT+k];
-   update_fast(i,fast_recurrent(h,k),pre,candidate,rate,modulation,retention,&change);
-   update_fast(i,fast_gate(h,k),pre,decisions[i].update_gates[h],rate,modulation,retention,&change);
+   update_fast(i,fast_recurrent(h,k),pre,candidate,rate,retention,&change);
+   update_fast(i,fast_gate(h,k),pre,decisions[i].update_gates[h],rate,retention,&change);
   }}
-  for(var o=0u;o<OUTPUT_COUNT;o++){update_fast(i,fast_output(o,h),traces[trace_base+INPUT_COUNT+h],tanh(decisions[i].outputs[o]),rate,modulation,retention,&change);}
+  for(var o=0u;o<OUTPUT_COUNT;o++){update_fast(i,fast_output(o,h),traces[trace_base+INPUT_COUNT+h],tanh(decisions[i].outputs[o]),rate,retention,&change);}
   change+=abs(decisions[i].hidden[h]-before[i].hidden[h]);
  }
  changes[h]=change;workgroupBarrier();

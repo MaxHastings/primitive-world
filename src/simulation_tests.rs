@@ -331,7 +331,7 @@ fn environment_rotation_preserves_body_traits_and_is_not_a_controller_input() {
         assert_eq!(params.mutation[2], 1.0);
         assert_eq!(
             params.environment,
-            [0.00005, 0.0, 0.0, settings.memory_write_energy]
+            [1.0, 1.0, 1.0, settings.memory_write_energy]
         );
         near(params.time_and_costs[3], 0.06);
     }
@@ -773,6 +773,9 @@ fn fresh_world_defaults_match_documented_physical_settings() {
         crate::simulation::metabolic_cost_at(100_000, &settings),
         0.06,
     );
+    let mut fixed = settings.clone();
+    fixed.metabolic_ramp_ticks = 0;
+    near(crate::simulation::metabolic_cost_at(0, &fixed), 0.06);
     assert!(settings.social_actions_enabled);
     assert!(settings.social_actions_enabled);
     // The shader spreads reproduction over ticks 0–2,500, transfer over
@@ -791,6 +794,18 @@ fn settings_require_explicit_motor_response_and_reject_bad_gains() {
     let mut value = serde_json::to_value(SimSettings::default()).unwrap();
     value.as_object_mut().unwrap().remove("motor_response_gain");
     assert!(serde_json::from_value::<SimSettings>(value).is_err());
+    let mut legacy = serde_json::to_value(SimSettings::default()).unwrap();
+    legacy
+        .as_object_mut()
+        .unwrap()
+        .remove("metabolic_ramp_ticks");
+    assert_eq!(
+        serde_json::from_value::<SimSettings>(legacy)
+            .unwrap()
+            .metabolic_ramp_ticks,
+        0,
+        "flat-metabolism checkpoints must retain their original physics"
+    );
     let settings = SimSettings::default();
     for gain in [0.0, -1.0, 33.0, f32::NAN, f32::INFINITY] {
         let settings = SimSettings {
@@ -979,7 +994,6 @@ fn disabled_social_actions_mask_social_logits_without_prescribing_behavior() {
 fn reproduction_is_available_without_a_bootstrap_curriculum() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
-    s.settings.metabolic_ramp_ticks = 50_000;
     s.reset(&q);
     let genome = fixed(5, [0.0; 2]);
     for slot in 0..256 {
@@ -1053,11 +1067,7 @@ fn survivor_sample_keeps_current_child_genes_after_extinction() {
         .unwrap();
     let actual = s.read_genomes(&d, &q, MAX_AGENTS as usize).unwrap();
     let child = actual[child_slot * GENOME_SIZE..(child_slot + 1) * GENOME_SIZE].to_vec();
-    assert_ne!(
-        child.as_slice(),
-        parent.as_slice(),
-        "fixture must have real birth mutations"
-    );
+    crate::brain::validate(&child).unwrap();
     let mut latest = None;
     crate::survivor_observer::observe(&mut latest, &s, &d, &q).unwrap();
     let saved = latest.as_ref().unwrap();
@@ -1084,7 +1094,7 @@ fn survivor_sample_keeps_current_child_genes_after_extinction() {
 }
 
 #[test]
-fn birth_mutation_never_copies_a_parent_genome_exactly() {
+fn birth_can_copy_a_parent_genome_exactly() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let parent = fixed(5, [0.0; 2]);
@@ -1096,10 +1106,10 @@ fn birth_mutation_never_copies_a_parent_genome_exactly() {
         .position(|a| a.alive != 0 && a.ancestry_depth == 1)
         .expect("fixture must produce a child");
     let genomes = s.read_genomes(&d, &q, MAX_AGENTS as usize).unwrap();
-    assert_ne!(
+    assert_eq!(
         &genomes[child_slot * GENOME_SIZE..(child_slot + 1) * GENOME_SIZE],
         parent.as_slice(),
-        "every inherited newborn genome must vary"
+        "an unchanged inheritance is a valid birth"
     );
 }
 
@@ -1213,10 +1223,10 @@ fn scene(d: &wgpu::Device, q: &wgpu::Queue) -> Simulation {
     s.settings.population = 0;
     s.settings.social_actions_enabled = true;
     s.settings.metabolic_cost = 0.06;
+    s.settings.metabolic_ramp_ticks = 0;
     // These fixtures isolate physical actions; cognitive costs have dedicated tests.
     s.settings.active_unit_upkeep = 0.0;
     s.settings.memory_write_energy = 0.0;
-    s.settings.metabolic_ramp_ticks = 0;
     s.settings.resource_regeneration = 0.0;
     s.settings.evolving_landscape = false;
     s.reset(q);
@@ -1305,7 +1315,7 @@ fn layout_and_cli_contract() {
             "--comparisons".into(),
             "2".into(),
         ])
-        .is_ok()
+        .is_err()
     );
     let settings = SimSettings {
         sensor_radius: f32::NAN,
@@ -1419,9 +1429,15 @@ fn agents_wrap_across_world_edges_without_a_teleport_movement_cost() {
     step(&mut s, &d, &q, 1);
 
     let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
-    assert!(after.position[0] < 1.2, "agent should reappear at the left edge");
+    assert!(
+        after.position[0] < 1.2,
+        "agent should reappear at the left edge"
+    );
     assert!(after.velocity[0] > 0.0);
-    assert!(after.spent < 0.1, "wrapping must not charge a world-width move");
+    assert!(
+        after.spent < 0.1,
+        "wrapping must not charge a world-width move"
+    );
 }
 #[test]
 fn digestion_is_inventory_limited_rate_limited_and_energy_capped() {
@@ -1704,8 +1720,8 @@ fn reproduction_requires_paid_energy_not_an_arbitrary_food_stockpile() {
 
 #[test]
 fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
-    let full = build_habitat_at(42, 3, 1.0, 0);
-    let uniform = build_habitat_at(42, 3, 0.0, 0);
+    let full = build_habitat_at(42, 3, 1.0);
+    let uniform = build_habitat_at(42, 3, 0.0);
     let mean = |values: &[f32]| values.iter().map(|v| *v as f64).sum::<f64>() / values.len() as f64;
     assert!(uniform.iter().all(|v| *v == uniform[0]));
     assert!((mean(&full) - mean(&uniform)).abs() < 0.00001);
@@ -1716,26 +1732,21 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v26-masked-plastic-16");
+    assert_eq!(MODEL_ID, "primitive-v29-composable-reservoir");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
     assert_eq!(crate::founders::bundled().version, FOUNDER_BANK_VERSION);
 }
 
 #[test]
-fn ecological_pressures_ramp_in_order_then_cap() {
-    assert_eq!(ecological_pressures(50_000), [0.0; 4]);
-    assert_eq!(ecological_pressures(150_000), [0.5, 0.0, 0.0, 0.0]);
-    assert_eq!(ecological_pressures(250_000), [1.0, 0.0, 0.0, 0.0]);
-    assert_eq!(ecological_pressures(375_000), [1.0, 0.5, 0.0, 0.0]);
-    assert_eq!(ecological_pressures(500_000), [1.0, 1.0, 0.0, 0.0]);
-    assert_eq!(ecological_pressures(625_000), [1.0, 1.0, 0.5, 0.0]);
-    assert_eq!(ecological_pressures(750_000), [1.0, 1.0, 1.0, 0.0]);
-    assert_eq!(ecological_pressures(u32::MAX), [1.0, 1.0, 1.0, 0.0]);
+fn ecological_dynamics_have_no_age_or_progress_curriculum() {
+    for age in [0, 50_000, 150_000, 375_000, 625_000, 750_000, u32::MAX] {
+        assert_eq!(ecological_pressures(age), [1.0, 1.0, 1.0, 0.0]);
+    }
 }
 
 #[test]
 fn fragmentation_preserves_habitat_mean() {
-    let before = build_habitat_at(42, 30, 1.0, DEFAULT_METABOLIC_RAMP_TICKS);
+    let before = build_habitat_at(42, 30, 1.0);
     let mut after = before.clone();
     let mean = |values: &[f32]| values.iter().map(|v| *v as f64).sum::<f64>() / values.len() as f64;
     apply_fragmentation(&mut after, 1.0, 30, 42);
@@ -1905,6 +1916,9 @@ fn batching_checkpoint_and_selection_preserve_state() {
     step(&mut s, &d, &q, 12);
     let expected = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
     s.reset(&q);
+    // Recreate the same empty-resource fixture, not a newly seeded habitat.
+    q.write_buffer(&s.resource_buffer, 0, &vec![0; 512 * 512 * 4]);
+    q.write_buffer(&s.ground_buffer, 0, &vec![0; 512 * 512 * 32]);
     put(&s, &q, 0, a, &g);
     for _ in 0..12 {
         step(&mut s, &d, &q, 1);
@@ -1947,7 +1961,7 @@ fn batching_checkpoint_and_selection_preserve_state() {
 fn headless_extinction_stops_without_waiting_for_the_report_or_tick_limit() {
     for (label, population, metabolism, limit, expected_tick, reason) in [
         ("empty", "0", "0.06", "200000", 0, "extinction"),
-        ("dies", "1", "100", "200000", 288, "extinction"),
+        ("dies", "1", "100", "200000", 192, "extinction"),
         ("alive", "1", "0.06", "7", 7, "tick_limit"),
     ] {
         let report = temp(&format!("early-stop-{label}.json"));
@@ -2151,11 +2165,7 @@ fn birth_variation_preserves_parent_cost_and_resets_child_memory() {
         &g,
         "birth must not alter the parent genome"
     );
-    assert_ne!(
-        &genes[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE],
-        &g,
-        "every newborn must vary from its inherited genome"
-    );
+    crate::brain::validate(&genes[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE]).unwrap();
     // Rejected birth spends only ordinary upkeep and never publishes a child genome.
     let mut s = scene(&d, &q);
     a.energy = 20.0;
