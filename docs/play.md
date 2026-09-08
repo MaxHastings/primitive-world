@@ -59,11 +59,18 @@ cargo run --release -- --seed 42 --view-speed MAX --view-fps 30
 ## Saving
 
 Save, Main menu, close and five-minute autosaves preserve changed state. A failed
-save pauses and leaves earlier complete saves available. Append-only pairs
+save pauses and leaves earlier complete saves available. Snapshot pairs
 `save-*.json` and `save-*.checkpoint` belong together. Complete founding populations,
 comparison state, current brains/memory, ecology and recent world history are saved.
-No files are automatically removed. Default checkpoints are roughly 115–120 MB;
-allow about 1.4 GB per hour of autosaves. A crash can lose work since the last save.
+Each experiment retains its six newest complete snapshots. The complete library is
+also capped at 16 GiB; if it reaches that limit, the oldest extra snapshots are
+removed across experiments, while each experiment's newest valid snapshot is always
+preserved. Run `primitive_world.exe --prune-saves` to apply the same cleanup now.
+A crash can lose work since the last save.
+
+`primitive_world.exe --purge-legacy-saves` separately removes paired saves whose
+receipt explicitly identifies an incompatible model. The current simulator cannot
+open those saves, so this is useful after upgrading from an older model.
 
 The background library scan skips incomplete or noncurrent data with a notice.
 Storage defaults to the platform application-data folder; `PRIMITIVE_WORLD_SAVES`

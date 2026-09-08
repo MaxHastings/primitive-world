@@ -9,6 +9,8 @@ Default viewer: New Game starts evolution; Load Game resumes it across worlds.
 Wallpaper viewer: --wallpaper uses the desktop host as a native-resolution habitat.
 Windows integration: --install-startup registers wallpaper + auto-resume at login; --uninstall-startup removes it; --stop-wallpaper asks the wallpaper to save and close.
 Wallpaper startup: --resume opens the latest saved experiment, or creates one if none exists.
+Save cleanup: --prune-saves retains the newest six snapshots per experiment and caps the library at 16 GiB.
+Legacy cleanup: --purge-legacy-saves removes paired saves from explicitly incompatible models.
 Headless population comparisons: --headless --ticks N [--comparisons N] [--checkpoint PATH] [--save-checkpoint NEW_PATH]
 Use --headless --single-world for diagnostics that stop at extinction.
   --load-game RECEIPT.json opens a saved experiment in the viewer.

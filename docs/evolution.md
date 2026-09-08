@@ -113,10 +113,14 @@ game receipt 4, founder bank 13. Noncurrent files are rejected, never converted,
 executed through a compatibility path, overwritten or deleted.
 
 The viewer saves on explicit Save, menu, close and every five minutes of changed
-state. Saves remain append-only; no automatic deletion. A default checkpoint is
-roughly 115–120 MB depending on phase. At twelve autosaves/hour, allow roughly
-1.4 GB/hour, plus explicit saves. A crash can lose progress since the last save,
-including completed worlds. Raw headless checkpoints are written when requested.
+state. Each experiment retains its six newest complete snapshots, and the whole
+library is capped at 16 GiB while protecting each experiment's newest valid
+snapshot. `--prune-saves` applies that retention policy on demand. A crash can lose
+progress since the last save, including completed worlds. Raw headless checkpoints
+are written when requested.
+
+`--purge-legacy-saves` is an explicit cleanup for paired receipts that identify a
+different model. Current-format retention never removes incompatible data on its own.
 
 ## Command line
 

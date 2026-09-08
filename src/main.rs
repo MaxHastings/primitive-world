@@ -872,6 +872,34 @@ impl ApplicationHandler for App {
 
 fn main() {
     let options: Vec<_> = std::env::args().collect();
+    if options.iter().any(|x| x == "--prune-saves") {
+        if options.len() != 2 {
+            eprintln!("Use --prune-saves by itself");
+            std::process::exit(2);
+        }
+        match experiments::prune(&experiments::save_root()) {
+            Ok(report) => println!("{}", report.message()),
+            Err(error) => {
+                eprintln!("Could not prune saves: {error}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+    if options.iter().any(|x| x == "--purge-legacy-saves") {
+        if options.len() != 2 {
+            eprintln!("Use --purge-legacy-saves by itself");
+            std::process::exit(2);
+        }
+        match experiments::purge_legacy(&experiments::save_root()) {
+            Ok(report) => println!("{}", report.legacy_message()),
+            Err(error) => {
+                eprintln!("Could not purge legacy saves: {error}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
     #[cfg(windows)]
     {
         if options.iter().any(|x| x == "--stop-wallpaper") {
