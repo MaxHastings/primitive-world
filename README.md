@@ -7,11 +7,9 @@ find food, spend energy, reproduce, communicate, and survive changing terrain.
 There is no pretrained model, cloud service, or authored strategy—just a world
 whose consequences decide what persists.
 
-<video src="https://raw.githubusercontent.com/MaxHastings/primitive-world/main/assets/primitive-world-demo.mp4" autoplay muted loop playsinline controls preload="metadata">
-  Your browser does not support the video tag.
-</video>
+[![Primitive World running as a living desktop background](docs/images/primitive-world-demo.gif)](assets/primitive-world-demo.mp4)
 
-[Watch the desktop-background demo on Reddit](https://www.reddit.com/r/ArtificialInteligence/comments/1waf33e/running_an_ecology_survival_simulation_experiment/)
+*Autoplaying preview — click for the full 1080p video. [Watch the original Reddit post.](https://www.reddit.com/r/ArtificialInteligence/comments/1waf33e/running_an_ecology_survival_simulation_experiment/)*
 
 ## Make it your wallpaper
 
