@@ -7,7 +7,7 @@ find food, spend energy, reproduce, communicate, and survive changing terrain.
 There is no pretrained model, cloud service, or authored strategy—just a world
 whose consequences decide what persists.
 
-<video src="https://v.redd.it/h2cu8t0sb8oh1/CMAF_1080.mp4?source=fallback" autoplay muted loop playsinline controls width="100%">
+<video src="https://raw.githubusercontent.com/MaxHastings/primitive-world/main/assets/primitive-world-demo.mp4" autoplay muted loop playsinline controls preload="metadata">
   Your browser does not support the video tag.
 </video>
 
