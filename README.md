@@ -44,7 +44,7 @@ For a regular window instead, run `cargo run --release` or double-click
 ## What is happening in the world?
 
 Each tick is simulated on the GPU. Food grows and shifts across a bounded world;
-agents sense only their local neighborhood, update private memory, choose an
+agents wrap to the opposite edge when they cross it, sense only their local neighborhood, update private memory, choose an
 action, and pay its physical cost. Food, energy, aging, movement, contact, and
 reproduction are ordinary world rules—not rewards for a hidden policy.
 

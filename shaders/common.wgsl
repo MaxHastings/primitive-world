@@ -35,6 +35,9 @@ struct InteractionEvent {tick:u32,actor:u32,other:u32,action:u32,amount:f32,sequ
 fn unit_vector(v:vec2<f32>)->vec2<f32>{return v/max(length(v),0.0001);}
 fn hash_u32(input:u32)->u32{var v=input;v=(v^61u)^(v>>16u);v=v+(v<<3u);v=v^(v>>4u);v=v*0x27d4eb2du;return v^(v>>15u);}
 fn random01(seed:u32)->f32{return f32(hash_u32(seed)&65535u)/65535.0;}
+// The simulation space is a torus: positions always remain in the half-open
+// world rectangle, while crossing an edge continues at the opposite edge.
+fn wrap_world(position:vec2<f32>,world_size:vec2<f32>)->vec2<f32>{return position-world_size*floor(position/world_size);}
 fn ground_index(position:vec2<f32>,world_size:vec2<f32>)->u32{let c=vec2<u32>(clamp(position/world_size*512.0,vec2<f32>(0),vec2<f32>(511)));return c.y*512u+c.x;}
 fn finite(v:f32)->bool{return v==v && abs(v)<=3.4e38;}
 fn unit_active(mask:u32,h:u32)->bool{return (mask&(1u<<h))!=0u;}

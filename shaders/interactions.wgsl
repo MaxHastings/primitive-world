@@ -57,14 +57,13 @@ fn resolve(@builtin(global_invocation_id) id: vec3<u32>) {
     var displacement=d.force*3.0;
     let requested_cost=length(displacement)*0.2;
     if(requested_cost>a.energy){displacement*=a.energy/max(requested_cost,0.00001);}
-    let old=b.position;
-    b.position=clamp(old+displacement,vec2<f32>(0),params.world_size.xy);
-    let actual=b.position-old;let cost=min(a.energy,length(actual)*0.2);
-    b.moved+=actual;a.energy-=cost;a.spent+=cost;
+    b.position=wrap_world(b.position+displacement,params.world_size.xy);
+    let cost=min(a.energy,length(displacement)*0.2);
+    b.moved+=displacement;a.energy-=cost;a.spent+=cost;
 
     atomicAdd(&stats[13],u32(round(cost*1000.0)));
-    atomicAdd(&stats[15],u32(round(length(actual)*1000.0)));
-    record(i,j,APPLY_FORCE,length(actual),a.position);
+    atomicAdd(&stats[15],u32(round(length(displacement)*1000.0)));
+    record(i,j,APPLY_FORCE,length(displacement),a.position);
     atomicAdd(&stats[5],1u);
     if(a.energy<=0.0){a.alive=0u;atomicAdd(&stats[7],1u);}
   }

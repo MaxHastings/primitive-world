@@ -1407,6 +1407,22 @@ fn physical_collection_ingestion_and_movement_conserve_reserves() {
     near(after.energy + after.food * 8.0 + after.spent, 58.0);
     assert!(after.ingested > 0.0);
 }
+
+#[test]
+fn agents_wrap_across_world_edges_without_a_teleport_movement_cost() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut a = body([WORLD_SIZE - 0.1, 902.0]);
+    a.energy = 50.0;
+    put(&s, &q, 0, a, &fixed(1, [0.5, 0.0]));
+
+    step(&mut s, &d, &q, 1);
+
+    let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
+    assert!(after.position[0] < 1.2, "agent should reappear at the left edge");
+    assert!(after.velocity[0] > 0.0);
+    assert!(after.spent < 0.1, "wrapping must not charge a world-width move");
+}
 #[test]
 fn digestion_is_inventory_limited_rate_limited_and_energy_capped() {
     let (d, q) = gpu();

@@ -46,7 +46,9 @@ kin recognition, health meter, or inherited body-shape evolution is simulated.
 A tick is a discretization, not simultaneous continuous physics. Collection uses
 atomic stock subtraction with bounded retries: contention may lose an opportunity
 but must not duplicate food. Dropped supplies are picked up before vegetation.
-Boundaries clip motion; motion cost follows actual displacement.
+Agent motion wraps at world boundaries, so crossing one edge continues from the
+opposite edge. Motion cost follows actual displacement, never the visual jump
+across the map.
 
 ## Interactions without prescribed social meaning
 
@@ -56,7 +58,8 @@ utility score, kin preference, or automatic sharing.
 
 Force is a kinematic contact actuator: a chosen vector displaces a nearby body up
 to three units. The actor pays .2 energy per actual displaced unit. Affordable
-distance is bounded by its remaining energy; world edges can shorten it. No
+distance is bounded by its remaining energy; wrapping preserves it across world
+edges. No
 success roll, recipient energy tax, automatic food spill, loot or eastward fallback
 exists. There is no recoil or momentum, consistently with kinematic locomotion.
 The explicit contact cost is a drag calibration, not a penalty for aggression.
@@ -86,7 +89,8 @@ mandatory food transfer exists; the child starts with zero inventory. Thus birth
 does not create food, nor require stockpiling while automatic digestion consumes
 the same stock. Parents may exhaust themselves; the world does not prevent it.
 
-Children spawn two units from the parent in a hashed direction, boundary-clipped,
+Children spawn two units from the parent in a hashed direction, wrapping across
+world edges when necessary,
 with age/state/signals and learned cognitive state cleared. Only the next tick can act on them.
 Inherited masked-controller weights and topology mutate at birth; speed and sensory capacity copy without mutation.
 Free slots are allocated with a tick-rotated parent priority so low storage slots

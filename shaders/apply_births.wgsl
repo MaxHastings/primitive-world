@@ -16,7 +16,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  let child_energy=params.sensor_and_padding.w*0.8*d.amount;let cost=params.sensor_and_padding.w*0.2+child_energy;
  if(p.energy<cost){atomicAdd(&stats[17],1u);return;}
  var child:Agent;let angle=random01(p.rng)*6.2831853;
- child.position=clamp(p.position+vec2<f32>(cos(angle),sin(angle))*2.0,vec2<f32>(0),params.world_size.xy);
+ child.position=wrap_world(p.position+vec2<f32>(cos(angle),sin(angle))*2.0,params.world_size.xy);
  child.energy=child_energy;child.food=0.0;p.energy-=cost;p.spent+=cost;p.next_birth=params.tick+params.lifecycle.y;p.lifetime_births++;
  if(p.energy<=0.0){p.alive=0u;atomicAdd(&stats[1],1u);}
  child.max_speed=p.max_speed;child.sensor_radius=p.sensor_radius;child.max_age=9000.0+2000.0*random01(p.rng^ci);
