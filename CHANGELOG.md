@@ -1,26 +1,14 @@
 # Changelog
 
-## Unreleased — v32 GPU body-layout repair
+## Unreleased — v30 raw-physical consolidation
 
-- Restore the CPU/GPU `Agent` layout after the v30 raw-feedback cleanup removed
-  a field: the explicit WGSL `vec2` alignment word preserves both the 296-byte
-  runtime-array stride and all member offsets after that boundary.
-- Advance to model `primitive-v32-raw-physical-reservoir` and checkpoint format
-  45. v30 and preliminary v31 checkpoints are preserved but rejected because
-  their body records had incompatible CPU/GPU layouts.
-
-## Unreleased — raw physical feedback
-
-- Replace controller-visible collection, digestion, spending, received-transfer,
-  and prior-gathering labels with own energy/inventory deltas and actual body
-  displacement, including contact displacement.
-- Keep the recurrent update gate for state only; local plasticity now uses
-  inherited signed rate, pre/post activity, and retention without gate
-  modulation.
-- Remove redundant primary collection selection: gathering is output 1's
-  independent effort channel, while movement remains composable with one
-  discrete primary action. Checkpoint format 43 and founder bank 18 reject
-  prior layouts.
+- Restore the deliberately small v29→v30 behavioral change: output 1 is only
+  continuous gathering effort; controller feedback is own energy/inventory
+  delta and actual displacement; input slots 13–19 remain reserved zeroes; and
+  each successful birth refreshes one blind reservoir entry.
+- Retain the repaired explicit CPU/GPU layout alignment. The model remains
+  `primitive-v30-raw-physical-reservoir`; checkpoint format 50 rejects the
+  discarded corrupt V30 layouts while preserving their files.
 
 ## Unreleased — reachable possibilities and blind continuity
 

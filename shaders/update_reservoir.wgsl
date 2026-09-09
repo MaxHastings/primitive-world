@@ -1,4 +1,4 @@
-// Successful births alone enter the rolling hereditary reservoir.  The copied
+// Successful births alone enter the rolling hereditary reservoir. The copied
 // state is strictly the child's genome and inherited cognitive traits.
 @group(0) @binding(0) var<storage,read> agents:array<Agent>;
 @group(0) @binding(1) var<storage,read> free_indices:array<u32>;

@@ -82,7 +82,7 @@ the value of a signal. This is a compact controller with no global map, lineage
 score, scripted food-seeking, online optimizer, curriculum, or semantic communication
 channel. Read the exact [agent interface](docs/agents.md).
 
-All modes use model `primitive-v32-raw-physical-reservoir`. Saves from other model
+All modes use model `primitive-v30-raw-physical-reservoir`. Saves from other model
 layouts are incompatible; start a new world. Current saves retain inherited
 controllers and lifetime learning so the same experiment can resume.
 

@@ -79,7 +79,7 @@ overrides it. Import a current receipt with Load Game or:
 cargo run --release -- --load-game path/to/save-123.json
 ```
 
-The current model is `primitive-v32-raw-physical-reservoir`: receipts 4, checkpoints 45,
+The current model is `primitive-v30-raw-physical-reservoir`: receipts 4, checkpoints 50,
 founder banks 18. Noncurrent data is rejected without conversion or deletion.
 Exports require new paths. See [headless observation](observing.md),
 [performance limits](performance.md), and the [implementation checklist](implementation-checklist.md).

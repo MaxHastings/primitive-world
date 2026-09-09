@@ -6,8 +6,8 @@ and general adaptation are unverified capabilities.
 ## Build and data formats
 
 - Application version: 0.9.0.
-- Model: `primitive-v32-raw-physical-reservoir`.
-- Checkpoint format: 44, including lifetime state, hereditary pool, RNG streams and world history.
+- Model: `primitive-v30-raw-physical-reservoir`.
+- Checkpoint format: 50, including lifetime state, hereditary pool, RNG streams and world history.
 - Founder-bank format: 18; game receipts: 4.
 - Genome allocation: 163.25 MiB for 16,384 bodies, plus world/render buffers.
 

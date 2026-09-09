@@ -98,8 +98,7 @@ global population input.
 
 The largest enabled primary-action logit wins; ties favor the earlier slot.
 Movement and independently requested gathering can accompany the primary body
-action. Transfer, force,
-signal, and reproduction deliberately share one primary effector for the tick;
+action. Transfer, force, signal, and reproduction deliberately share one primary effector for the tick;
 this is a finite body-action constraint, not a preference among their meanings.
 Target choice applies to transfer and force, not local emissions. The shared
 amount/target outputs are a compact actuator interface, not a rule about when to

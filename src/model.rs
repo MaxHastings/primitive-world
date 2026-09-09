@@ -1,10 +1,10 @@
 //! primitive-world: fixed-frame sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
 /// Persistence accepts only this model's controller and lifetime-state layout.
-pub const MODEL_ID: &str = "primitive-v32-raw-physical-reservoir";
+pub const MODEL_ID: &str = "primitive-v30-raw-physical-reservoir";
 pub const FOUNDER_BANK_VERSION: u32 = 18;
-pub const CHECKPOINT_VERSION: u32 = 45;
-pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD045";
+pub const CHECKPOINT_VERSION: u32 = 50;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD050";
 /// Initial body upkeep while a fresh world establishes its first life cycles.
 pub const METABOLIC_START_COST: f32 = 0.01;
 pub const DEFAULT_METABOLIC_RAMP_TICKS: u32 = 50_000;
