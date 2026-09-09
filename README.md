@@ -159,3 +159,12 @@ source and curated documentation belong in the repository.
 
 For a resumable unattended test, see [long-run testing](docs/long-run.md).
 Start a fresh experiment for this model; older saves remain untouched.
+
+Juveniles mature at 1,800 ticks. Over the opening 100,000 world ticks, newborn
+gathering smoothly falls from 100% to 1% of adult ability, while their own growth
+ramps it back to full ability by maturity. They have growing
+energy/food storage. Ordinary food transfer can provision them; no care policy or
+feeding quota exists. Random founders start mature to bootstrap the population.
+See [juvenile physiology](docs/agents.md#juvenile-physiology) and the
+[validation results](docs/juvenile-validation.md). Run the fixed-seed continuity
+probe with `python tools/juvenile_probe.py --output reports/juvenile-probe.json`.

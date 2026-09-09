@@ -14,7 +14,7 @@ body frame and world frame only at the physics boundary.
 
 Voluntary locomotion supplies bounded forward thrust and turning torque. Angular
 velocity becomes `0.85*angular_velocity + 0.0375*turn_effort` before heading
-integration. Applied turning effort costs `0.005*abs(turn_effort)` energy;
+integration. Applied turning effort costs `0.02*abs(turn_effort)` energy;
 coasting is free. Angular velocity starts at zero for founders and newborns. Contact
 impulses change actual velocity independently. Damping and integration then
 advance position on the torus. This makes observed relative motion, recoil, and

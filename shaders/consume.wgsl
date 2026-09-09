@@ -10,7 +10,7 @@
 fn demand(i:u32)->u32 {
  let a=agents[i];let d=decisions[i];
  if(a.alive!=ORGANISM || d.invalid!=0u){return 0u;}
- return min(u32(params.resource_and_noise.x*clamp(d.outputs[1],0.0,1.0)),u32(max(0.0,FOOD_CAPACITY-a.food)*1000.0));
+ return min(u32(params.resource_and_noise.x*clamp(d.outputs[1],0.0,1.0)*gathering_fraction(a.age,params.sensor_and_padding.y,params.world_size.z)),u32(max(0.0,inventory_capacity(a.age,params.sensor_and_padding.y)-a.food)*1000.0));
 }
 // Exact floor(stock * request / total), without u64 or floating rounding.
 // request <= 8000, total <= 16384*8000, stock <= total. The bounded

@@ -1,3 +1,35 @@
+## Turning energy cost
+
+- Applied turning effort costs 0.02 energy per unit of effort (previously 0.005).
+  Coasting remains free; insufficient reserves proportionally limit torque.
+
+## Live ramp toggles
+
+- Wallpaper controls and the viewer sidebar have independent Ecology ramp,
+  Reproduction ramp and Juvenile ramp checkboxes. Off uses post-ramp conditions;
+  on resumes the current world-age schedule. Choices persist in saves.
+- Live ecology rate changes preserve terrain phase. Legacy settings default all
+  toggles on, preserving existing behavior.
+
+## Juvenile opening assistance
+
+- Juvenile gathering follows the existing 100,000-world-tick smooth opening ramp:
+  full ability initially, a 50.5% newborn floor halfway through, and 1% afterward.
+- Maturity remains 1,800 ticks; reserve/inventory capacity and generic transfers
+  retain their physiology. No social outcome controls the schedule.
+- Model v41 derives assistance from saved world age and verifies resume across
+  the end of the ramp. Early independent survival and late dependency are tested.
+
+## Juvenile provisioning physiology
+
+- Default maturity rises to 1,800 ticks with strongly reduced, smoothly growing
+  juvenile gathering and age-dependent energy/inventory capacity.
+- Generic transfer remains the only social provisioning mechanism. No care policy,
+  kin recognition, feeding quota, reward or signal meaning was added.
+- Random founders bootstrap as mature bodies; actual births start at age zero.
+- Family diagnostics now count juvenile transfers and food received alongside
+  starvation, maturation and descendant reproduction (schema 3, model v40).
+
 # Changelog
 
 ## Unreleased — reproductive packets and continuous gameplay

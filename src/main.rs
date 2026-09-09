@@ -384,6 +384,14 @@ impl AppState {
         self.ui.tab = ui::Tab::Agent;
     }
 
+    pub(crate) fn set_ramps(&mut self, enabled: [bool; 3]) {
+        if self.simulation.settings.ramps() != enabled {
+            self.complete_batch(true);
+            self.simulation.set_ramps(enabled);
+            self.world_revision = self.world_revision.saturating_add(1);
+        }
+    }
+
     pub(crate) fn set_metabolism(&mut self, value: f32) {
         if self.simulation.settings.metabolic_cost != value {
             self.simulation.settings.metabolic_cost = value;
@@ -448,6 +456,16 @@ impl AppState {
         controls.brush_sizing = None;
         if controls.paint_button.contains(point) {
             self.ui.paint_brush.toggle();
+            return;
+        }
+        if let Some(index) = controls
+            .ramp_rects
+            .iter()
+            .position(|rect| rect.contains(point))
+        {
+            let mut enabled = self.simulation.settings.ramps();
+            enabled[index] = !enabled[index];
+            self.set_ramps(enabled);
             return;
         }
         if controls.metabolism_rect.contains(point) {

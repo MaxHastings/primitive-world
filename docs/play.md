@@ -53,6 +53,21 @@ it without adding food. Manual food additions are saved as part of the experimen
 
 The live Metabolism slider adjusts global agent upkeep from 0.00 to 0.20 energy per tick (default 0.05).
 
+Three independent checkboxes beneath it control **Ecology ramp**, **Reproduction
+ramp**, and **Juvenile ramp**. They are also available in the regular viewer's
+sidebar. Checked means opening assistance fades with world age over 100,000 ticks.
+Unchecked applies normal post-ramp conditions immediately:
+
+- Ecology: no opening ground-cover allowance; full ecology speed. Current food
+  adjusts through ordinary resource dynamics, and terrain phase stays continuous.
+- Reproduction: normal packet upkeep and fusion radius.
+- Juvenile: the normal 1% newborn gathering floor, increasing with body age.
+
+Turning a ramp back on resumes assistance appropriate to the current world age;
+it does not restart or pause the schedule. All three default on, are stored in
+saves, and remain selected across rolling worlds. Only the ecology clock phase
+offset resets for a new world. Toggles apply after pending simulation work finishes.
+
 The top-right paintbrush button toggles food painting (off when the app starts).
 When enabled, a translucent brush ghost previews the radius and dense center on
 empty desktop space. Click for a dab or hold the left button and drag for a smooth

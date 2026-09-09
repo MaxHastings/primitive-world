@@ -43,7 +43,7 @@ fn propose(@builtin(global_invocation_id) id:vec3<u32>){
   if(d.selected_action==APPLY_FORCE&&(params.physical.x<0.5||length(d.force)<=0.0)){return;}
  }
  let j=contact(i);if(j>=params.agent_count){return;}let b=agents[j];
- if(a.alive==ORGANISM&&d.selected_action==TRANSFER&&(a.food<=0.0||b.food>=FOOD_CAPACITY)){return;}
+ if(a.alive==ORGANISM&&d.selected_action==TRANSFER&&(a.food<=0.0||b.food>=inventory_capacity(b.age,params.sensor_and_padding.y))){return;}
  atomicStore(&claims[INVALID+i],j);atomicStore(&claims[2u*INVALID+i],priority(i));
  atomicMin(&claims[i],priority(i));atomicMin(&claims[j],priority(i));
 }
@@ -55,7 +55,7 @@ fn resolve(@builtin(global_invocation_id) id:vec3<u32>){
  var a=agents[i];var b=agents[j];if(a.alive==0u||b.alive!=a.alive){return;}
  if(a.alive==PACKET){atomicStore(&claims[2u*INVALID+i],INVALID);return;}
  if(d.selected_action==TRANSFER){
-  let amount=min(min(a.food,d.amount),max(0.0,FOOD_CAPACITY-b.food));if(amount<=0.0){return;}
+  let amount=min(min(a.food,d.amount),max(0.0,inventory_capacity(b.age,params.sensor_and_padding.y)-b.food));if(amount<=0.0){return;}
   a.food-=amount;b.food+=amount;b.received+=amount;
   record(i,j,TRANSFER,amount,a.position);counter_add(4,1u);counter_add(6,u32(amount*1000.0));
  }else{

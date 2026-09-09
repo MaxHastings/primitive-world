@@ -5,7 +5,7 @@ const INTERACTION_RADIUS:f32=6.0;
 const GATHER_EFFORT_COST:f32=0.005;
 const ANGULAR_DAMPING:f32=0.85;
 const TORQUE_STRENGTH:f32=0.0375;
-const TURN_EFFORT_COST:f32=0.005;
+const TURN_EFFORT_COST:f32=0.02;
 const SIGNAL_ACTIVATION_COST:f32=0.01;
 const SIGNAL_AMPLITUDE_COST:f32=0.02;
 const ORGANISM:u32=1u; const PACKET:u32=2u;
@@ -61,3 +61,11 @@ fn sensory_sector(v:vec2<f32>)->u32 {
  let angle=atan2(v.y,v.x)+6.283185307+0.392699082;
  return u32(floor(angle/0.785398163))%8u;
 }
+
+// Ontogeny is physiology only: no identity, social policy, or feeding counter.
+fn growth_fraction(age:f32,maturity:f32)->f32{return clamp(age/max(maturity,1.0),0.0,1.0);}
+fn gathering_fraction(age:f32,maturity:f32,floor:f32)->f32{
+ let x=growth_fraction(age,maturity);return floor+(1.0-floor)*x*x*x*x*x*x;
+}
+fn reserve_capacity(age:f32,maturity:f32)->f32{return 48.0+52.0*growth_fraction(age,maturity);}
+fn inventory_capacity(age:f32,maturity:f32)->f32{return 1.0+7.0*growth_fraction(age,maturity);}

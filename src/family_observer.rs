@@ -26,6 +26,8 @@ pub struct FamilyOutcome {
     pub last_alive_tick: u32,
     pub matured_descendants: u32,
     pub juvenile_starvation_deaths: u32,
+    pub juvenile_transfers_received: u32,
+    pub juvenile_received_milli: u64,
     pub adult_descendant_starvation_deaths: u32,
     pub descendant_age_deaths: u32,
     pub descendant_other_deaths: u32,
@@ -80,7 +82,7 @@ impl FamilyObserver {
         }
         let counters = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("observer family counters"),
-            size: MAX_AGENTS as u64 * 128,
+            size: MAX_AGENTS as u64 * 144,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
@@ -153,7 +155,7 @@ impl FamilyObserver {
         queue: &wgpu::Queue,
     ) -> Result<FamilyReport, String> {
         let bytes = read_buffer(device, queue, &self.counters)?;
-        let rows: &[[u32; 32]] = bytemuck::cast_slice(&bytes);
+        let rows: &[[u32; 36]] = bytemuck::cast_slice(&bytes);
         let families = self
             .initial_counts
             .iter()
@@ -173,6 +175,8 @@ impl FamilyObserver {
                     last_alive_tick: r[6],
                     matured_descendants: r[7],
                     juvenile_starvation_deaths: r[8],
+                    juvenile_transfers_received: r[34],
+                    juvenile_received_milli: total(32),
                     adult_descendant_starvation_deaths: r[9],
                     descendant_age_deaths: r[10],
                     descendant_other_deaths: r[11],
@@ -193,11 +197,11 @@ impl FamilyObserver {
             })
             .collect();
         Ok(FamilyReport {
-            schema: 2,
+            schema: 3,
             requested_horizon: self.horizon,
             late_window_start: self.horizon / 2,
             families,
-            scope: "Per-tick post-step counts plus terminal transitions before dead-slot reuse. Food/energy sums round each contribution to thousandths with 64-bit carry. Juvenile feeding uses age at tick start; death class uses terminal age. Food-present means local vegetation >=.001 before collection, not guaranteed available after competition. Family identifies initial genome slot, not an unchanged descendant genotype. Diagnostics do not select genomes or enter controller inputs.",
+            scope: "Per-tick post-step counts plus terminal transitions before dead-slot reuse. Food/energy sums round each contribution to thousandths with 64-bit carry. Juvenile feeding and starvation use age at tick start; age-limit deaths use terminal age. Food-present means local vegetation >=.001 before collection, not guaranteed available after competition. Family identifies initial genome slot, not an unchanged descendant genotype. Diagnostics do not select genomes or enter controller inputs.",
         })
     }
 }

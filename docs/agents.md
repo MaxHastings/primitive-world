@@ -84,7 +84,7 @@ not replaced with useful ones. There are no controller target slots.
 
 Turn output applies torque: `angular_velocity = 0.85*angular_velocity +
 0.0375*turn_effort`, then heading integrates angular velocity and wraps. Applied
-turn effort costs `0.005*abs(turn_effort)` energy; effort scales down when energy
+turn effort costs `0.02*abs(turn_effort)` energy; effort scales down when energy
 is insufficient. Angular coasting incurs no effort charge. Founders and newborns
 start with zero angular velocity. Heading updates first, then
 damped velocity becomes `0.85*velocity + thrust`, then
@@ -118,7 +118,7 @@ are permitted. See [evolution.md](evolution.md) for continuity and provenance.
 ## Reproductive packets
 
 Action 5 requests manufacture of one packet. After physical upkeep, learning and
-body interactions, the organism must be mature (age 400) and its spending budget
+body interactions, the organism must be mature (age 1,800) and its spending budget
 `energy * sigmoid(output 8)` must cover its inherited `packet_size`. Manufacturing
 debits exactly that size in energy. It neither needs a partner present nor causes
 a birth. Output 12/13 places the packet within two body-relative world units of
@@ -177,3 +177,48 @@ successful offspring. An offspring's family/parent annotation describes one
 producer branch; it is not a complete two-parent pedigree. Extinction waits until
 both organisms and viable packets are gone. Successful offspring alone enter
 the hereditary reservoir.
+
+## Juvenile physiology
+
+Default maturity is 1,800 ticks. With `x = clamp(age / maturity, 0, 1)`,
+gathering yield is multiplied by `floor + (1-floor)*x^6`. The world-age
+opening ramp sets `floor = 1 - 0.99*smoothstep(0, 100000, world_tick)`: 100%
+at tick zero, 50.5% at tick 50,000, and 1% from tick 100,000 onward. This uses
+the same saved world-age schedule as food and packet assistance, even with a
+static landscape. It never observes transfers or reproductive success. Existing
+bodies experience the current conditions; newborns do not restart the ramp.
+Maturity stays at 1,800 ticks, with no moving maturity threshold.
+Gathering effort still pays
+its ordinary cost. The resource ledger rounds down to millifood, so very small
+requests can yield zero. Movement, cognition, signalling and automatic digestion
+retain their ordinary mechanisms; there is no feeding quota or care action.
+
+Energy storage grows linearly from 48 to 100 and food inventory from 1 to 8.
+Digestion retains its ordinary throughput and conversion efficiency but stops at
+the current energy capacity. Gathering and generic transfers respect inventory
+capacity. Fusion retains remaining packet energy after construction loss up to
+the newborn's 48-energy capacity; excess is dissipated during construction.
+Larger packets improve birth reserves until that physical saturation, while
+smaller packets remain cheaper to manufacture. Packet upkeep still rewards larger
+packets with a longer viability window. No packet size buys juvenile independence.
+
+At default upkeep, a stationary body needs at least 90 energy to mature, before
+cognition or effort. Maximum birth reserves are 48; one full newborn inventory
+adds only 8. Early in the ramp, gathering can support independent juvenile
+survival. After assistance ends, a GPU regression supplies unlimited ground food and maximal
+gathering effort: the early deficit still kills that unprovisioned juvenile.
+A separate controlled fixture survives through ordinary repeated food transfers.
+These are physical feasibility checks, not behaviors installed in founders.
+Custom metabolism, conversion or maturity settings can change these bounds.
+
+The initial population consists of mature bodies with 35 energy and unchanged
+seed-specific random controllers. This supplies the bootstrap generation for a
+world without pre-existing provisioners. Every actual offspring starts at age zero.
+
+Family report schema 3 adds `juvenile_transfers_received` (successful receiving
+ticks; interaction pairs are disjoint) and `juvenile_received_milli`. Existing
+`juvenile_starvation_deaths`, `matured_descendants`, `births`, maximum depth and
+`births_to_descendant_parents` distinguish mortality, maturation and reproductive
+continuity. These counters cover descendants, including terminal ticks, and are
+observer-only: no controller can read them. The model ID is now
+`primitive-v41-juvenile-opening-ramp`; old model checkpoints are rejected.

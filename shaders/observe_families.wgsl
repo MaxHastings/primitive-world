@@ -1,5 +1,5 @@
 // Optional observer-only counters. No buffer here is read by agent logic.
-// 32 words per family; food/energy sums use low/high pairs to avoid overflow.
+// 36 words per family; food/energy sums use low/high pairs to avoid overflow.
 struct FamilyWindow { start:u32, late_start:u32, end:u32, count:u32, };
 @group(0) @binding(0) var<storage,read> bodies:array<Agent>;
 @group(0) @binding(1) var<storage,read_write> families:array<atomic<u32>>;
@@ -17,7 +17,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
  if(id.x>=INVALID){return;}
  let a=bodies[id.x];let old=previous[id.x];let family=a.founder_family;let tick=params.tick+1u;
  if(family>=window.count || tick<=window.start || tick>window.end){return;}
- let b=family*32u;
+ let b=family*36u;
  // Slots alive at tick start cannot be reused this tick. Include terminal flows
  // and deaths once, without recounting stale dead slots on subsequent ticks.
  if(old.alive==ORGANISM && old.lineage_id==a.lineage_id && old.generation==a.generation){
@@ -26,6 +26,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
    total(b+24u,a.spent);
    if(old.age<params.sensor_and_padding.y){
     atomicAdd(&families[b+27u],1u);
+    total(b+32u,a.received);atomicAdd(&families[b+34u],u32(a.received>0.0));
     total(b+16u,a.collected);total(b+18u,a.ingested);
     atomicAdd(&families[b+26u],u32(a.collected>0.0));
     if(perceptions[id.x].resource_here>=0.001){
@@ -39,7 +40,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
    if(a.alive==0u){
     if(a.age>=a.max_age){atomicAdd(&families[b+10u],1u);}
     else if(a.energy<=0.0){
-     if(a.age<params.sensor_and_padding.y){atomicAdd(&families[b+8u],1u);}
+     if(old.age<params.sensor_and_padding.y){atomicAdd(&families[b+8u],1u);}
      else{atomicAdd(&families[b+9u],1u);}
     }else{atomicAdd(&families[b+11u],1u);}
    }

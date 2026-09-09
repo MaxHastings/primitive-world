@@ -194,16 +194,25 @@ pub fn events(ui: &mut egui::Ui, state: &mut AppState, command: &mut controls::C
 }
 
 pub fn stats(ui: &mut egui::Ui, state: &mut AppState) {
+    let ecology_tick = if state.simulation.settings.ecology_ramp {
+        state.simulation.tick
+    } else {
+        100_000
+    };
+    let reproduction_tick = if state.simulation.settings.reproduction_ramp {
+        state.simulation.tick
+    } else {
+        100_000
+    };
     ui.small(format!(
         "Opening coverage assistance: {:.0}% · ecology speed: {:.0}% · normal at tick 100,000",
-        100.0 * simulation::opening_ground_cover(state.simulation.tick)
-            / model::INITIAL_GROUND_COVER,
-        100.0 * simulation::ecology_speed(state.simulation.tick)
+        100.0 * simulation::opening_ground_cover(ecology_tick) / model::INITIAL_GROUND_COVER,
+        100.0 * simulation::ecology_speed(ecology_tick)
     ));
     ui.small(format!(
         "Packet fusion radius: {:.2} · packet upkeep: {:.4} × size^(2/3)",
-        simulation::packet_fusion_radius(state.simulation.tick),
-        simulation::packet_upkeep(state.simulation.tick)
+        simulation::packet_fusion_radius(reproduction_tick),
+        simulation::packet_upkeep(reproduction_tick)
     ));
     ui.label(format!(
         "Deaths: {} starvation / {} age",

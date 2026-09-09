@@ -1,7 +1,7 @@
 //! primitive-world: body-relative sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
 /// Persistence accepts only this model's controller and lifetime-state layout.
-pub const MODEL_ID: &str = "primitive-v39-shorter-lifespans";
+pub const MODEL_ID: &str = "primitive-v41-juvenile-opening-ramp";
 pub const FOUNDER_BANK_VERSION: u32 = 21;
 pub const CHECKPOINT_VERSION: u32 = 57;
 pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD057";
@@ -252,6 +252,7 @@ impl Default for DecisionGpu {
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 pub struct SimParams {
+    /// Habitat width/height, world-age juvenile gathering floor, reserved.
     pub world_size: [f32; 4],
     pub resource_grid_size: u32,
     pub agent_count: u32,
@@ -330,11 +331,24 @@ pub struct SimSettings {
     pub force_enabled: bool,
     pub communication_enabled: bool,
     pub evolving_landscape: bool,
+    #[serde(default = "ramp_enabled_default")]
+    pub ecology_ramp: bool,
+    #[serde(default = "ramp_enabled_default")]
+    pub reproduction_ramp: bool,
+    #[serde(default = "ramp_enabled_default")]
+    pub juvenile_ramp: bool,
+    /// Preserves ecological phase when changing its clock rate live.
+    #[serde(default)]
+    pub ecology_clock_offset: i64,
     pub founder_genomes: Vec<Vec<f32>>,
     /// Topology and plasticity are inherited alongside every founder genome.
     pub founder_traits: Vec<CognitiveTraits>,
     pub founder_name: String,
 }
+fn ramp_enabled_default() -> bool {
+    true
+}
+
 impl Default for SimSettings {
     fn default() -> Self {
         Self {
@@ -354,11 +368,15 @@ impl Default for SimSettings {
             heterogeneity: 0.85,
             sensor_radius: 24.0,
             fusion_loss: 10.0,
-            maturity_age: 400.0,
+            maturity_age: 1800.0,
             social_actions_enabled: true,
             force_enabled: true,
             communication_enabled: true,
             evolving_landscape: true,
+            ecology_ramp: true,
+            reproduction_ramp: true,
+            juvenile_ramp: true,
+            ecology_clock_offset: 0,
             founder_genomes: Vec::new(),
             founder_traits: Vec::new(),
             founder_name: "primitive-world-random".into(),
@@ -366,6 +384,13 @@ impl Default for SimSettings {
     }
 }
 impl SimSettings {
+    pub fn ramps(&self) -> [bool; 3] {
+        [
+            self.ecology_ramp,
+            self.reproduction_ramp,
+            self.juvenile_ramp,
+        ]
+    }
     pub fn validate(&self) -> Result<(), String> {
         if self.environment_rotation > 3
             || !self.habitat_width.is_finite()
@@ -405,6 +430,7 @@ impl SimSettings {
             || self.habitat_contrast > 1.0
             || self.heterogeneity > 1.0
             || self.maturity_age > 11000.0
+            || !(-4_294_967_295..=4_294_967_295).contains(&self.ecology_clock_offset)
         {
             return Err("Invalid primitive-world physical settings".into());
         }

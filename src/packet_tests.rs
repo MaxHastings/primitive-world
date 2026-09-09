@@ -21,11 +21,11 @@ fn decay(size: f32) -> f32 {
 fn packet_production_is_local_paid_and_independent_of_partners() {
     let (d, q) = gpu();
     for (size, energy, age, action, expected) in [
-        (8.0, 80.0, 500.0, 5, true),
-        (40.0, 80.0, 500.0, 5, true),
-        (16.0, 8.0, 500.0, 5, false),
+        (8.0, 80.0, 1800.0, 5, true),
+        (40.0, 80.0, 1800.0, 5, true),
+        (16.0, 8.0, 1800.0, 5, false),
         (16.0, 80.0, 0.0, 5, false),
-        (16.0, 80.0, 500.0, 0, false),
+        (16.0, 80.0, 1800.0, 0, false),
     ] {
         let mut s = scene(&d, &q);
         let mut a = body([2047.9, 100.0]);
@@ -96,6 +96,8 @@ fn packets_fuse_only_locally_and_only_between_different_producers() {
         (2, 6.0, 16.0, 1, 0),
         (1, 6.0, 16.0, 0, 0),
         (2, 1.0, 16.0, 1, 0),
+        (2, 1.0, 24.0, 1, 0),
+        (2, 1.0, 48.0, 1, 0),
         (2, 1.0, 2.0, 0, 1),
     ] {
         let mut s = scene(&d, &q);
@@ -126,7 +128,7 @@ fn packets_fuse_only_locally_and_only_between_different_producers() {
             let c = after.iter().find(|a| a.alive == 1).unwrap();
             near(
                 c.energy,
-                2.0 * (energy - decay(energy)) - s.settings.fusion_loss,
+                (2.0 * (energy - decay(energy)) - s.settings.fusion_loss).min(48.0),
             );
             assert_eq!(c.hidden, [0.0; HIDDEN]);
             assert_eq!(c.ancestry_depth, 1);
@@ -649,7 +651,7 @@ fn pending_identity_rollover_keeps_ticking_without_allocating_or_fusing() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let mut producer = body([500.0, 500.0]);
-    producer.age = 500.0;
+    producer.age = 1800.0;
     producer.energy = 80.0;
     put(&s, &q, 0, producer, &fixed(5, [0.0; 2]));
     put(

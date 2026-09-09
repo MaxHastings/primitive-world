@@ -56,6 +56,7 @@ pub struct WallpaperControls {
     pub details_button: egui::Rect,
     pub paint_button: egui::Rect,
     pub metabolism_rect: egui::Rect,
+    pub ramp_rects: [egui::Rect; 3],
     pub brush_size_rect: egui::Rect,
     pub brush_sizing: Option<BrushAdjustment>,
     pub brush_density_rect: egui::Rect,
@@ -84,6 +85,7 @@ impl Default for WallpaperControls {
             details_button: egui::Rect::NOTHING,
             paint_button: egui::Rect::NOTHING,
             metabolism_rect: egui::Rect::NOTHING,
+            ramp_rects: [egui::Rect::NOTHING; 3],
             brush_size_rect: egui::Rect::NOTHING,
             brush_sizing: None,
             brush_density_rect: egui::Rect::NOTHING,
@@ -372,6 +374,7 @@ fn draw_wallpaper(ctx: &egui::Context, state: &mut AppState, action: &mut Action
                         ui.small(format!("{:.3} energy/tick", state.simulation.settings.metabolic_cost));
                     });
                     state.set_metabolism(metabolism);
+                    ramp_controls(ui, state, true, action);
                     state.ui.wallpaper_controls.brush_size_rect = egui::Rect::NOTHING;
                     state.ui.wallpaper_controls.brush_density_rect = egui::Rect::NOTHING;
                     if state.ui.paint_brush.enabled {
@@ -780,6 +783,7 @@ fn draw_play(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                 "Global energy cost per agent per tick. Changes apply live; default 0.05.",
             );
             state.set_metabolism(metabolism);
+            ramp_controls(ui, state, false, action);
             ui.horizontal(|ui| {
                 for (tab, label) in [
                     (Tab::Overview, "Overview"),
@@ -950,4 +954,18 @@ fn experiment(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
             *action = Action::ExportHistory;
         }
     });
+}
+
+fn ramp_controls(ui: &mut egui::Ui, state: &mut AppState, wallpaper: bool, action: &mut Action) {
+    let mut enabled = state.simulation.settings.ramps();
+    ui.horizontal_wrapped(|ui| {
+        for (index, label) in ["Ecology ramp", "Reproduction ramp", "Juvenile ramp"].into_iter().enumerate() {
+            let response = ui.checkbox(&mut enabled[index], label).on_hover_text(
+                "On: opening assistance fades over 100,000 world ticks. Off: normal post-ramp conditions now. Turning on resumes at current world age; it does not restart the ramp.");
+            if wallpaper { state.ui.wallpaper_controls.ramp_rects[index] = response.rect; }
+        }
+    });
+    if enabled != state.simulation.settings.ramps() {
+        *action = Action::SetRamps(enabled);
+    }
 }

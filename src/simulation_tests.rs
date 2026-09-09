@@ -577,7 +577,7 @@ fn directional_bank_gpu_probe() {
         }
     }
     let report = serde_json::json!({"bank_path":bank_path,"bank_name":bank.name,"cases":cases,"sequences":sequences,
-        "scope":"Actual GPU decision shader with synthetic mirrored perception, not full-world simulation. First decisions have empty state. Sequences hold adult age500, energy50, inventory2 and position fixed, carry hidden state, last action and motor feedback; cue reverses after64 of128 updates. No births, selection, sensing dispatch or ecological fitness measured."});
+        "scope":"Actual GPU decision shader with synthetic mirrored perception, not full-world simulation. First decisions have empty state. Sequences hold adult age1800, energy50, inventory2 and position fixed, carry hidden state, last action and motor feedback; cue reverses after64 of128 updates. No births, selection, sensing dispatch or ecological fitness measured."});
     std::io::Write::write_all(&mut output, &serde_json::to_vec_pretty(&report).unwrap()).unwrap();
 }
 
@@ -1203,7 +1203,7 @@ fn body(pos: [f32; 2]) -> AgentGpu {
         position: pos,
         energy: 80.0,
         food: 2.0,
-        age: 500.0,
+        age: 1800.0,
         max_speed: 1.2,
         sensor_radius: 24.0,
         max_age: 11000.0,
@@ -1719,7 +1719,7 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v39-shorter-lifespans");
+    assert_eq!(MODEL_ID, "primitive-v41-juvenile-opening-ramp");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
     assert_eq!(crate::founders::bundled().version, FOUNDER_BANK_VERSION);
 }
@@ -2104,7 +2104,7 @@ fn family_diagnostics_count_juvenile_feeding_maturity_and_terminal_flow() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let mut juvenile = body([602.0, 902.0]);
-    juvenile.age = 399.0;
+    juvenile.age = s.settings.maturity_age - 1.0;
     juvenile.ancestry_depth = 1;
     juvenile.energy = 0.01;
     juvenile.food = 0.0;
@@ -2219,7 +2219,7 @@ fn angular_torque_coasts_reverses_and_charges_effort() {
         heading = (heading + spin).rem_euclid(std::f32::consts::TAU);
         assert!((next.angular_velocity - spin).abs() < 0.00001);
         near(next.heading, heading);
-        assert!((next.spent - 0.005 * effort.tanh().abs()).abs() < 0.00001);
+        assert!((next.spent - 0.02 * effort.tanh().abs()).abs() < 0.00001);
         near(a.energy - next.energy, next.spent);
         assert_eq!(next.position, a.position);
         a = next;
@@ -2231,7 +2231,7 @@ fn angular_torque_coasts_reverses_and_charges_effort() {
     put(&s, &q, 0, a, &fixed(0, [0.0, 1.0]));
     step(&mut s, &d, &q, 1);
     let after = s.agent_snapshot(&d, &q).unwrap()[0];
-    assert!((after.angular_velocity - (0.85 * prior_spin + 0.2 * 0.0375)).abs() < 0.00001);
+    assert!((after.angular_velocity - (0.85 * prior_spin + 0.05 * 0.0375)).abs() < 0.00001);
     assert!((after.spent - 0.001).abs() < 0.00001);
     assert_eq!(after.energy, 0.0);
 }
@@ -2331,3 +2331,262 @@ mod performance;
 
 #[path = "packet_tests.rs"]
 mod packets;
+
+#[test]
+fn juvenile_physiology_requires_external_food_but_generic_repeated_transfer_reaches_maturity() {
+    let (d, q) = gpu();
+    for world_tick in [0, 100_000] {
+        let mut s = scene(&d, &q);
+        s.tick = world_tick;
+        s.settings.metabolic_cost = SimSettings::default().metabolic_cost;
+        let mut juvenile = body([602.0, 902.0]);
+        juvenile.age = 0.0;
+        juvenile.energy = 48.0; // Largest retained packet provisioning.
+        juvenile.food = 0.0;
+        juvenile.ancestry_depth = 1;
+        juvenile.birth_tick = u32::MAX;
+        put(&s, &q, 0, juvenile, &fixed(0, [0.0; 2]));
+        let mut one_meal = juvenile;
+        one_meal.position = [702.0, 902.0];
+        one_meal.lineage_id = 2;
+        one_meal.food = 1.0; // Full newborn inventory, even before paying any upkeep.
+        put(&s, &q, 1, one_meal, &fixed(0, [0.0; 2]));
+        let mut gatherer = one_meal;
+        gatherer.position = [802.0, 902.0];
+        gatherer.lineage_id = 3;
+        put(&s, &q, 2, gatherer, &fixed(1, [0.0; 2]));
+        let mut provisioned = juvenile;
+        provisioned.position = [902.0, 902.0];
+        provisioned.lineage_id = 4;
+        provisioned.energy = 12.0;
+        put(&s, &q, 3, provisioned, &fixed(0, [0.0; 2]));
+        let mut donor = body([906.0, 902.0]);
+        donor.lineage_id = 5;
+        donor.food = 8.0;
+        let mut transfer = fixed(2, [0.0; 2]);
+        transfer[OUTPUT_BIAS + 1] = 1.0;
+        put(&s, &q, 4, donor, &transfer);
+        if world_tick == 0 {
+            s.family_observer =
+                Some(crate::family_observer::FamilyObserver::new(&d, &q, &s, 1800).unwrap());
+        }
+        // Unlimited local food is a physical feasibility fixture, not a founding policy.
+        for _ in 0..1800 / 20 {
+            for x in [802, 906] {
+                let cell = (902 / 4 * 512 + x / 4) as u64;
+                q.write_buffer(&s.resource_buffer, cell * 4, bytemuck::bytes_of(&8000u32));
+            }
+            step(&mut s, &d, &q, 20);
+        }
+        let agents = s.agent_snapshot(&d, &q).unwrap();
+        assert_eq!(
+            agents[0].alive, 0,
+            "packet reserves alone cannot bridge infancy"
+        );
+        assert_eq!(
+            agents[1].alive, 0,
+            "one full inventory cannot bridge infancy"
+        );
+        assert_eq!(
+            agents[2].alive,
+            u32::from(world_tick == 0),
+            "independent gathering works during opening assistance but fails after it ends"
+        );
+        assert_eq!(agents[3].alive, 1, "ordinary transfers can bridge infancy");
+        assert_eq!(agents[3].age, s.settings.maturity_age);
+        if world_tick == 0 {
+            let report = s.family_observer.as_ref().unwrap().report(&d, &q).unwrap();
+            let f = &report.families[0];
+            assert_eq!(f.juvenile_starvation_deaths, 2);
+            assert_eq!(f.matured_descendants, 2);
+            assert!(f.juvenile_transfers_received > 1);
+            assert!(f.juvenile_received_milli > 1000);
+        }
+    }
+}
+
+#[test]
+fn juvenile_gathering_ramps_and_generic_transfer_respects_growing_inventory() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.tick = 100_000;
+    let ages = [0.0, 450.0, 900.0, 1350.0, 1800.0, 2000.0];
+    for (i, age) in ages.into_iter().enumerate() {
+        let x = 102 + i as u32 * 100;
+        let mut a = body([x as f32, 102.0]);
+        a.age = age;
+        a.food = 0.0;
+        put(&s, &q, i, a, &fixed(1, [0.0; 2]));
+        let cell = (102 / 4 * 512 + x / 4) as u64;
+        q.write_buffer(&s.resource_buffer, cell * 4, bytemuck::bytes_of(&8000u32));
+    }
+    step(&mut s, &d, &q, 1);
+    let a = s.agent_snapshot(&d, &q).unwrap();
+    assert!(a[0].collected <= 0.001);
+    for i in 0..4 {
+        assert!(a[i].collected <= a[i + 1].collected);
+    }
+    near(a[4].collected, 0.025);
+    near(a[5].collected, a[4].collected);
+    // A deliberately oversized generic request still cannot overfill a newborn.
+    let mut receiver = body([702.0, 102.0]);
+    receiver.age = 0.0;
+    receiver.food = 0.0;
+    receiver.energy = 1.0;
+    let mut donor = body([706.0, 102.0]);
+    donor.food = 8.0;
+    put(&s, &q, 6, receiver, &fixed(0, [0.0; 2]));
+    put(&s, &q, 7, donor, &fixed(2, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    let a = s.agent_snapshot(&d, &q).unwrap();
+    assert!(a[6].received > 0.0 && a[6].food <= 1.004);
+}
+
+#[test]
+fn juvenile_starvation_on_final_growth_tick_is_not_successful_maturation() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut a = body([602.0, 902.0]);
+    a.age = s.settings.maturity_age - 1.0;
+    a.energy = 0.001;
+    a.food = 0.0;
+    a.ancestry_depth = 1;
+    a.birth_tick = u32::MAX;
+    put(&s, &q, 0, a, &fixed(0, [0.0; 2]));
+    s.family_observer = Some(crate::family_observer::FamilyObserver::new(&d, &q, &s, 2).unwrap());
+    step(&mut s, &d, &q, 2);
+    let report = s.family_observer.as_ref().unwrap().report(&d, &q).unwrap();
+    assert_eq!(report.families[0].juvenile_starvation_deaths, 1);
+    assert_eq!(report.families[0].matured_descendants, 0);
+    assert_eq!(report.families[0].adult_descendant_starvation_deaths, 0);
+}
+
+#[test]
+fn juvenile_opening_assistance_is_smooth_world_age_physiology_and_replays() {
+    near(juvenile_gathering_floor(0), 1.0);
+    near(juvenile_gathering_floor(50_000), 0.505);
+    near(juvenile_gathering_floor(100_000), 0.01);
+    near(juvenile_gathering_floor(200_000), 0.01);
+    for tick in 0..100_000 {
+        let change = juvenile_gathering_floor(tick) - juvenile_gathering_floor(tick + 1);
+        // The shared f32 smoothstep may move by one ULP near its flat endpoint.
+        assert!((-f32::EPSILON..0.00002).contains(&change));
+        if tick % 100 == 0 {
+            assert!(juvenile_gathering_floor(tick + 100) <= juvenile_gathering_floor(tick));
+        }
+    }
+    let (d, q) = gpu();
+    for tick in [0, 50_000, 99_999, 100_000, 200_000] {
+        let mut s = scene(&d, &q);
+        s.tick = tick;
+        let mut juvenile = body([602.0, 902.0]);
+        juvenile.age = 0.0;
+        juvenile.food = 0.0;
+        put(&s, &q, 0, juvenile, &fixed(1, [0.0; 2]));
+        let mut adult = body([702.0, 902.0]);
+        adult.food = 0.0;
+        put(&s, &q, 1, adult, &fixed(1, [0.0; 2]));
+        for x in [602, 702] {
+            let cell = (902 / 4 * 512 + x / 4) as u64;
+            q.write_buffer(&s.resource_buffer, cell * 4, bytemuck::bytes_of(&8000u32));
+        }
+        let path = temp("juvenile-ramp.checkpoint");
+        s.save_checkpoint(&d, &q, &path).unwrap();
+        step(&mut s, &d, &q, 2);
+        let expected = s.agent_snapshot(&d, &q).unwrap();
+        let floor = juvenile_gathering_floor(tick + 1);
+        near(expected[0].collected, (25.0 * floor).floor() / 1000.0);
+        near(expected[1].collected, 0.025);
+        s.load_checkpoint(&q, &path).unwrap();
+        step(&mut s, &d, &q, 2);
+        assert_eq!(
+            bytemuck::cast_slice::<AgentGpu, u8>(&expected),
+            bytemuck::cast_slice::<AgentGpu, u8>(&s.agent_snapshot(&d, &q).unwrap())
+        );
+        std::fs::remove_file(path).unwrap();
+    }
+}
+
+#[test]
+fn ramp_toggles_are_independent_and_older_settings_keep_assistance_enabled() {
+    let settings = SimSettings::default();
+    let mut legacy = serde_json::to_value(&settings).unwrap();
+    for key in [
+        "ecology_ramp",
+        "reproduction_ramp",
+        "juvenile_ramp",
+        "ecology_clock_offset",
+    ] {
+        legacy.as_object_mut().unwrap().remove(key);
+    }
+    let restored: SimSettings = serde_json::from_value(legacy).unwrap();
+    assert_eq!(restored.ramps(), [true; 3]);
+    assert_eq!(restored.ecology_clock_offset, 0);
+    for mask in 0..8 {
+        let mut s = settings.clone();
+        s.ecology_ramp = mask & 1 != 0;
+        s.reproduction_ramp = mask & 2 != 0;
+        s.juvenile_ramp = mask & 4 != 0;
+        for tick in [0, 50_000, 100_000, 200_000] {
+            let p = params_for(tick, 0, &s, 91);
+            let ecology = if s.ecology_ramp { tick } else { 100_000 };
+            let reproduction = if s.reproduction_ramp { tick } else { 100_000 };
+            let juvenile = if s.juvenile_ramp { tick } else { 100_000 };
+            near(p.time_and_costs[0], opening_ground_cover(ecology));
+            near(p.environment[0], ecology_speed(ecology));
+            near(p.physical[3], packet_fusion_radius(reproduction));
+            near(p.sensor_and_padding[2], packet_upkeep(reproduction));
+            near(p.world_size[2], juvenile_gathering_floor(juvenile));
+            near(p.sensor_and_padding[1], 1800.0);
+        }
+    }
+}
+
+#[test]
+fn ramp_toggles_preserve_ecological_phase_and_checkpoint_physics() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.tick = 50_000;
+    let phase = configured_ecology_time(s.tick, &s.settings);
+    s.set_ramps([false; 3]);
+    assert_eq!(configured_ecology_time(s.tick, &s.settings), phase);
+    assert_eq!(
+        configured_ecology_time(s.tick + 100, &s.settings),
+        phase + 100
+    );
+    let mut a = body([602.0, 902.0]);
+    a.age = 0.0;
+    a.energy = 20.0;
+    a.food = 0.0;
+    put(&s, &q, 0, a, &fixed(1, [0.0; 2]));
+    let cell = (902 / 4 * 512 + 602 / 4) as u64;
+    q.write_buffer(&s.resource_buffer, cell * 4, bytemuck::bytes_of(&8000u32));
+    let path = temp("ramp-toggles.checkpoint");
+    s.save_checkpoint(&d, &q, &path).unwrap();
+    step(&mut s, &d, &q, 2);
+    let expected = s.agent_snapshot(&d, &q).unwrap();
+    assert_eq!(
+        expected[0].collected, 0.0,
+        "disabled juvenile ramp uses normal dependency"
+    );
+    s.set_ramps([true; 3]);
+    s.load_checkpoint(&q, &path).unwrap();
+    assert_eq!(s.settings.ramps(), [false; 3]);
+    assert_eq!(configured_ecology_time(s.tick, &s.settings), phase);
+    step(&mut s, &d, &q, 2);
+    assert_eq!(
+        bytemuck::cast_slice::<AgentGpu, u8>(&expected),
+        bytemuck::cast_slice::<AgentGpu, u8>(&s.agent_snapshot(&d, &q).unwrap())
+    );
+    let phase = configured_ecology_time(s.tick, &s.settings);
+    s.set_ramps([true; 3]);
+    assert_eq!(configured_ecology_time(s.tick, &s.settings), phase);
+    step(&mut s, &d, &q, 1);
+    assert!(s.agent_snapshot(&d, &q).unwrap()[0].collected > 0.0);
+    std::fs::remove_file(path).unwrap();
+    s.set_ramps([false; 3]);
+    s.reset(&q);
+    assert_eq!(s.settings.ramps(), [false; 3]);
+    assert_eq!(s.settings.ecology_clock_offset, 0);
+    assert_eq!(configured_ecology_time(100, &s.settings), 100);
+}

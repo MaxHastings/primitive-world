@@ -54,7 +54,7 @@ fn fusion(@builtin(global_invocation_id) id:vec3<u32>){
  agents[pi]=p;agents[qi]=q;
  // Physical fusion can exhaust its reserves without constructing a body.
  if(energy<=params.sensor_and_padding.w){counter_add(38,1u);return;}
- child.alive=ORGANISM;child.energy=energy-params.sensor_and_padding.w;
+ child.alive=ORGANISM;child.energy=min(energy-params.sensor_and_padding.w,reserve_capacity(0.0,params.sensor_and_padding.y));
  child.heading=6.283185307*random01(child.rng);
  child.parent_lineage=p.parent_lineage;
  child.ancestry_depth=max(p.ancestry_depth,q.ancestry_depth)+1u;
