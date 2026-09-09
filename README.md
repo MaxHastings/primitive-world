@@ -13,33 +13,40 @@ whose consequences decide what persists.
 
 ## Make it your wallpaper
 
-Primitive World currently targets **Windows**. Install [Rust 1.93.1 or newer](https://www.rust-lang.org/tools/install), use a GPU/driver with wgpu compute support, then clone this repository and run:
+Primitive World currently targets **Windows**. Install [Rust 1.93.1 or newer](https://www.rust-lang.org/tools/install), use a GPU/driver with wgpu compute support, then clone this repository and build once:
 
 ```powershell
-.\Play.cmd --wallpaper
+.\Build.cmd
 ```
 
-That builds the current source into `target/play/release/primitive_world.exe`
-and attaches a fixed-camera habitat to the desktop. A
-small HUD shows population and world state; use its menus to change the lens or
-biological speed. Click empty habitat to add food, and use the tray menu to
-pause or quit.
+Double-click **Primitive World.exe** in the project folder. It resumes your newest
+compatible saved experiment as wallpaper, or starts one if there are no saves.
+There is no terminal to keep open. The executable is self-contained and can also
+be copied to a permanent folder before enabling startup.
 
-To have the newest saved experiment resume when you sign in:
+Right-click its icon in the Windows notification area (possibly inside the **^**
+overflow) for **Pause simulation / Resume simulation**, **Save now**, **Open saves
+folder**, **Start this copy with Windows**, and **Save and quit**. Startup is opt-in;
+the checkbox registers this executable for your Windows account without admin
+rights. Selecting it from a different copy updates the registered path.
+
+A small desktop HUD shows population and world state; use its menus to change
+the lens or biological speed. Click empty habitat to add food.
+
+For source updates, run `Build.cmd` again after **Save and quit**. For a regular
+window with New Game / Load Game, double-click `Play.cmd` or run
+`cargo run --release -- --viewer`. Developer commands remain available:
 
 ```powershell
+.\Play.cmd --wallpaper --resume
 .\Play.cmd --install-startup
+.\Play.cmd --uninstall-startup
 ```
 
-Resume manually with `.\Play.cmd --wallpaper --resume`. After updating the
-source, use `Play.cmd` again to rebuild the executable used at login.
-Remove the startup entry with `.\Play.cmd --uninstall-startup`. Wallpaper mode uses one
-native desktop host, so multi-monitor layouts should be verified on the target
-machine. The detailed [wallpaper guide](docs/play.md) covers saves, controls,
-desktop behavior, and recovery.
-
-For a regular window instead, run `cargo run --release` or double-click
-`Play.cmd`.
+`Play.cmd --wallpaper --resume` builds and launches the app, then returns so you
+can close the terminal. Headless and maintenance commands wait for completion
+and preserve output and exit codes. The detailed [wallpaper guide](docs/play.md)
+covers saves, controls, desktop behavior, and recovery.
 
 ## What is happening in the world?
 

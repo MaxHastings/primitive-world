@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased - Windows desktop launch
+
+- Produce a self-contained Primitive World.exe that resumes wallpaper on double-click
+  without allocating a console. Keep --viewer for the normal New Game / Load Game window.
+- Detach interactive Play.cmd launches; retain synchronous CLI output and exit codes.
+- Add per-user startup control, Save now, and Open saves folder to the tray, with
+  state-aware pause labels, save-before-quit, and visible errors.
+- Keep wallpaper diagnostics in a bounded local log and protect running binaries
+  during source updates. Startup remains opt-in.
+
 ## Unreleased — simulation throughput
 
 - Stage neural sensory weights and learned deltas through shared GPU memory with

@@ -9,7 +9,7 @@ use std::{
     ffi::c_void,
     ptr::null_mut,
     sync::{
-        atomic::{AtomicIsize, AtomicU32, Ordering},
+        atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering},
         mpsc::{self, Receiver, SyncSender},
     },
     time::{Duration, Instant},
@@ -18,30 +18,35 @@ use windows_sys::Win32::{
     Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HWND, LPARAM, RECT},
     Graphics::Gdi::ScreenToClient,
     System::{
+        Console::{
+            ATTACH_PARENT_PROCESS, AttachConsole, GetStdHandle, STD_ERROR_HANDLE,
+            STD_OUTPUT_HANDLE, SetStdHandle,
+        },
         Registry::{
-            HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ, RegCloseKey,
-            RegCreateKeyExW, RegDeleteValueW, RegSetValueExW,
+            HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ, RRF_RT_REG_SZ,
+            RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegGetValueW, RegSetValueExW,
         },
         Threading::CreateMutexW,
     },
     UI::{
         Shell::{
-            NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
-            Shell_NotifyIconW,
+            NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_INFO, NIM_ADD, NIM_DELETE, NIM_MODIFY,
+            NOTIFYICONDATAW, Shell_NotifyIconW, ShellExecuteW,
         },
         WindowsAndMessaging::{
             AppendMenuW, CallNextHookEx, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
             DestroyMenu, DestroyWindow, EnumChildWindows, EnumWindows, FindWindowExW, FindWindowW,
             GWL_EXSTYLE, GWL_STYLE, GetClassNameW, GetClientRect, GetCursorPos, GetParent,
             GetWindowLongPtrW, GetWindowTextW, HC_ACTION, HHOOK, HWND_BOTTOM, HWND_MESSAGE,
-            IDI_APPLICATION, IsWindow, IsWindowVisible, LWA_ALPHA, LoadIconW, MF_STRING,
-            MSLLHOOKSTRUCT, PostMessageW, RegisterClassExW, SMTO_NORMAL, SW_HIDE, SWP_FRAMECHANGED,
-            SWP_NOACTIVATE, SWP_NOSENDCHANGING, SWP_SHOWWINDOW, SendMessageTimeoutW,
-            SetForegroundWindow, SetLayeredWindowAttributes, SetParent, SetWindowLongPtrW,
-            SetWindowPos, SetWindowsHookExW, ShowWindow, TPM_NONOTIFY, TPM_RETURNCMD,
-            TPM_RIGHTBUTTON, TrackPopupMenu, UnhookWindowsHookEx, WH_MOUSE_LL, WM_CLOSE,
-            WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_RBUTTONUP, WM_USER, WNDCLASSEXW, WS_CHILD,
-            WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_POPUP, WindowFromPoint,
+            IDI_APPLICATION, IsWindow, IsWindowVisible, LWA_ALPHA, LoadIconW, MB_ICONERROR,
+            MB_ICONINFORMATION, MB_OK, MF_CHECKED, MF_GRAYED, MF_SEPARATOR, MF_STRING,
+            MSLLHOOKSTRUCT, MessageBoxW, PostMessageW, RegisterClassExW, SMTO_NORMAL, SW_HIDE,
+            SW_SHOWNORMAL, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOSENDCHANGING, SWP_SHOWWINDOW,
+            SendMessageTimeoutW, SetForegroundWindow, SetLayeredWindowAttributes, SetParent,
+            SetWindowLongPtrW, SetWindowPos, SetWindowsHookExW, ShowWindow, TPM_NONOTIFY,
+            TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, UnhookWindowsHookEx, WH_MOUSE_LL,
+            WM_CLOSE, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_NULL, WM_RBUTTONUP, WM_USER,
+            WNDCLASSEXW, WS_CHILD, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_POPUP, WindowFromPoint,
         },
     },
 };
@@ -56,6 +61,11 @@ const DESKTOP_MESSAGE_LPARAM: LPARAM = 1;
 const TRAY_CALLBACK: u32 = WM_USER + 1;
 const TRAY_PAUSE: u32 = 1;
 const TRAY_QUIT: u32 = 2;
+const TRAY_STARTUP_ENABLE: u32 = 3;
+const TRAY_STARTUP_DISABLE: u32 = 4;
+const TRAY_SAVE: u32 = 5;
+const TRAY_OPEN_SAVES: u32 = 6;
+static TRAY_PAUSED: AtomicBool = AtomicBool::new(false);
 static TRAY_ACTION: AtomicU32 = AtomicU32::new(0);
 static WALLPAPER_WINDOW: AtomicIsize = AtomicIsize::new(0);
 
@@ -183,6 +193,10 @@ impl Tray {
         match TRAY_ACTION.swap(0, Ordering::AcqRel) {
             x if x == TRAY_PAUSE => Some(TrayAction::TogglePause),
             x if x == TRAY_QUIT => Some(TrayAction::Quit),
+            x if x == TRAY_STARTUP_ENABLE => Some(TrayAction::SetStartup(true)),
+            x if x == TRAY_STARTUP_DISABLE => Some(TrayAction::SetStartup(false)),
+            x if x == TRAY_SAVE => Some(TrayAction::Save),
+            x if x == TRAY_OPEN_SAVES => Some(TrayAction::OpenSaves),
             _ => self
                 .clicks
                 .try_iter()
@@ -204,6 +218,39 @@ impl Tray {
                         None
                     }
                 }),
+        }
+    }
+
+    pub fn set_paused(&mut self, paused: bool) {
+        if TRAY_PAUSED.swap(paused, Ordering::AcqRel) != paused {
+            let tip = wide(if paused {
+                "Primitive World - Paused"
+            } else {
+                "Primitive World - Running"
+            });
+            self.icon.szTip.fill(0);
+            self.icon.szTip[..tip.len()].copy_from_slice(&tip);
+            self.refresh();
+        }
+    }
+
+    pub fn notify(&self, message: &str) {
+        let mut icon = self.icon;
+        icon.uFlags = NIF_INFO;
+        icon.dwInfoFlags = NIIF_INFO;
+        for (dest, src) in icon.szInfo.iter_mut().take(255).zip(message.encode_utf16()) {
+            *dest = src;
+        }
+        for (dest, src) in icon
+            .szInfoTitle
+            .iter_mut()
+            .zip("Primitive World".encode_utf16())
+        {
+            *dest = src;
+        }
+        // SAFETY: all fields are initialized and strings remain NUL-terminated.
+        unsafe {
+            Shell_NotifyIconW(NIM_MODIFY, &icon);
         }
     }
 
@@ -234,6 +281,9 @@ impl Drop for Tray {
 pub enum TrayAction {
     TogglePause,
     Quit,
+    SetStartup(bool),
+    Save,
+    OpenSaves,
     DesktopClick { x: i32, y: i32 },
 }
 
@@ -384,11 +434,47 @@ unsafe extern "system" fn tray_window_proc(
     if message == TRAY_CALLBACK && lparam as u32 == WM_RBUTTONUP {
         let menu = unsafe { CreatePopupMenu() };
         if !menu.is_null() {
-            let pause = wide("Pause / Resume");
-            let quit = wide("Quit Primitive World");
+            let pause = wide(if TRAY_PAUSED.load(Ordering::Acquire) {
+                "Resume simulation"
+            } else {
+                "Pause simulation"
+            });
+            let quit = wide("Save and quit");
+            let save = wide("Save now");
+            let saves = wide("Open saves folder");
+            let startup = startup_command_at(STARTUP_KEY, STARTUP_VALUE);
+            let startup_label = wide(if startup.is_ok() {
+                "Start this copy with Windows"
+            } else {
+                "Start with Windows (unavailable)"
+            });
+            let current_command = std::env::current_exe()
+                .ok()
+                .map(|path| startup_command_for(&path));
+            let enabled = startup
+                .as_ref()
+                .is_ok_and(|command| command.is_some() && *command == current_command);
+            let startup_action = if enabled {
+                TRAY_STARTUP_DISABLE
+            } else {
+                TRAY_STARTUP_ENABLE
+            };
+            let startup_flags = MF_STRING
+                | if enabled { MF_CHECKED } else { 0 }
+                | if startup.is_err() { MF_GRAYED } else { 0 };
             // SAFETY: menu and item strings are valid for this call.
             unsafe {
                 AppendMenuW(menu, MF_STRING, TRAY_PAUSE as usize, pause.as_ptr());
+                AppendMenuW(menu, MF_STRING, TRAY_SAVE as usize, save.as_ptr());
+                AppendMenuW(menu, MF_STRING, TRAY_OPEN_SAVES as usize, saves.as_ptr());
+                AppendMenuW(menu, MF_SEPARATOR, 0, std::ptr::null());
+                AppendMenuW(
+                    menu,
+                    startup_flags,
+                    startup_action as usize,
+                    startup_label.as_ptr(),
+                );
+                AppendMenuW(menu, MF_SEPARATOR, 0, std::ptr::null());
                 AppendMenuW(menu, MF_STRING, TRAY_QUIT as usize, quit.as_ptr());
                 let mut point = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
                 GetCursorPos(&mut point);
@@ -402,12 +488,12 @@ unsafe extern "system" fn tray_window_proc(
                     window,
                     null_mut(),
                 );
-                if command == TRAY_PAUSE as i32 {
-                    TRAY_ACTION.store(TRAY_PAUSE, Ordering::Release);
-                } else if command == TRAY_QUIT as i32 {
-                    TRAY_ACTION.store(TRAY_QUIT, Ordering::Release);
+                if (TRAY_PAUSE..=TRAY_OPEN_SAVES).contains(&(command as u32)) {
+                    TRAY_ACTION.store(command as u32, Ordering::Release);
                 }
                 DestroyMenu(menu);
+                // Let Explorer dismiss the foreground popup cleanly.
+                PostMessageW(window, WM_NULL, 0, 0);
             }
         }
         return 0;
@@ -452,10 +538,19 @@ impl Drop for SingleInstance {
 pub fn install_startup() -> Result<String, String> {
     let executable =
         std::env::current_exe().map_err(|e| format!("Cannot locate executable: {e}"))?;
-    let command = format!("{} --wallpaper --resume", quote_windows(&executable));
-    let key_path = wide(STARTUP_KEY);
-    let value_name = wide(STARTUP_VALUE);
-    let value = wide(&command);
+    let command = startup_command_for(&executable);
+    write_startup_at(STARTUP_KEY, STARTUP_VALUE, &command)?;
+    Ok("Primitive World will resume your wallpaper when you sign in to Windows".into())
+}
+
+fn startup_command_for(executable: &std::path::Path) -> String {
+    format!("{} --wallpaper --resume", quote_windows(executable))
+}
+
+fn write_startup_at(path: &str, name: &str, command: &str) -> Result<(), String> {
+    let key_path = wide(path);
+    let value_name = wide(name);
+    let value = wide(command);
     let mut key: HKEY = null_mut();
     // SAFETY: all pointers refer to live nul-terminated UTF-16 buffers and
     // the output key is initialized by the call.
@@ -496,14 +591,17 @@ pub fn install_startup() -> Result<String, String> {
             "Could not register Windows startup entry ({status})"
         ));
     }
-    Ok(format!(
-        "Installed Primitive World for Windows login: {command}"
-    ))
+    Ok(())
 }
 
 pub fn uninstall_startup() -> Result<String, String> {
-    let key_path = wide(STARTUP_KEY);
-    let value_name = wide(STARTUP_VALUE);
+    delete_startup_at(STARTUP_KEY, STARTUP_VALUE)?;
+    Ok("Removed Primitive World from Windows login startup".into())
+}
+
+fn delete_startup_at(path: &str, name: &str) -> Result<(), String> {
+    let key_path = wide(path);
+    let value_name = wide(name);
     let mut key: HKEY = null_mut();
     // SAFETY: buffers are valid UTF-16 strings and the output key is written
     // by the call.
@@ -532,7 +630,7 @@ pub fn uninstall_startup() -> Result<String, String> {
     if status != 0 && status != 2 {
         return Err(format!("Could not remove Windows startup entry ({status})"));
     }
-    Ok("Removed Primitive World from Windows login startup".into())
+    Ok(())
 }
 
 pub fn attach_to_desktop(window: &Window) -> Result<(), String> {
@@ -749,5 +847,187 @@ mod tests {
             other > 0,
             "Expected icons, taskbar, or application windows to be rejected"
         );
+    }
+}
+
+fn startup_command_at(path: &str, name: &str) -> Result<Option<String>, String> {
+    let path = wide(path);
+    let name = wide(name);
+    let mut data = [0u16; 4096];
+    let mut size = std::mem::size_of_val(&data) as u32;
+    // SAFETY: the registry writes at most size bytes to this initialized array.
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            path.as_ptr(),
+            name.as_ptr(),
+            RRF_RT_REG_SZ,
+            null_mut(),
+            data.as_mut_ptr().cast(),
+            &mut size,
+        )
+    };
+    if status == 2 || status == 3 {
+        return Ok(None);
+    }
+    if status != 0 {
+        return Err(format!(
+            "Could not read Windows startup settings ({status})"
+        ));
+    }
+    let end = data.iter().position(|&x| x == 0).unwrap_or(data.len());
+    Ok(Some(String::from_utf16_lossy(&data[..end])))
+}
+
+pub fn prepare_console(args: &[String]) {
+    let console_command = args.iter().any(|arg| {
+        matches!(
+            arg.as_str(),
+            "--headless"
+                | "--help"
+                | "--version"
+                | "--install-startup"
+                | "--uninstall-startup"
+                | "--stop-wallpaper"
+                | "--prune-saves"
+        )
+    });
+    if !console_command {
+        return;
+    }
+    // Preserve redirected CLI output (tests, scripts, headless reports). Only
+    // console commands attach to the caller; interactive apps stay independent.
+    unsafe {
+        let output = GetStdHandle(STD_OUTPUT_HANDLE);
+        if output.is_null() || output == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+            AttachConsole(ATTACH_PARENT_PROCESS);
+        }
+    }
+}
+
+pub fn open_wallpaper_log() -> Result<std::fs::File, String> {
+    use std::os::windows::io::AsRawHandle;
+    let root = std::env::var_os("LOCALAPPDATA")
+        .map(std::path::PathBuf::from)
+        .ok_or("Windows did not provide a local application data directory")?
+        .join("PrimitiveWorld")
+        .join("logs");
+    std::fs::create_dir_all(&root).map_err(|e| format!("Could not create log folder: {e}"))?;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(root.join("wallpaper.log"))
+        .map_err(|e| format!("Could not open wallpaper log: {e}"))?;
+    if file.metadata().map_err(|e| e.to_string())?.len() > 2 * 1024 * 1024 {
+        file.set_len(0).map_err(|e| e.to_string())?;
+    }
+    // SAFETY: main retains this file until the application exits. Each standard
+    // stream writes to the same append-only handle instead of the launch terminal.
+    unsafe {
+        SetStdHandle(STD_OUTPUT_HANDLE, file.as_raw_handle());
+        SetStdHandle(STD_ERROR_HANDLE, file.as_raw_handle());
+    }
+    eprintln!(
+        "Primitive World {} wallpaper start (process {})",
+        env!("CARGO_PKG_VERSION"),
+        std::process::id()
+    );
+    Ok(file)
+}
+
+pub fn show_error(message: &str) {
+    let title = wide("Primitive World");
+    let message = wide(message);
+    // SAFETY: strings remain valid until this modal dialog returns.
+    unsafe {
+        MessageBoxW(
+            null_mut(),
+            message.as_ptr(),
+            title.as_ptr(),
+            MB_OK | MB_ICONERROR,
+        );
+    }
+}
+
+pub fn show_info(message: &str) {
+    let title = wide("Primitive World");
+    let message = wide(message);
+    // SAFETY: strings remain valid until this modal dialog returns.
+    unsafe {
+        MessageBoxW(
+            null_mut(),
+            message.as_ptr(),
+            title.as_ptr(),
+            MB_OK | MB_ICONINFORMATION,
+        );
+    }
+}
+
+pub fn install_graphical_panic_hook() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        previous(info);
+        show_error(&format!(
+            "Primitive World encountered an error. Your last completed save is retained.\n\n{info}"
+        ));
+    }));
+}
+
+pub fn open_folder(path: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(path).map_err(|e| e.to_string())?;
+    let operation = wide("open");
+    use std::os::windows::ffi::OsStrExt;
+    let path: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    // SAFETY: paths and operation are terminated UTF-16; no shell command is built.
+    let result = unsafe {
+        ShellExecuteW(
+            null_mut(),
+            operation.as_ptr(),
+            path.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    } as isize;
+    if result <= 32 {
+        return Err(format!("Could not open the saves folder ({result})"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::*;
+
+    #[test]
+    fn startup_registration_round_trips_without_touching_login_settings() {
+        let path = format!("Software\\PrimitiveWorldStartupTest{}", std::process::id());
+        struct Cleanup(String);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let key = wide(&self.0);
+                // Only the isolated test key created below is removed.
+                unsafe {
+                    windows_sys::Win32::System::Registry::RegDeleteKeyW(
+                        HKEY_CURRENT_USER,
+                        key.as_ptr(),
+                    );
+                }
+            }
+        }
+        let _cleanup = Cleanup(path.clone());
+        assert_eq!(startup_command_at(&path, "Test").unwrap(), None);
+        let command = startup_command_for(std::path::Path::new(
+            r"C:\Apps with spaces\Primitive World.exe",
+        ));
+        assert_eq!(
+            command,
+            r#""C:\Apps with spaces\Primitive World.exe" --wallpaper --resume"#
+        );
+        write_startup_at(&path, "Test", &command).unwrap();
+        assert_eq!(startup_command_at(&path, "Test").unwrap(), Some(command));
+        delete_startup_at(&path, "Test").unwrap();
+        assert_eq!(startup_command_at(&path, "Test").unwrap(), None);
+        delete_startup_at(&path, "Test").unwrap();
     }
 }

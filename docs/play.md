@@ -1,24 +1,48 @@
 # Play and save
 
-Run `cargo run --release` or double-click `Play.cmd` on Windows. New Game creates
-seed-specific random founding brains. Load Game resumes the hereditary pool
-and current ecology. Configure population, seed, food growth, metabolism
-and available interactions before starting; the physical rules stay fixed.
+On Windows, run `Build.cmd` once, then double-click **Primitive World.exe** in the
+project folder to resume wallpaper. No terminal is created or required. With no
+saved experiment in the current model, it creates one. Startup is opt-in and is
+controlled through the tray menu; launching the app never enables it by itself.
 
-Use `Play.cmd --wallpaper` for a fixed-camera desktop terrarium. The launcher
-builds and runs `target/play/release/primitive_world.exe`, so it does not reuse
-an arbitrary older target directory.
+For a regular window, double-click `Play.cmd` or run
+`cargo run --release -- --viewer`. New Game creates seed-specific random founding
+brains. Load Game resumes the hereditary pool and current ecology. Configure
+population, seed, food growth, metabolism and available interactions before
+starting; the physical rules stay fixed.
 
-On Windows, run `.\Play.cmd --install-startup` to build the current executable
-and register it to start the wallpaper automatically when you sign
-in. It resumes the newest saved experiment in the current model and creates one
-if no save exists. Re-run `Play.cmd` after source updates to rebuild the executable
-used at login. Use `.\Play.cmd --wallpaper --resume` to resume manually and
-`.\Play.cmd --uninstall-startup` to
-remove that login entry. The wallpaper prevents duplicate wallpaper instances;
-normal viewers and headless diagnostics can still run separately. Use its tray
-menu to pause/resume or quit, or `--stop-wallpaper` to request save-and-close.
-It refreshes tray registration when Explorer changes.
+The tray icon may be inside Windows' **^** notification-area overflow. Right-click
+it for:
+
+- **Pause simulation / Resume simulation**: the label follows the current state.
+  Double-clicking the icon also toggles pause.
+- **Save now**: writes a resumable save and confirms through a tray notification.
+- **Open saves folder**: opens the experiment library in Explorer.
+- **Start this copy with Windows**: checked when the current executable is
+  registered to resume wallpaper at sign-in. Enabling it from a different copy
+  replaces the previously registered path; disabling removes the login entry.
+- **Save and quit**: saves before exiting. A save failure displays an error and
+  keeps the app paused so you can retry.
+
+Copy the executable to its permanent location before enabling startup. Windows
+Startup Apps settings or organizational policy can override login registration.
+To update from source, choose **Save and quit**, then run `Build.cmd` again. Builds
+protect a running executable instead of stopping its experiment to replace it.
+
+The command `.\Play.cmd --wallpaper --resume` also builds and launches the
+wallpaper, then returns immediately. You may close that terminal. Use
+`--wallpaper` without `--resume` to start a fresh experiment explicitly.
+`Play.cmd --install-startup` and `Play.cmd --uninstall-startup` remain available,
+as does `--stop-wallpaper` to request save-and-close. Headless, help and maintenance
+commands remain synchronous and keep their standard output and exit codes.
+
+Wallpaper prevents duplicate wallpaper instances; normal viewers and headless
+diagnostics can run separately. It refreshes tray registration when Explorer
+changes. Startup errors are displayed in a dialog; wallpaper diagnostic output
+is written to `%LOCALAPPDATA%\PrimitiveWorld\logs\wallpaper.log`. The log resets
+on launch after it exceeds 2 MiB. Double-clicking an already running copy points
+you to its existing tray controls.
+
 The habitat uses the desktop host's pixel dimensions. When resuming a differently
 sized habitat, a separate descendant experiment is created; the original save,
 world age, and ecology remain available in Load Game. Matching sizes resume directly.
@@ -30,7 +54,7 @@ it without adding food. Manual food additions are saved as part of the experimen
 Blank desktop clicks add food and the HUD's speed and view controls are routed
 through Explorer without intercepting icon or taskbar clicks. Use the tray menu
 for pause and quit. If Explorer destroys the wallpaper host, the viewer attempts
-to save and exits; launch it again with `--wallpaper --resume`. Multiple-monitor
+to save and exits; double-click the executable to resume it again. Multiple-monitor
 layouts require verification on the target desktop; hosting uses one window, not
 one per monitor.
 

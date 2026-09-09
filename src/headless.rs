@@ -5,7 +5,7 @@ use std::{collections::HashMap, io::Write, path::Path};
 pub const HELP: &str = "Primitive World
 Run: primitive_world [--seed N] [--founders PATH]
 Headless: --headless --ticks N --sample N --output PATH
-Default viewer: New Game runs a hereditary ecology; Load Game resumes it across worlds.
+Windowed viewer: --viewer opens New Game / Load Game. On Windows, no arguments resumes wallpaper.
 Wallpaper viewer: --wallpaper uses the desktop host as a native-resolution habitat.
 Windows integration: --install-startup registers wallpaper + auto-resume at login; --uninstall-startup removes it; --stop-wallpaper asks the wallpaper to save and close.
 Wallpaper startup: --resume opens the latest saved experiment, or creates one if none exists.
@@ -13,7 +13,7 @@ Save cleanup: --prune-saves retains the newest six snapshots per experiment and 
 Headless rolling worlds: --headless --ticks N [--checkpoint PATH] [--save-checkpoint NEW_PATH]
 Use --headless --single-world for diagnostics that stop at extinction.
   --load-game RECEIPT.json opens a saved experiment in the viewer.
-Playback: --view-fps 10|30|60|120|144|240 (default 30; wallpaper defaults to monitor refresh) --compute-budget 10..100 (default 100)\n  1x targets 60 ticks/second; MAX is uncapped. Budget controls work/idle time, not hardware power.\nOptions: --wallpaper --habitat-contrast X (0..1) --environment-rotation N (0..3)
+Playback: --view-fps 10|30|60|120|144|240 (default 30; wallpaper defaults to monitor refresh) --compute-budget 10..100 (default 100)\n  1x targets 60 ticks/second; MAX is uncapped. Budget controls work/idle time, not hardware power.\nOptions: --viewer (regular window; double-click on Windows resumes wallpaper) --wallpaper --habitat-contrast X (0..1) --environment-rotation N (0..3)
          --population N --regeneration X --no-force --no-signals --static-landscape
          --metabolic-cost X (stationary upkeep) --movement-cost X --motor-gain X
          --checkpoint PATH --save-checkpoint PATH --export-founders PATH
@@ -50,6 +50,7 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
         "--no-signals",
         "--static-landscape",
         "--wallpaper",
+        "--viewer",
         "--resume",
         "--help",
         "--version",
@@ -108,6 +109,11 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
             ));
         }
         i += 1;
+    }
+    if out.contains_key("--viewer")
+        && (out.contains_key("--wallpaper") || out.contains_key("--headless"))
+    {
+        return Err("Use --viewer by itself as the display mode".into());
     }
     if out
         .get("--view-speed")

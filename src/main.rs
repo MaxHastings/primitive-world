@@ -1,3 +1,5 @@
+#![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
+
 mod brain;
 mod controls;
 mod environment;
@@ -185,7 +187,7 @@ impl AppState {
                 None
             };
 
-        let args: Vec<_> = std::env::args().collect();
+        let args = launch_arguments();
         let wallpaper = args.iter().any(|a| a == "--wallpaper");
         let wallpaper_size = wallpaper.then(|| {
             let size = window.inner_size();
@@ -211,7 +213,8 @@ impl AppState {
                 .validate()
                 .expect("monitor habitat dimensions must be valid");
         }
-        if args.len() > 1 {
+        let command_line_world = args.iter().skip(1).any(|arg| arg != "--viewer");
+        if command_line_world {
             simulation.reset(&queue);
         }
         let speed_index = args
@@ -255,7 +258,7 @@ impl AppState {
             wallpaper,
             wallpaper_size,
             assisted: false,
-            ui: ui::UiState::new(args.len() > 1),
+            ui: ui::UiState::new(command_line_world),
             experiment: None,
             world_revision: 0,
             saved_revision: None,
@@ -269,7 +272,7 @@ impl AppState {
             egui_context,
             egui_state,
             egui_renderer,
-            paused: args.len() == 1,
+            paused: !command_line_world,
             step_requested: false,
             speed_index,
             fps_timer: Instant::now(),
@@ -694,7 +697,7 @@ impl ApplicationHandler for App {
         if self.window.is_some() {
             return;
         }
-        let wallpaper = std::env::args().any(|arg| arg == "--wallpaper");
+        let wallpaper = launch_arguments().iter().any(|arg| arg == "--wallpaper");
         let mut attributes = WindowAttributes::default()
             .with_visible(false)
             .with_title(format!("Primitive World {}", env!("CARGO_PKG_VERSION")))
@@ -711,12 +714,26 @@ impl ApplicationHandler for App {
         #[cfg(windows)]
         if wallpaper && let Err(error) = windows_platform::attach_to_desktop(&window) {
             eprintln!("Wallpaper desktop hosting unavailable: {error}");
+            windows_platform::show_error(&format!(
+                "Could not attach wallpaper to the desktop.\n\n{error}"
+            ));
             // Wallpaper mode must never fall back to an ordinary visible
             // window: that would cover the user's desktop and icons.
             event_loop.exit();
             return;
         }
         let state = pollster::block_on(AppState::new(window.clone()));
+        #[cfg(windows)]
+        if wallpaper && (!state.ui.has_world || state.tray.is_none()) {
+            let message = if state.tray.is_none() {
+                "The wallpaper tray controls could not start. See %LOCALAPPDATA%\\PrimitiveWorld\\logs\\wallpaper.log for details."
+            } else {
+                &state.file_status
+            };
+            windows_platform::show_error(&format!("Wallpaper could not start.\n\n{message}"));
+            event_loop.exit();
+            return;
+        }
         window.set_visible(true);
         self.window = Some(window);
         self.state = Some(state);
@@ -840,15 +857,45 @@ impl ApplicationHandler for App {
                     windows_platform::TrayAction::DesktopClick { x, y } => {
                         state.handle_wallpaper_desktop_click(x, y)
                     }
+                    windows_platform::TrayAction::SetStartup(enabled) => {
+                        let result = if enabled {
+                            windows_platform::install_startup()
+                        } else {
+                            windows_platform::uninstall_startup()
+                        };
+                        if let Err(error) = result {
+                            windows_platform::show_error(&error);
+                        }
+                    }
+                    windows_platform::TrayAction::Save => match state.save_experiment() {
+                        Ok(message) => {
+                            if let Some(tray) = &state.tray {
+                                tray.notify(&message);
+                            }
+                            state.file_status = message;
+                        }
+                        Err(error) => windows_platform::show_error(&error),
+                    },
+                    windows_platform::TrayAction::OpenSaves => {
+                        if let Err(error) = windows_platform::open_folder(&experiments::save_root())
+                        {
+                            windows_platform::show_error(&error);
+                        }
+                    }
                     windows_platform::TrayAction::Quit => {
                         if state.close_requested() {
                             event_loop.exit();
                             return;
                         }
+                        windows_platform::show_error(&state.file_status);
                     }
                 }
             }
             state.pump_simulation();
+            #[cfg(windows)]
+            if let Some(tray) = &mut state.tray {
+                tray.set_paused(state.paused);
+            }
             let now = Instant::now();
             #[cfg(windows)]
             if state.wallpaper
@@ -869,8 +916,21 @@ impl ApplicationHandler for App {
     }
 }
 
+fn launch_arguments() -> Vec<String> {
+    normalize_launch_arguments(std::env::args().collect(), cfg!(windows))
+}
+
+fn normalize_launch_arguments(mut args: Vec<String>, windows: bool) -> Vec<String> {
+    if windows && args.len() == 1 {
+        args.extend(["--wallpaper".into(), "--resume".into()]);
+    }
+    args
+}
+
 fn main() {
-    let options: Vec<_> = std::env::args().collect();
+    let options = launch_arguments();
+    #[cfg(windows)]
+    windows_platform::prepare_console(&options);
     if options.iter().any(|x| x == "--prune-saves") {
         if options.len() != 2 {
             eprintln!("Use --prune-saves by itself");
@@ -935,6 +995,12 @@ fn main() {
     }
     if let Err(e) = headless::arguments(&options) {
         eprintln!("{e}");
+        #[cfg(windows)]
+        if options.iter().any(|arg| arg == "--wallpaper")
+            && !options.iter().any(|arg| arg == "--headless")
+        {
+            windows_platform::show_error(&e);
+        }
         std::process::exit(2);
     }
     #[cfg(windows)]
@@ -946,7 +1012,9 @@ fn main() {
         Ok(Some(guard)) => Some(guard),
         Ok(None) if !options.iter().any(|a| a == "--wallpaper") => None,
         Ok(None) => {
-            eprintln!("Primitive World wallpaper is already running.");
+            windows_platform::show_info(
+                "Primitive World wallpaper is already running. Use its icon in the Windows notification area to pause, save, or quit.",
+            );
             return;
         }
         Err(error) => {
@@ -954,7 +1022,23 @@ fn main() {
             std::process::exit(1);
         }
     };
-    let args: Vec<_> = std::env::args().collect();
+    #[cfg(windows)]
+    let _wallpaper_log = if options.iter().any(|a| a == "--wallpaper") {
+        match windows_platform::open_wallpaper_log() {
+            Ok(file) => Some(file),
+            Err(error) => {
+                windows_platform::show_error(&error);
+                return;
+            }
+        }
+    } else {
+        None
+    };
+    #[cfg(windows)]
+    if !options.iter().any(|a| a == "--headless") {
+        windows_platform::install_graphical_panic_hook();
+    }
+    let args = launch_arguments();
     if args.iter().any(|a| a == "--headless") {
         if let Err(error) = headless::run(&args) {
             eprintln!("{error}");
@@ -969,4 +1053,29 @@ fn main() {
             state: None,
         })
         .expect("event loop failed");
+}
+
+#[cfg(test)]
+mod launch_tests {
+    use super::*;
+
+    #[test]
+    fn double_click_resumes_wallpaper_but_explicit_modes_are_preserved() {
+        assert_eq!(
+            normalize_launch_arguments(vec!["app".into()], true),
+            vec!["app", "--wallpaper", "--resume"]
+        );
+        for args in [
+            vec!["app", "--viewer"],
+            vec!["app", "--headless", "--ticks", "1"],
+            vec!["app", "--wallpaper", "--seed", "42"],
+        ] {
+            let args: Vec<String> = args.into_iter().map(str::to_owned).collect();
+            assert_eq!(normalize_launch_arguments(args.clone(), true), args);
+        }
+        assert_eq!(
+            normalize_launch_arguments(vec!["app".into()], false),
+            vec!["app"]
+        );
+    }
 }
