@@ -277,17 +277,10 @@ fn draw_wallpaper(ctx: &egui::Context, state: &mut AppState, action: &mut Action
                                 if state.assisted {
                                     ui.label("Food added by you");
                                 }
-                                if let Some(record) = state.simulation.progress.best.as_ref() {
-                                    ui.label(format!(
-                                        "Best: world {} / {} ticks",
-                                        record.world, record.duration
-                                    ));
-                                    if state.simulation.tick > record.duration {
-                                        ui.label("New survival record");
-                                    }
-                                } else {
-                                    ui.label("No completed worlds yet");
-                                }
+                                ui.label(format!(
+                                    "Reservoir: {} inherited entries",
+                                    crate::model::HEREDITARY_RESERVOIR_SIZE
+                                ));
                                 ui.add_space(4.0);
                                 ui.weak("Population history");
                                 let (rect, _) = ui.allocate_exact_size(
@@ -435,8 +428,8 @@ fn draw_new(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                 heading(ui, "New Game", "Fresh brains. Your own evolutionary line.");
                 ui.label("Experiment name");
                 ui.add(egui::TextEdit::singleline(&mut state.ui.name).desired_width(380.0));
-                ui.label("Founding populations compete on how long their worlds stay populated.");
-                ui.small("Current population and candidate face the same environment. Living worlds are never cut short.");
+                ui.label("Heredity changes through births and blind mutation in a changing ecology.");
+                ui.small("After extinction, fresh bodies inherit random entries from the hereditary pool.");
                 egui::CollapsingHeader::new("World setup").show(ui, |ui| {
                     ui.add(egui::DragValue::new(&mut state.ui.seed).prefix("Seed "));
                     ui.add(
@@ -451,11 +444,12 @@ fn draw_new(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                         egui::Slider::new(&mut state.ui.setup.metabolic_cost, 0.0..=0.2)
                             .text("Metabolic cap"),
                     );
-                    ui.small("Metabolism rises from .01; food patches recede to normal size over 50,000 ticks.");
+                    ui.small("Body upkeep rises from .01 to the cap over 50,000 ticks. Environmental dynamics remain fully active from the first tick.");
+                    ui.add(egui::Slider::new(&mut state.ui.setup.habitat_contrast, 0.0..=1.0).text("Habitat contrast"));
                     ui.checkbox(&mut state.ui.setup.evolving_landscape, "Evolving geography");
                     ui.checkbox(
                         &mut state.ui.setup.social_actions_enabled,
-                        "Unlock social actions after the 50,000-tick survival bootstrap",
+                        "Social actions available",
                     );
                     ui.checkbox(&mut state.ui.setup.force_enabled, "Contact force available");
                     ui.checkbox(
@@ -680,52 +674,27 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
 
     let p = &state.simulation.progress;
     ui.strong(format!("World {}", p.world));
-    let evaluating = match p.phase {
-        evolution::Phase::Incumbent => "Current population",
-        evolution::Phase::Challenger => "Candidate",
-    };
     ui.label(format!(
-        "Comparison {} · {evaluating} #{}",
-        p.comparison,
-        p.population_id()
+        "{} founders sampled from a {}-entry hereditary reservoir",
+        state.simulation.settings.population,
+        crate::model::HEREDITARY_RESERVOIR_SIZE
     ));
-    if let Some(b) = &p.baseline {
-        ui.small(format!(
-            "Current population lasted {} ticks on this same seed. A living candidate wins immediately when it outlasts that.",
-            b.duration
-        ));
-        ui.small(format!(
-            "Candidate founders: all {} uniquely varied; {} use terminal-descendant genomes as their inherited source",
-            state.simulation.settings.population, p.descendant_founders
-        ));
-    } else {
-        ui.small(
-            "Establishing the current population's duration on this comparison's environment.",
-        );
-    }
     if let Some(o) = &p.completed {
         ui.small(format!("Natural extinction after {} ticks", o.duration));
     } else {
-        ui.small("World still in progress. Biological evolution continues; a candidate is promoted as soon as it outlives its incumbent.");
+        ui.small(
+            "World in progress. Successful births replace uniformly chosen reservoir entries.",
+        );
     }
-    ui.small(format!(
-        "{} candidates accepted · natural survival duration decides",
-        p.accepted_challengers
-    ));
     ui.collapsing("Completed worlds", |ui| {
         ui.small(
             "Recent 64 worlds. Feeding, births and generations are observations, not rewards.",
         );
         for o in p.history.iter().rev() {
-            let result = match o.challenger_accepted {
-                Some(true) => " · candidate accepted",
-                Some(false) => " · current population kept",
-                None => " · baseline",
-            };
             let assisted = if o.assisted { " · assisted" } else { "" };
             ui.small(format!(
-                "World {} · population #{} · seed {} · {} ticks{}{}",
-                o.world, o.population_id, o.seed, o.duration, result, assisted
+                "World {} · seed {} · {} ticks · reservoir {}{}",
+                o.world, o.seed, o.duration, o.reservoir_occupancy, assisted
             ));
             ui.small(format!(
                 "{} births · generation {} · {:.1} food collected / {:.1} digested",

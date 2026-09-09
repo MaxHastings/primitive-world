@@ -1,7 +1,11 @@
 //! Sensory/retention wiring checks, not evidence of evolved competence.
 use super::*;
 
-fn sense(s: &Simulation, d: &wgpu::Device, q: &wgpu::Queue) -> (PerceptionGpu, DecisionGpu) {
+pub(super) fn sense(
+    s: &Simulation,
+    d: &wgpu::Device,
+    q: &wgpu::Queue,
+) -> (PerceptionGpu, DecisionGpu) {
     s.update_params(q);
     let mut e = d.create_command_encoder(&Default::default());
     let groups = MAX_AGENTS.div_ceil(64);
@@ -27,6 +31,10 @@ fn sector(dx: f32, dy: f32) -> usize {
         / std::f32::consts::FRAC_PI_4)
         .floor() as usize
         % SECTORS
+}
+
+fn torus_delta(start: f32, end: f32, extent: f32) -> f32 {
+    (end - start + extent * 0.5).rem_euclid(extent) - extent * 0.5
 }
 
 #[test]
@@ -83,6 +91,45 @@ fn rectangular_habitat_sensing_collection_and_death_drop_agree() {
 }
 
 #[test]
+fn torus_seam_unifies_food_bodies_picking_intervention_and_killing() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let a = body([1.0, 1026.0]);
+    let mut b = body([2047.0, 1026.0]);
+    b.lineage_id = 2;
+    put(&s, &q, 0, a, &fixed(0, [0.0; 2]));
+    put(&s, &q, 1, b, &fixed(0, [0.0; 2]));
+    let seam_food = 256 * 512 + 511;
+    q.write_buffer(
+        &s.resource_buffer,
+        seam_food as u64 * 4,
+        bytemuck::bytes_of(&1000u32),
+    );
+
+    let (p, _) = sense(&s, &d, &q);
+    assert_eq!(p.nearby_count, 1.0);
+    assert_eq!(p.regions[4].bodies, 1.0, "body west across the seam");
+    assert!(p.regions[4].food > 0.0, "food west across the seam");
+    assert_eq!(
+        s.select_agent(&d, &q, [2046.0, 1026.0], 1.5)
+            .unwrap()
+            .selected,
+        2
+    );
+
+    s.apply_resource_shock(&d, &q, [1.0, 1026.0], 4.0, 0.5);
+    assert_eq!(
+        read::<[u32; 8]>(&d, &q, &s.ground_buffer, 512 * 512)[seam_food][0],
+        500
+    );
+    s.kill_agents_in_region(&d, &q, [1.0, 1026.0], 3.0);
+    assert_eq!(
+        read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2)[1].alive,
+        0
+    );
+}
+
+#[test]
 fn regional_food_matches_full_grid_reference_at_edges_and_all_radii() {
     let (d, q) = gpu();
     let s = scene(&d, &q);
@@ -102,8 +149,8 @@ fn regional_food_matches_full_grid_reference_at_edges_and_all_radii() {
         let mut counts = [0u32; REGIONS];
         for y in 0..512 {
             for x in 0..512 {
-                let dx = x as f32 * 4.0 + 2.0 - position[0];
-                let dy = y as f32 * 4.0 + 2.0 - position[1];
+                let dx = torus_delta(position[0], x as f32 * 4.0 + 2.0, s.settings.habitat_width);
+                let dy = torus_delta(position[1], y as f32 * 4.0 + 2.0, s.settings.habitat_height);
                 let distance2 = dx * dx + dy * dy;
                 if distance2 > radius * radius {
                     continue;
@@ -120,7 +167,10 @@ fn regional_food_matches_full_grid_reference_at_edges_and_all_radii() {
         }
         for k in 0..REGIONS {
             near(p.regions[k].food, sums[k] / counts[k].max(1) as f32);
-            near(decision.inputs[20 + k * 2], p.regions[k].food);
+            near(
+                decision.inputs[SAMPLE_BASE + k * SAMPLE_INPUTS],
+                p.regions[k].food,
+            );
             assert_eq!(p.regions[k].bodies, 0.0);
         }
         assert_eq!(p.nearby_count, 0.0);
@@ -154,7 +204,7 @@ fn diagonal_and_between_probe_food_is_visible_without_distant_leakage() {
 }
 
 #[test]
-fn sector_neighbors_count_crowds_choose_nearest_and_do_not_shuffle_or_expose_inventory() {
+fn generic_samples_count_all_bodies_and_do_not_expose_inventory() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let origin = [602.0, 902.0];
@@ -177,12 +227,12 @@ fn sector_neighbors_count_crowds_choose_nearest_and_do_not_shuffle_or_expose_inv
         b.generation = k as u32 + 10;
         put(&s, &q, k + 1, b, &genes);
     }
-    // Many candidates in one spatial cell; nearest occurs at a high slot.
+    // Every body contributes, including bodies stored at high slots.
     for slot in 9..73 {
         put(&s, &q, slot, body([607.0, 902.0]), &genes);
     }
     put(&s, &q, 73, body([603.0, 902.0]), &genes);
-    put(&s, &q, 74, body([603.0, 902.0]), &genes); // exact tie -> 73
+    put(&s, &q, 74, body([603.0, 902.0]), &genes); // coincident contributions both count
     put(&s, &q, 75, body([626.0, 902.0]), &genes); // radius equality
     put(&s, &q, 76, body([626.01, 902.0]), &genes); // outside
     let (reference, decision) = sense(&s, &d, &q);
@@ -193,10 +243,6 @@ fn sector_neighbors_count_crowds_choose_nearest_and_do_not_shuffle_or_expose_inv
     );
     assert_eq!(reference.regions[0].bodies, 67.0);
     assert_eq!(reference.regions[8].bodies, 1.0);
-    assert_eq!(reference.bodies[0].slot, 73);
-    for k in 1..8 {
-        assert_eq!(reference.bodies[k].slot, k as u32 + 1);
-    }
     for tick in [1, 19, 128] {
         s.tick = tick;
         a.rng = tick * 1234;
@@ -207,40 +253,25 @@ fn sector_neighbors_count_crowds_choose_nearest_and_do_not_shuffle_or_expose_inv
         b.energy = 1.0;
         put(&s, &q, 73, b, &genes);
         let (p, actual) = sense(&s, &d, &q);
-        assert_eq!(bytemuck::bytes_of(&p), bytemuck::bytes_of(&reference));
-        assert_eq!(actual.inputs, decision.inputs);
-        assert_eq!(actual.hidden, decision.hidden);
+        // Unordered spatial scatter can change float32 reduction by an ULP.
+        // Counts remain exact; physical sample reductions have a 1e-6 tolerance.
+        assert_eq!(p.nearby_count, reference.nearby_count);
+        for (a, b) in p.regions.iter().zip(&reference.regions) {
+            assert_eq!(a.bodies, b.bodies);
+        }
+        for (a, b) in bytemuck::cast_slice::<PerceptionGpu, f32>(&[p])
+            .iter()
+            .zip(bytemuck::cast_slice::<PerceptionGpu, f32>(&[reference]))
+        {
+            assert!((a - b).abs() <= 0.000001, "sample changed: {a} vs {b}");
+        }
+        for (a, b) in actual.inputs.iter().zip(decision.inputs) {
+            assert!((a - b).abs() <= 0.000001);
+        }
+        for (a, b) in actual.hidden.iter().zip(decision.hidden) {
+            assert!((a - b).abs() <= 0.000001);
+        }
     }
-}
-
-#[test]
-fn each_sector_logit_targets_the_observed_incarnation_and_contact_uses_it() {
-    let (d, q) = gpu();
-    let mut s = scene(&d, &q);
-    let origin = [602.0, 902.0];
-    for k in 0..8 {
-        let theta = k as f32 * std::f32::consts::FRAC_PI_4;
-        let mut b = body([origin[0] + 4.0 * theta.cos(), origin[1] + 4.0 * theta.sin()]);
-        b.generation = k + 11;
-        b.lineage_id = k + 2;
-        put(&s, &q, k as usize + 1, b, &fixed(0, [0.0; 2]));
-    }
-    for k in 0..8 {
-        let mut genes = fixed(3, [0.0; 2]);
-        genes[OUTPUT_BIAS + (10 + k)] = 4.0;
-        put(&s, &q, 0, body(origin), &genes);
-        let (p, decision) = sense(&s, &d, &q);
-        assert_eq!(decision.target, p.bodies[k].slot);
-        assert_eq!(decision.target, k as u32 + 1);
-        assert_eq!(decision.target_generation, k as u32 + 11);
-    }
-    let before = read::<AgentGpu>(&d, &q, &s.agent_buffers[0], 9);
-    step(&mut s, &d, &q, 1); // last selected sector = NE
-    let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 9);
-    for k in 1..8 {
-        assert_eq!(before[k].position, after[k].position);
-    }
-    assert!(after[8].position[0] > before[8].position[0]);
 }
 
 #[test]
@@ -248,17 +279,16 @@ fn evolved_gates_can_store_a_cue_retain_through_distraction_and_replace_it() {
     let (d, q) = gpu();
     let s = scene(&d, &q);
     let mut genes = fixed(0, [0.0; 2]);
-    crate::brain::add_edge(&mut genes, 20, 0, 1.0); // candidate 0 reads regional food
+    crate::brain::add_edge(&mut genes, SAMPLE_BASE, 0, 1.0); // candidate 0 reads regional food
     crate::brain::add_edge(&mut genes, 2, 1, 1.0); // candidate 1 reads underfoot cue
     crate::brain::add_edge(&mut genes, INPUTS + 1, HIDDEN, 4.0); // gate 0 opens when cue is present
     crate::brain::add_edge(&mut genes, INPUTS, 2 * HIDDEN + 6, 1.0); // retained value can influence action
     put(&s, &q, 0, body([602.0, 902.0]), &genes);
     s.update_params(&q);
-    let mut p = PerceptionGpu::default();
-    for b in &mut p.bodies {
-        b.slot = MAX_AGENTS;
-    }
-    p.resource_here = 1.0;
+    let mut p = PerceptionGpu {
+        resource_here: 1.0,
+        ..Default::default()
+    };
     p.regions[0].food = 1.0;
     let run = |p: &PerceptionGpu, n: usize| {
         q.write_buffer(&s.perception_buffer, 0, bytemuck::bytes_of(p));
@@ -290,7 +320,7 @@ fn evolved_gates_can_store_a_cue_retain_through_distraction_and_replace_it() {
     let replaced = run(&p, 1);
     assert_eq!(replaced.hidden[0], 0.0);
     assert_eq!(replaced.update_gates[0], 1.0);
-    assert_eq!(read::<f32>(&d, &q, &s.genome_buffer, GENOME_SIZE), genes);
+    assert_eq!(s.read_genomes(&d, &q, 1).unwrap(), genes);
 }
 
 #[test]
@@ -318,6 +348,7 @@ fn sensory_rewrite_throughput_probe() {
     for (population, crowded) in [(1000, false), (MAX_AGENTS, false), (512, true)] {
         s.settings.population = population;
         s.settings.founder_genomes = vec![fixed(0, [0.0; 2]).to_vec()];
+        s.settings.founder_traits = vec![AgentGpu::default().cognitive_traits()];
         s.reset(&q);
         if crowded {
             let mut bodies = build_agents(s.seed, &s.settings);

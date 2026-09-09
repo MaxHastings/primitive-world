@@ -1,15 +1,20 @@
 # Play and save
 
 Run `cargo run --release` or double-click `Play.cmd` on Windows. New Game creates
-seed-specific random founding brains. Load Game resumes the complete population
-comparison and current ecology. Configure population, seed, food growth, metabolism
+seed-specific random founding brains. Load Game resumes the hereditary pool
+and current ecology. Configure population, seed, food growth, metabolism
 and available interactions before starting; the physical rules stay fixed.
 
-Use `cargo run --release -- --wallpaper` for a fixed-camera desktop terrarium.
+Use `Play.cmd --wallpaper` for a fixed-camera desktop terrarium. The launcher
+builds and runs `target/play/release/primitive_world.exe`, so it does not reuse
+an arbitrary older target directory.
 
-On Windows, build the release executable and run `primitive_world.exe --install-startup`
-once to start the wallpaper automatically when you sign in. It resumes the newest
-saved experiment and creates one if no save exists. Use `--uninstall-startup` to
+On Windows, run `.\Play.cmd --install-startup` to build the current executable
+and register it to start the wallpaper automatically when you sign
+in. It resumes the newest saved experiment in the current model and creates one
+if no save exists. Re-run `Play.cmd` after source updates to rebuild the executable
+used at login. Use `.\Play.cmd --wallpaper --resume` to resume manually and
+`.\Play.cmd --uninstall-startup` to
 remove that login entry. The wallpaper prevents duplicate wallpaper instances;
 normal viewers and headless diagnostics can still run separately. Use its tray
 menu to pause/resume or quit, or `--stop-wallpaper` to request save-and-close.
@@ -35,10 +40,8 @@ compatibility manifest needed for that composition path. Older desktop layouts
 use the dedicated background `WorkerW`; an unsupported layout reports an error
 instead of silently attaching behind an opaque background.
 
-The overview shows whether the current population or its candidate is being
-evaluated. Both face the same environment. A living candidate replaces the current
-population as soon as it outlives the incumbent, then continues running. See
-[evolution](evolution.md) for inheritance and comparison.
+The overview shows the current world and physical observations. Natural extinction
+starts a new world from the blind hereditary pool. See [evolution](evolution.md).
 
 ## Viewing
 
@@ -60,17 +63,13 @@ cargo run --release -- --seed 42 --view-speed MAX --view-fps 30
 
 Save, Main menu, close and five-minute autosaves preserve changed state. A failed
 save pauses and leaves earlier complete saves available. Snapshot pairs
-`save-*.json` and `save-*.checkpoint` belong together. Complete founding populations,
-comparison state, current brains/memory, ecology and recent world history are saved.
+`save-*.json` and `save-*.checkpoint` belong together. The hereditary pool,
+its RNG streams, current brains/memory, ecology and recent world history are saved.
 Each experiment retains its six newest complete snapshots. The complete library is
 also capped at 16 GiB; if it reaches that limit, the oldest extra snapshots are
 removed across experiments, while each experiment's newest valid snapshot is always
 preserved. Run `primitive_world.exe --prune-saves` to apply the same cleanup now.
 A crash can lose work since the last save.
-
-`primitive_world.exe --purge-legacy-saves` separately removes paired saves whose
-receipt explicitly identifies an incompatible model. The current simulator cannot
-open those saves, so this is useful after upgrading from an older model.
 
 The background library scan skips incomplete or noncurrent data with a notice.
 Storage defaults to the platform application-data folder; `PRIMITIVE_WORLD_SAVES`
@@ -80,7 +79,8 @@ overrides it. Import a current receipt with Load Game or:
 cargo run --release -- --load-game path/to/save-123.json
 ```
 
-The current model is `primitive-v24-delayed-social-fresh-worlds`: receipts 4, checkpoints 37,
-founder banks 13. Noncurrent data is rejected without conversion or deletion.
+The current model is `primitive-v35-body-frame-contact`: receipts 4,
+checkpoints 54, founder banks 19. Noncurrent data is rejected without conversion
+or deletion.
 Exports require new paths. See [headless observation](observing.md),
 [performance limits](performance.md), and the [implementation checklist](implementation-checklist.md).

@@ -5,7 +5,10 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 
 pub const SPEED_LABELS: [&str; 9] = ["1x", "2x", "4x", "8x", "16x", "32x", "64x", "128x", "MAX"];
 pub const BASE_TPS: u32 = 60;
-pub const READBACK_SIZE: u64 = 160
+pub const TELEMETRY_SIZE: u64 = (1 + model::DEATH_STATS_COUNT as u64) * 4;
+pub const TIMING_OFFSET: u64 = TELEMETRY_SIZE.next_multiple_of(8);
+pub const INSPECTION_OFFSET: u64 = TIMING_OFFSET + 16;
+pub const READBACK_SIZE: u64 = INSPECTION_OFFSET
     + (std::mem::size_of::<model::AgentGpu>()
         + std::mem::size_of::<model::PerceptionGpu>()
         + std::mem::size_of::<model::DecisionGpu>()) as u64;
@@ -137,18 +140,17 @@ impl AppState {
             self.service_completed_world();
             return;
         }
-        let mut ticks = if self.step_requested {
+        let ticks = if self.step_requested {
             self.step_requested = false;
             1
         } else {
             self.scheduler.take(now, self.speed_index)
         }
         .min(model::MAX_WORLD_TICKS.saturating_sub(self.simulation.tick));
-        if let Some(until_win) = self.simulation.ticks_until_challenger_can_win() {
-            ticks = ticks.min(until_win);
-        }
-
-        if self.simulation.tick >= model::MAX_WORLD_TICKS {
+        if self.simulation.progress.engine_saturated
+            || self.simulation.tick >= model::MAX_WORLD_TICKS
+        {
+            self.simulation.record_engine_saturation();
             self.paused = true;
             self.file_status =
                 "World tick capacity reached. Save is available; this is not an extinction.".into();
@@ -171,7 +173,13 @@ impl AppState {
         if let Some(timing) = &self.gpu_timing {
             e.write_timestamp(&timing.query_set, 1);
             e.resolve_query_set(&timing.query_set, 0..2, &timing.resolve_buffer, 0);
-            e.copy_buffer_to_buffer(&timing.resolve_buffer, 0, &self.batch_readback, 144, 16);
+            e.copy_buffer_to_buffer(
+                &timing.resolve_buffer,
+                0,
+                &self.batch_readback,
+                TIMING_OFFSET,
+                16,
+            );
         }
         self.simulation
             .encode_telemetry(&mut e, &self.batch_readback);
@@ -187,7 +195,7 @@ impl AppState {
         };
         if let Some(previous) = inspected {
             let slot = u64::from(previous.selected - 1);
-            let mut offset = 160;
+            let mut offset = INSPECTION_OFFSET;
             for (source, size) in [
                 (
                     &self.simulation.agent_buffers[self.simulation.current_buffer],
@@ -254,9 +262,20 @@ impl AppState {
         self.age_deaths = u32_at(12);
         self.births = u32_at(16);
         self.interaction_stats = [u32_at(20), u32_at(24), u32_at(28), u32_at(32)];
+        if u32_at(4 + 36 * 4) != 0 || self.simulation.tick >= model::MAX_WORLD_TICKS {
+            self.simulation.record_engine_saturation();
+            self.paused = true;
+            self.file_status =
+                "Engine capacity reached; experiment paused. Save and start a new experiment."
+                    .into();
+        }
         if let Some(timing) = &self.gpu_timing {
-            let start = bytemuck::pod_read_unaligned::<u64>(&mapped[144..152]);
-            let end = bytemuck::pod_read_unaligned::<u64>(&mapped[152..160]);
+            let start = bytemuck::pod_read_unaligned::<u64>(
+                &mapped[TIMING_OFFSET as usize..TIMING_OFFSET as usize + 8],
+            );
+            let end = bytemuck::pod_read_unaligned::<u64>(
+                &mapped[TIMING_OFFSET as usize + 8..INSPECTION_OFFSET as usize],
+            );
             self.gpu_tick_ms = Some(
                 end.saturating_sub(start) as f32 * timing.timestamp_period_ns
                     / 1_000_000.0
@@ -264,7 +283,7 @@ impl AppState {
             );
         }
         if let Some(previous) = pending.inspected {
-            let mut offset = 160;
+            let mut offset = INSPECTION_OFFSET as usize;
             let mut current = previous;
             let size = std::mem::size_of::<model::AgentGpu>();
             current.agent = bytemuck::pod_read_unaligned(&mapped[offset..offset + size]);
@@ -309,30 +328,21 @@ impl AppState {
     }
 
     fn service_completed_world(&mut self) {
-        if self.living_agents != 0 {
-            match self
-                .simulation
-                .promote_challenger_if_outlived(u64::from(self.living_agents))
-            {
-                Ok(true) => {
-                    self.world_revision = self.world_revision.saturating_add(1);
-                    self.file_status =
-                        "Candidate outlived its incumbent and is now the live population.".into();
-                }
-                Ok(false) => {}
-                Err(e) => {
-                    self.paused = true;
-                    self.file_status = format!("Evolution paused: {e}");
-                    return;
-                }
+        if self.simulation.progress.engine_saturated {
+            if self.experiment.is_some() {
+                self.file_status = match self.save_experiment() {
+                    Ok(_) => "Engine capacity reached; paused and saved for diagnosis.".into(),
+                    Err(e) => format!("Engine capacity reached; save failed: {e}"),
+                };
             }
+            return;
         }
         if self.living_agents == 0 && self.simulation.progress.completed.is_none() {
             match self.simulation.complete_world(&self.device, &self.queue) {
                 Ok(()) => self.world_revision = self.world_revision.saturating_add(1),
                 Err(e) => {
                     self.paused = true;
-                    self.file_status = format!("Population comparison paused: {e}");
+                    self.file_status = format!("World transition paused: {e}");
                     return;
                 }
             }
@@ -344,8 +354,8 @@ impl AppState {
                 self.clear_world_observers();
                 self.refresh_metrics()?;
                 self.file_status = format!(
-                    "World {}: {:?} population evaluation",
-                    self.simulation.progress.world, self.simulation.progress.phase
+                    "World {} started from the hereditary reservoir",
+                    self.simulation.progress.world
                 );
                 Ok(())
             })();

@@ -1,139 +1,85 @@
-# Evolution across worlds
+# Evolution and hereditary continuity
 
-The goal is longer populated worlds through feeding, survival, reproduction and
-continued ecological generations. The only selection score is the number of
-biological ticks from founding through natural extinction. Feeding, births and
-ancestry are observations, never added rewards.
+The [core direction](direction.md) requires a broad, reachable search space,
+without an authored preferred strategy. Selection comes from ordinary survival
+and paid reproduction. Evaluation never supplies online rewards or retention rules.
 
-## One current population and one candidate
+## Inheritance and mutation
 
-1. Evaluate the current founding population in a seeded world until natural extinction.
-2. Make a candidate from that saved founding group. Reset the same environment,
-   body positions, starting resources, ages and physical settings, and evaluate it.
-3. The instant a living candidate strictly outlasts the incumbent duration, accept
-   it. Keep its live bodies, ecology and descendant genomes running; do not reset
-   a winner merely because it has proved itself. A candidate that goes extinct at
-   or before the incumbent duration loses.
-4. When a current world later ends naturally, start its next matched comparison.
+Offspring inherit controller weights, active masks, plasticity rates, retention
+traits, parameter-mutation rate, parameter-mutation step, and topology-mutation
+rate. Recurrent state, learned deltas, traces and physical
+feedback reset at birth. Eligible topology retirement and activation each have a
+probability of .01 times the inherited topology-mutation rate (.25â€“4). Activation
+duplicates a random active unit with bounded jitter, splitting outgoing weights.
+Separately, probability .25 times inherited parameter-mutation rate (.25â€“4)
+perturbs one random expressed weight, one active plasticity rate and both
+retention traits by bounded steps of .03 times inherited parameter-mutation step.
+The three controls drift independently when parameter variation occurs. Exact
+copies are valid. Mutation never consults behavior, lifespan, or outcomes.
 
-A comparison starts with an incumbent's complete world. Its challenger has no
-time limit: it wins as soon as it is still alive beyond that recorded duration.
-A winning world continues indefinitely, including its ordinary paid births and
-mutations. Pause, saving, a headless tick budget, or the integer tick-capacity
-guard never count as extinction or a losing score. GPU batches can finish up to
-31 empty ticks after extinction; those ticks count as executed work but do not
-increase the recorded world duration.
+## The rolling pool
 
-At effective environment age zero, worlds begin with movement and collection only. Each additional action unlocks
-independently for an increasing, neutral hash-selected share of living bodies:
-reproduction over ticks 0–2,500. Social actions wait through the 50,000-tick
-survival bootstrap: transfer unlocks over 52,500–65,000, signals over
-65,000–80,000, and force over 80,000–100,000. At each interval's midpoint,
-roughly half of the bodies can select that action; at its end, every body can.
-The draw is stable for each body and has no connection to its energy, behavior,
-genome quality, ancestry, or success. Their ordinary food patches start 100%
-wider and recede to normal size while metabolism rises from .01 to .06. From
-50,000 to 250,000, the normal-sized food territory becomes progressively more
-mobile without changing metabolism or total normalized habitat. Habitat then
-fragments through 500,000 while
-preserving its keyframe mean; regional lean seasons strengthen through 750,000
-while moving abundance elsewhere. Each pressure then remains capped. This shared
-deterministic environmental schedule is not a reward, score, or different
-comparison condition. Every new world begins at effective environment age zero,
-so actions and ecological pressures restart from the same baseline.
+A fixed 4,096-record pool is independent of the 16,384-body engine allocation.
+Initial entries are uniform samples with replacement from the founding population.
+An empty diagnostic initializes pool storage from one random record but never
+restarts automatically.
 
-World duration and effective environment age both begin at zero for every
-comparison. A matched challenger shares that same fresh age with its incumbent;
-no earned environmental floor carries difficulty between worlds.
+Each successful birth draws a random replacement slot. A claim pass resolves
+collisions in deterministic birth-allocation order before copying. Both genome
+banks and traits always come from one complete child, as sequential replacement
+would produce. Private learning and failed births never enter the pool. This is
+rolling replacement, not a uniform sample of all historical births: older records
+can be overwritten, and more births naturally contribute more records.
 
-The same seed controls geography, weather and starting bodies in each pair. The
-ecology orientation is held constant for the incumbent/challenger pair, then
-advances through the four quarter-turns for the next independent comparison.
-This makes a fixed world-axis policy less reusable without giving the controller
-the rotation as an input. GPU
-competition can still vary trajectories. One paired seed is a deliberately small
-comparison, not proof of general improvement. Moving to a fresh seed can produce
-shorter worlds even after a candidate has won an earlier comparison.
+Natural extinction starts a newly seeded world. Fresh bodies sample unchanged
+pool records uniformly with replacement, using a separate saved RNG. Their
+position, age, reserves and lifetime state are freshly initialized. There are no
+ranked founders, accepted candidates, mutation proposals or immigrant quotas.
+Environmental dynamics have fixed strength from tick zero, without an earned
+age floor or a staged curriculum. Body upkeep is stationary at 0.015 energy/tick. Random founder probes establish
+reachable reproductive life cycles without a founding curriculum.
 
-## What is inherited
+## Observation and persistence
 
-The saved founding group is the genotype being selected, including each founder
-position's genome and the group's mixture and multiplicities. Default New Game
-and headless runs create one seed-specific random genome per founding body.
-An explicitly imported current-format bank repeats across founding positions.
+The latest 64 completed worlds retain duration, births, ancestry and material
+observations. History length and values cannot affect hereditary draws. Completion
+is idempotent and requires natural extinction. A pause, save or requested work
+budget never completes a living world.
 
-Every challenger founder inherits an existing genome and then varies from it.
-After an incumbent world ends naturally, a uniform sample of its terminal
-descendant genomes supplies up to 10% of the inherited sources (floor, minimum
-one); those sampled descendants remain unchanged as viable anchors. Up to 5% of
-the remaining sources are fresh random genomes, and the rest are mutated from
-the incumbent. Neither anchors nor immigrants use an individual score,
-direction, or authored behavior. There is no identity ranking, genetic
-clustering, novelty score or separate learned selector.
+Checkpoint format 55 preserves live physics, lifetime learning, both pool banks,
+traits, replacement state, founder RNG and history. Validation precedes live
+writes. Prior-world durations are independent of the new world's age. Previous
+models are rejected without changing their files.
 
-The same mutation law applies to challenger founders and paid births. Each
-inherited genome independently samples a continuous log-uniform mutation
-temperature from 1/8 to 8. That temperature scales both the chance that each
-parameter changes (base .02) and its step size (base .03), bounded to [-4,4].
-Thus most inherited brains receive slight variation while a few receive much
-larger changes. At least one parameter changes in every inherited genome.
+## Engineering limits
 
-**Within-world descendant genomes are retained as potential, not automatically
-accepted, founders.** At natural extinction, each terminal descendant slot has
-the same chance to enter the next challenger; no lifespan, birth count, behavior
-or survivor score ranks it. A descendant genome carries forward only if its
-challenger population is still living beyond the incumbent's matched natural
-duration. This keeps whole-population longevity as the only selector while
-preventing a reset from discarding all evolved mutations.
+Insufficient body slots or impending lineage-ID overflow latches an engine fault
+and disables birth allocation. The host stops at the submitted batch boundary
+(at most 32 ticks in normal/headless operation). This boundary is censored:
+it cannot count as extinction or seed another world. Save it for diagnosis and
+start a separate experiment. The world tick horizon also stops explicitly.
+These are engine limitations, not biological rules. Atomic contention means
+population-wide bitwise replay is not guaranteed.
 
-Fresh founders and biological newborns retain their existing different endowments.
-All new bodies start with zero recurrent memory. Founding is initialization, not a
-paid birth. Biological births still require maturity, energy, recovery and a slot.
-Weights are fixed during each life; gated private state changes every tick.
 
-## State and progress
+## Provenance and search-health observations
 
-The overview names the current population or candidate, comparison number,
-matched baseline duration, founder changes, and accepted candidates. A bounded
-history retains the latest 64 completed worlds, with seed, population and parent
-population IDs, exact duration, births, highest ancestry generation (founders are
-zero), collected food, digested food and the comparison result. These are not
-claims of genetic diversity or intelligence.
+Assistance is sticky across extinction and bounded-history eviction. Any explicit
+founder import is an externally chosen founding experiment and is marked assisted;
+exported banks also record whether their source was assisted. No observer flag
+changes an action, mutation, retention draw or reset draw.
 
-Checkpoints preserve current bodies, hidden memory, all live genomes, ecology,
-traces, counters, the complete current/candidate founding groups, paired baseline,
-completed outcome, history, provenance and search RNG. Saving at extinction before
-advancing is valid; resuming cannot score that world twice. Derived indexes and
-terrain are rebuilt. Manual ecological intervention is saved as part of the world
-and remains eligible for population comparison; outcomes record whether they were
-assisted. Read-only diagnostic observers do not alter eligibility.
+Headless rolling reports measure exact distinct reservoir genomes, distributions
+of the three mutation controls, expressed capacity, live founder-family counts,
+and changed-record reservoir slots between samples. The latter uses 64-bit record
+fingerprints and can miss multiple replacements or replacement by an identical
+record. Successful births count replacement attempts, including collisions.
+Exact-copy birth counts compare inherited genes and traits; topology counters
+measure activation/retirement frequency. None is an optimization objective.
+Live founder-family labels describe the current world's founding bodies; they
+are not a reconstructed cross-world ancestry tree. The pool does not retain
+individual lifetime histories or rank a historical lineage.
 
-There is one current model, `primitive-v24-delayed-social-fresh-worlds`: checkpoint 37,
-game receipt 4, founder bank 13. Noncurrent files are rejected, never converted,
-executed through a compatibility path, overwritten or deleted.
-
-The viewer saves on explicit Save, menu, close and every five minutes of changed
-state. Each experiment retains its six newest complete snapshots, and the whole
-library is capped at 16 GiB while protecting each experiment's newest valid
-snapshot. `--prune-saves` applies that retention policy on demand. A crash can lose
-progress since the last save, including completed worlds. Raw headless checkpoints
-are written when requested.
-
-`--purge-legacy-saves` is an explicit cleanup for paired receipts that identify a
-different model. Current-format retention never removes incompatible data on its own.
-
-## Command line
-
-```sh
-cargo run --release -- --headless --seed 42 --ticks 200000 --sample 1024 --output reports/evolution.json --save-checkpoint reports/evolution.checkpoint
-cargo run --release -- --headless --checkpoint reports/evolution.checkpoint --ticks 200000 --output reports/continued.json --save-checkpoint reports/continued.checkpoint
-```
-
-Headless mode defaults to the same population loop as the viewer. `--ticks` is
-an additional execution budget across worlds. `--sample` controls reporting,
-not selection. A living world at the budget remains unscored. Existing output
-paths are refused; checkpoint settings cannot be overridden.
-
-`--headless --single-world` explicitly selects bounded diagnostics, stopping at
-extinction or its horizon. Family, journey, survivor and famine options require
-that mode. They are observation/intervention tools, not a second evolution engine.
+Declining diversity is allowed. A finite run showing diversity, turnover or births
+is not evidence of intelligence or a reason to add novelty rewards or escape logic.

@@ -682,7 +682,6 @@ impl Lens {
 fn action_name(action: u32) -> &'static str {
     match action {
         model::SIGNAL_OBSERVED => "signal observed",
-        model::SIGNAL_CONTROL => "signal control",
         model::MEMORY_SAMPLE => "memory sample",
         _ => model::ACTION_NAMES
             .get(action as usize)
@@ -881,20 +880,6 @@ fn main() {
             Ok(report) => println!("{}", report.message()),
             Err(error) => {
                 eprintln!("Could not prune saves: {error}");
-                std::process::exit(1);
-            }
-        }
-        return;
-    }
-    if options.iter().any(|x| x == "--purge-legacy-saves") {
-        if options.len() != 2 {
-            eprintln!("Use --purge-legacy-saves by itself");
-            std::process::exit(2);
-        }
-        match experiments::purge_legacy(&experiments::save_root()) {
-            Ok(report) => println!("{}", report.legacy_message()),
-            Err(error) => {
-                eprintln!("Could not purge legacy saves: {error}");
                 std::process::exit(1);
             }
         }

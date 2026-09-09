@@ -16,7 +16,7 @@ const SCALE: f32 = 1000.0;
 fn apply(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= GRID || id.y >= GRID) { return; }
   let world = (vec2<f32>(id.xy) + vec2<f32>(0.5)) / f32(GRID) * params.world_size.xy;
-  if (length(world - intervention.center) > intervention.radius) { return; }
+  if (length(torus_delta(intervention.center,world,params.world_size.xy)) > intervention.radius) { return; }
   let index = id.y * GRID + id.x;
   // Hand-painted food is dropped supply: it remains harvestable anywhere and
   // is never clipped by the moving vegetation capacity on the next tick.

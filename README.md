@@ -19,7 +19,8 @@ Primitive World currently targets **Windows**. Install [Rust 1.93.1 or newer](ht
 .\Play.cmd --wallpaper
 ```
 
-That builds the project and attaches a fixed-camera habitat to the desktop. A
+That builds the current source into `target/play/release/primitive_world.exe`
+and attaches a fixed-camera habitat to the desktop. A
 small HUD shows population and world state; use its menus to change the lens or
 biological speed. Click empty habitat to add food, and use the tray menu to
 pause or quit.
@@ -27,11 +28,12 @@ pause or quit.
 To have the newest saved experiment resume when you sign in:
 
 ```powershell
-cargo build --release
-.\target\release\primitive_world.exe --install-startup
+.\Play.cmd --install-startup
 ```
 
-Remove the startup entry with `--uninstall-startup`. Wallpaper mode uses one
+Resume manually with `.\Play.cmd --wallpaper --resume`. After updating the
+source, use `Play.cmd` again to rebuild the executable used at login.
+Remove the startup entry with `.\Play.cmd --uninstall-startup`. Wallpaper mode uses one
 native desktop host, so multi-monitor layouts should be verified on the target
 machine. The detailed [wallpaper guide](docs/play.md) covers saves, controls,
 desktop behavior, and recovery.
@@ -41,8 +43,9 @@ For a regular window instead, run `cargo run --release` or double-click
 
 ## What is happening in the world?
 
-Each tick is simulated on the GPU. Food grows and shifts across a bounded world;
-agents sense only their local neighborhood, update private memory, choose an
+Each tick is simulated on the GPU. Food grows and shifts across a toroidal world:
+crossing an edge continues at its opposite edge for movement, local sensing,
+contact, ecology, interventions, and picking. Agents sense only their local neighborhood, update private memory, choose an
 action, and pay its physical cost. Food, energy, aging, movement, contact, and
 reproduction are ordinary world rules—not rewards for a hidden policy.
 
@@ -65,32 +68,53 @@ information, memory, and the ecology.
 
 ## Inside an agent
 
-Every body uses the same fixed neural architecture: **108 local inputs → 8 gated
-recurrent units → 20 outputs** (**1,188 inherited parameters**). The recurrent
-state is private to one life and resets at birth. Weights remain fixed during a
-life; inherited parameters can mutate at paid births and when a new candidate
-population is created.
+Every body has 107 local physical inputs, 1-16 active gated recurrent units,
+and 14 outputs (2,494 inherited parameters). Inactive units are inert; expressed
+units and actual memory writes pay energy. Lifetime recurrent state, traces and
+learned connection deltas reset at birth.
 
-Inputs include energy, nearby food and bodies, recent outcomes, coarse
-near/far food regions, and the nearest neighbor in each of eight directions.
-Outputs select an action, movement, amount, contact target and displacement, or
-the value of a signal. This is a compact controller with no global map, lineage
-score, scripted food-seeking, online optimizer, or semantic communication
-channel. Read the exact [agent interface](docs/agents.md).
+Sixteen repeated body-relative area samples measure food, body occupancy,
+relative motion, aggregate signed signals and proximity. Outputs request turn,
+thrust, gathering, contact transfer/impulse, signaling, or paid reproduction with
+bounded body-relative offspring placement. There are no neighbor identities,
+compass targets, rewards, scripted food-seeking policies or privileged self-signal
+history. See the exact [agent interface](docs/agents.md).
 
-## Evolution without a scoreboard
+Body upkeep is stationary from tick zero. Random founders have demonstrated
+reproductive reachability; this is not a claim of intelligence or indefinite
+survival. Selection means ecological persistence through paid births and deaths.
+Across extinction, a bounded random hereditary pool supplies unchanged founder
+records without ranking; acquired lifetime learning is never inherited.
 
-The project’s central rule is intentionally narrow: a population is evaluated
-by how long its world remains biologically populated before natural extinction.
-The current founding population and a mutated candidate face the same seeded
-conditions. A candidate becomes the next population only when it outlives the
-current one; its living world then continues rather than being reset.
+All modes use `primitive-v35-body-frame-contact`, checkpoint format 55 and founder
+bank format 20. Other biological layouts are rejected. The current freeze status,
+validation evidence and remaining operational checks are recorded in the
+[finish-line checklist](docs/implementation-checklist.md).
 
-That is not a claim that agents are intelligent, cooperative, or generally
-capable. It is a long-running experiment in what can arise when local controllers
-inherit variation in a changing ecology. Extinction, repetition, and unused
-abilities are valid results. The full [selection and inheritance protocol](docs/evolution.md)
-is deliberately explicit so observations remain falsifiable.
+At 32x, playback requests 1,920 ticks/s; actual throughput depends on population,
+rendering, and GPU load. See [performance](docs/performance.md) for measurement limits.
+
+## A viable search space without a scoreboard
+
+We define a broad, reachable space of possibilities. We avoid defining which
+solution is desirable. The environment determines consequences; evolution
+determines what persists. Read the [core direction](docs/direction.md).
+
+Selection happens through physical survival and reproduction. There is no
+lifespan contest, behavioral reward, population ranking or optimizer. Successful
+births place complete inherited records into a fixed 4,096-entry pool by blind
+random replacement. After natural extinction, fresh bodies sample unchanged
+records from that pool. Lifetime learning is never inherited.
+
+Gathering can compose with movement, reproduction and other actions; it remains
+controlled by the organism. Brains receive body state, changes in their own body
+state, movement, local fields, and nearby signals—not labels such as “collected,”
+“successful,” or “received.” Environmental dynamics operate from tick zero
+without a curriculum. Body upkeep alone rises from .01 to .06 over a fresh
+world's first 50,000 ticks, providing limited founding runway without granting
+food or energy. Extinction remains a valid outcome; a world
+that closes off nearly every viable life cycle is a design problem to investigate.
+Read the exact [inheritance protocol](docs/evolution.md).
 
 ## Explore and contribute
 
@@ -110,3 +134,6 @@ cargo run --release -- --headless --seed 42 --ticks 200000 --sample 1024 --outpu
 
 Generated runs, reports, checkpoints, and build products stay local; only the
 source and curated documentation belong in the repository.
+
+For a resumable unattended test, see [long-run testing](docs/long-run.md).
+Start a fresh experiment for this model; older saves remain untouched.

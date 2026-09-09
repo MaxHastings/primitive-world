@@ -1,5 +1,89 @@
 # Changelog
 
+
+## Body-frame/contact generation (v35; checkpoint 55; founder bank 20)
+
+Complete the torus, independent mutation controls, generic body-relative samples,
+contact impulses and controlled offspring-placement migrations. Remove target
+slots, unused controller inputs, self-signal history and the metabolism ramp.
+Stationary upkeep 0.015 supports random-founder reproductive life cycles across
+three fixed seeds without interventions.
+
+Make gathering proportional under contention, preserve assistance across worlds
+and exports, fix Rust/WGSL body alignment and initial soil checkpoint bounds, and
+stop explicitly at accounting horizons. Add read-only search-health reporting,
+bounded headless history, soak retention/timeouts and physics/heredity regressions.
+Document retained lifecycle assumptions and distinguish verified core behavior
+from pending multi-day, wallpaper and sleep/wake validation.
+
+## Unreleased — v34 independent topology mutation
+
+- Add a third bounded inherited topology-mutation rate, independent of
+  parameter mutation frequency and step size, for structural activation and
+  retirement.
+- Bump the model to `primitive-v34-independent-topology-mutation`, founder-bank
+  format 19, and checkpoint format 54.
+
+## Unreleased — v33 separated parameter mutation
+
+- Split the inherited parameter-mutation multiplier into independent bounded
+  frequency and step-size traits, with matching CPU/GPU inheritance laws.
+- Bump the model to `primitive-v33-separated-mutation` and checkpoint format 53.
+
+## Unreleased — v32 unbiased actuation
+
+- Remove privileged controller inputs for an organism's previous signal and
+  elapsed signal time; transmission state remains world-private.
+- Make gathering effort directly control collection rate and charge a small
+  proportional effort cost. Signal emission now charges activation plus
+  amplitude cost.
+- Bump the model to `primitive-v32-unbiased-actuation` and checkpoint format 52.
+
+## Unreleased — v31 toroidal physics
+
+- Make local body sensing, food sensing, transfer, force, weather patches,
+  resource interventions, picking, and journey diagnostics use one wrapped
+  shortest-distance geometry. Sensor and occupancy broad-phase traversal now
+  crosses the world seam rather than clipping there.
+- Make periodic weather centers take their shortest toroidal path and make
+  procedural ecological waves periodic at the seam.
+- Bump the model to `primitive-v31-toroidal-physics` and checkpoint format to
+  51; prior checkpoints are preserved but rejected.
+
+## Unreleased — v30 raw-physical consolidation
+
+- Restore the deliberately small v29→v30 behavioral change: output 1 is only
+  continuous gathering effort; controller feedback is own energy/inventory
+  delta and actual displacement; input slots 13–19 remain reserved zeroes; and
+  each successful birth refreshes one blind reservoir entry.
+- Retain the repaired explicit CPU/GPU layout alignment. The model remains
+  `primitive-v30-raw-physical-reservoir`; checkpoint format 50 rejects the
+  discarded corrupt V30 layouts while preserving their files.
+
+## Unreleased — reachable possibilities and blind continuity
+
+- Replace lifespan comparisons with blind hereditary replacement at births and
+  unchanged pool sampling after extinction; remove the ecology curriculum.
+- Make gathering composable with other actions and restore a narrow .01→.06
+  body-upkeep ramp over each world's first 50,000 ticks.
+- Replace named action/outcome inputs with own physical deltas.
+- Resolve concurrent pool writes as whole records; checkpoint format 42 preserves
+  both hereditary RNG streams, pool records and lifetime state.
+- Fix fresh-world history validation, empty diagnostics and engine-limit handling.
+- Add inheritance/continuation regressions and a resumable long-run harness.
+
+
+## Unreleased — masked local learning
+
+- Introduce 1–16 active recurrent units, inherited topology and local-plasticity traits, and paid lifetime-only learned connection deltas.
+- Evaluate cognition cooperatively on the GPU; keep whole-world survival as the selection criterion and remove action-unlock curricula.
+- Preserve complete inherited traits in descendant anchors, promotion, export and persistence; reset learned state only for newborns.
+- Fix release-only decision-pass startup, banked storage limits, diagnostic event wiring and telemetry/timestamp overlap.
+- Keep inheritance random helpers in the current shader and remove the obsolete mutation shader and legacy-save cleanup command.
+- Standardize documented wallpaper, resume, and startup installation commands on `Play.cmd` and its current-source play build.
+- Use model `primitive-v26-masked-plastic-16`, checkpoint 39 and founder bank 15; previous files remain untouched and are rejected.
+
+
 ## Descendant founder carryover
 
 - Preserve a uniform sample of terminal descendant genomes as sparse candidate-founder replacements after a natural extinction. Whole founding populations still compete only on matched completed-world duration; no individual descendant score is introduced.

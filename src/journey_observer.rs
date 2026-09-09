@@ -107,6 +107,13 @@ fn distance(a: [f32; 2], b: [f32; 2]) -> f32 {
     (a[0] - b[0]).hypot(a[1] - b[1])
 }
 
+fn torus_distance(a: [f32; 2], b: [f32; 2], world_size: [f32; 2]) -> f32 {
+    let delta = |start: f32, end: f32, extent: f32| {
+        (end - start + extent * 0.5).rem_euclid(extent) - extent * 0.5
+    };
+    delta(a[0], b[0], world_size[0]).hypot(delta(a[1], b[1], world_size[1]))
+}
+
 /// Fixed observer footprint: center plus eight points on a radius-24 ring.
 /// Vegetation only: dropped food is intentionally not counted as a food patch.
 fn vegetation(resources: &[u32], position: [f32; 2], world_size: [f32; 2]) -> f32 {
@@ -123,9 +130,8 @@ fn vegetation(resources: &[u32], position: [f32; 2], world_size: [f32; 2]) -> f3
         [-16.970562, -16.970562],
     ] {
         let cell = |axis: usize| {
-            ((position[axis] + offset[axis]).clamp(0.0, world_size[axis]) / world_size[axis]
-                * RESOURCE_GRID as f32)
-                .min((RESOURCE_GRID - 1) as f32) as usize
+            ((position[axis] + offset[axis]).rem_euclid(world_size[axis]) / world_size[axis]
+                * RESOURCE_GRID as f32) as usize
         };
         total += resources[cell(1) * RESOURCE_GRID as usize + cell(0)] as f32 / 1000.0;
     }
@@ -136,7 +142,10 @@ fn point(tick: u32, a: &AgentGpu, resources: &[u32], world_size: [f32; 2]) -> Po
     Point {
         tick,
         position: a.position,
-        collection_position: [a.position[0] - a.moved[0], a.position[1] - a.moved[1]],
+        collection_position: [
+            (a.position[0] - a.moved[0]).rem_euclid(world_size[0]),
+            (a.position[1] - a.moved[1]).rem_euclid(world_size[1]),
+        ],
         local_vegetation: vegetation(resources, a.position, world_size),
         collected_last_tick: a.collected,
         ingested_last_tick: a.ingested,
@@ -171,8 +180,10 @@ fn nearest_destination(
             ((index % RESOURCE_GRID as usize) as f32 + 0.5) * world_size[0] / RESOURCE_GRID as f32,
             ((index / RESOURCE_GRID as usize) as f32 + 0.5) * world_size[1] / RESOURCE_GRID as f32,
         ];
-        let d = distance(p, position);
-        if distance(p, origin) < 96.0 || nearest.as_ref().is_some_and(|n| d >= n.distance) {
+        let d = torus_distance(p, position, world_size);
+        if torus_distance(p, origin, world_size) < 96.0
+            || nearest.as_ref().is_some_and(|n| d >= n.distance)
+        {
             continue;
         }
         let footprint = vegetation(resources, p, world_size);
@@ -309,7 +320,8 @@ impl JourneyObserver {
             }
             if let Some(t) = &mut track {
                 t.points.push(p.clone());
-                let from_source = distance(a.position, t.source.collection_position);
+                let from_source =
+                    torus_distance(a.position, t.source.collection_position, world_size);
                 let source_now = vegetation(resources, t.source.collection_position, world_size);
                 if from_source <= 24.0 {
                     t.peak = t.peak.max(source_now);
@@ -335,7 +347,7 @@ impl JourneyObserver {
                         && voluntary
                     {
                         let start = t.poor_start.get_or_insert_with(|| p.clone());
-                        let net = distance(start.position, p.position);
+                        let net = torus_distance(start.position, p.position, world_size);
                         self.stats.maximum_poor_sample_net_distance =
                             self.stats.maximum_poor_sample_net_distance.max(net);
                         if net >= 48.0 {
@@ -349,13 +361,17 @@ impl JourneyObserver {
                 if t.corridor.is_some()
                     && t.collection.is_none()
                     && collecting_in_patch
-                    && distance(p.collection_position, t.source.collection_position) >= 96.0
+                    && torus_distance(
+                        p.collection_position,
+                        t.source.collection_position,
+                        world_size,
+                    ) >= 96.0
                 {
                     t.collection = Some(p.clone());
                     self.stats.destination_collections += 1;
                 }
                 if let Some(c) = &t.collection {
-                    if distance(p.position, c.collection_position) > 48.0 {
+                    if torus_distance(p.position, c.collection_position, world_size) > 48.0 {
                         t.collection = None;
                         t.ingestion = None;
                     } else if tick > c.tick && a.ingested > 0.0 && t.ingestion.is_none() {
@@ -454,7 +470,7 @@ impl JourneyObserver {
 
     pub fn report(&self, sample: u32) -> serde_json::Value {
         serde_json::json!({"schema": 2, "sample_ticks": sample, "stats": self.stats,
-            "definition": "Sampled source collection in a vegetation footprint >=0.04; source falls to <=25% of its observed peak and <=0.02; departure >=48 units; consecutive poor-footprint samples <=0.01 with no observed collection or force displacement cross >=48 net units; collection >=96 units from source in footprint >=0.04; later ingestion and an actual birth-counter increase while sampled positions remain within48 of destination.",
+            "definition": "Sampled source collection in a vegetation footprint >=0.04; source falls to <=25% of its observed peak and <=0.02; departure >=48 units; consecutive poor-footprint samples <=0.01 with no observed collection or observed contact impulse cross >=48 net units; collection >=96 units from source in footprint >=0.04; later ingestion and an actual birth-counter increase while sampled positions remain within48 of destination.",
             "limits": ["Only the last tick's feeding is visible at each sample. Unsampled feeding, death and route details are missed. Poor-space continuity means consecutive samples, not every intervening tick.",
                 "Patch means a radius24 nine-point vegetation footprint, not a global connected-component identity. Dropped food is excluded from patch classification but can contribute to actual collection.",
                 "Records demonstrate a sampled sequence, not foresight, causation of survival, successful offspring survival, or event attribution to major geography renewal. Attribution to geographic relocation requires additional evidence.",

@@ -25,6 +25,7 @@ pub struct WorldMetrics {
     pub weather_loss: f64,
     pub events: [u32; 8],
     pub signals: u32,
+    pub exact_copy_births: u32,
     pub stocked_agents: u64,
     pub hungry_agents: u64,
     pub moving_agents: u64,
@@ -37,6 +38,11 @@ pub struct WorldMetrics {
     pub force_attempts: u32,
     pub force_energy_spent: f64,
     pub forced_distance: f64,
+    /// Births that expanded/retired an expressed unit, respectively.
+    pub topology_activations: u32,
+    pub topology_retirals: u32,
+    pub cognitive_write_energy: f64,
+    pub cognitive_upkeep_energy: f64,
 }
 
 /// A read-only population snapshot for studying evolution. Nothing in this
@@ -49,7 +55,7 @@ pub struct EvolutionSnapshot {
     pub parent_lineages_present: u64,
     pub maximum_ancestry_depth: u32,
     pub mean_ancestry_depth: f64,
-    /// Mean last-tick voluntary displacement for living agents.
+    /// Mean last-tick actual velocity for living agents.
     pub mean_velocity_x: f64,
     pub mean_velocity_y: f64,
     /// Direction counts use an intentionally tiny horizontal dead zone.
@@ -62,10 +68,15 @@ pub struct EvolutionSnapshot {
     /// Mean normalized local food-gradient direction seen under living bodies.
     pub mean_food_gradient_x: f64,
     pub mean_food_gradient_y: f64,
-    /// Mean alignment of voluntary velocity with the local food gradient.
+    /// Mean alignment of actual velocity with the local food gradient.
     /// Positive values move up-gradient; negative values move away.
     pub food_gradient_alignment: f64,
     pub food_gradient_samples: u64,
+    /// Distribution over capacities 1..16; index zero is intentionally unused.
+    pub active_capacity_distribution: Vec<u64>,
+    pub mean_active_capacity: f64,
+    pub mean_hidden_memory_magnitude: f64,
+    pub mean_learned_weight_magnitude: f64,
 }
 
 fn local_food_gradient(food: &[u32], position: [f32; 2], world_size: [f32; 2]) -> [f64; 2] {
@@ -77,8 +88,8 @@ fn local_food_gradient(food: &[u32], position: [f32; 2], world_size: [f32; 2]) -
         .floor()
         .clamp(0.0, (grid - 1) as f32) as i32;
     let sample = |x: i32, y: i32| -> f64 {
-        let x = x.clamp(0, grid as i32 - 1) as usize;
-        let y = y.clamp(0, grid as i32 - 1) as usize;
+        let x = x.rem_euclid(grid as i32) as usize;
+        let y = y.rem_euclid(grid as i32) as usize;
         food[y * grid + x] as f64
     };
     [
@@ -160,15 +171,38 @@ impl Simulation {
         let agents = bytemuck::cast_slice::<u8, AgentGpu>(&bytes);
         let food_bytes = read_buffer(device, queue, &self.resource_buffer)?;
         let food = bytemuck::cast_slice::<u8, u32>(&food_bytes);
+        let mut encoder = device.create_command_encoder(&Default::default());
+        self.dispatch(
+            &mut encoder,
+            "summarize_learning",
+            self.current_buffer,
+            MAX_AGENTS.div_ceil(64),
+            1,
+        );
+        queue.submit(Some(encoder.finish()));
+        let learned_bytes = read_buffer(device, queue, &self.learned_summary_buffer)?;
+        let learned: &[f32] = bytemuck::cast_slice(&learned_bytes);
         let mut lineages = HashSet::new();
         let mut parent_lineages = HashSet::new();
         let mut moving_gradient_samples = 0u64;
         let mut snapshot = EvolutionSnapshot {
             tick: self.tick,
+            active_capacity_distribution: vec![0; HIDDEN + 1],
             ..Default::default()
         };
-        for agent in agents.iter().filter(|a| a.alive != 0) {
+        for (slot, agent) in agents.iter().enumerate().filter(|(_, a)| a.alive != 0) {
             snapshot.living += 1;
+            let capacity = agent.active_mask.count_ones() as usize;
+            snapshot.active_capacity_distribution[capacity] += 1;
+            snapshot.mean_active_capacity += capacity as f64;
+            snapshot.mean_hidden_memory_magnitude += agent
+                .hidden
+                .iter()
+                .enumerate()
+                .filter(|(h, _)| agent.active_mask & (1u32 << h) != 0)
+                .map(|(_, v)| v.abs() as f64)
+                .sum::<f64>();
+            snapshot.mean_learned_weight_magnitude += learned[slot] as f64;
             lineages.insert(agent.lineage_id);
             if agent.parent_lineage != 0 {
                 parent_lineages.insert(agent.parent_lineage);
@@ -210,6 +244,9 @@ impl Simulation {
         if snapshot.living > 0 {
             let count = snapshot.living as f64;
             snapshot.mean_ancestry_depth /= count;
+            snapshot.mean_active_capacity /= count;
+            snapshot.mean_hidden_memory_magnitude /= count;
+            snapshot.mean_learned_weight_magnitude /= count;
             snapshot.mean_velocity_x /= count;
             snapshot.mean_velocity_y /= count;
             let horizontal = snapshot.leftward_agents + snapshot.rightward_agents;
@@ -285,6 +322,11 @@ impl Simulation {
             force_attempts: counters[12],
             force_energy_spent: counters[13] as f64 / 1000.0,
             forced_distance: counters[15] as f64 / 1000.0,
+            exact_copy_births: counters[37],
+            topology_activations: counters[32],
+            topology_retirals: counters[33],
+            cognitive_write_energy: counters[34] as f64 / 1000.0,
+            cognitive_upkeep_energy: counters[35] as f64 / 1000.0,
         })
     }
 
@@ -292,8 +334,6 @@ impl Simulation {
         self.settings.validate()?;
         self.progress
             .validate(self.settings.population, self.seed, self.tick)?;
-        self.search
-            .validate(self.settings.population, self.progress.phase)?;
         serde_json::to_vec(&CheckpointMetadata {
             settings: self.settings.clone(),
             progress: self.progress.clone(),
@@ -319,7 +359,15 @@ impl Simulation {
             &self.event_buffer,
             &self.perception_buffer,
             &self.decision_buffer,
-            &self.genome_buffer,
+            &self.genome_buffers[0],
+            &self.genome_buffers[1],
+            &self.fast_weight_buffers[0],
+            &self.fast_weight_buffers[1],
+            &self.trace_buffer,
+            &self.reservoir_genome_buffers[0],
+            &self.reservoir_genome_buffers[1],
+            &self.reservoir_traits_buffer,
+            &self.reservoir_rng_buffer,
         ];
         let data: Vec<_> = buffers
             .iter()
@@ -346,12 +394,6 @@ impl Simulation {
             file.write_all(&(bytes.len() as u64).to_le_bytes())
                 .map_err(|e| e.to_string())?;
             file.write_all(&bytes).map_err(|e| e.to_string())?;
-        }
-        for genes in [&self.search.incumbent, &self.search.challenger] {
-            let bytes: &[u8] = bytemuck::cast_slice(genes);
-            file.write_all(&(bytes.len() as u64).to_le_bytes())
-                .map_err(|e| e.to_string())?;
-            file.write_all(bytes).map_err(|e| e.to_string())?;
         }
         Ok(())
     }
@@ -442,14 +484,25 @@ impl Simulation {
         buffers.extend([
             &self.perception_buffer,
             &self.decision_buffer,
-            &self.genome_buffer,
+            &self.genome_buffers[0],
+            &self.genome_buffers[1],
         ]);
         let mut data = Vec::new();
-        for buffer in &buffers {
+        buffers.extend([
+            &self.fast_weight_buffers[0],
+            &self.fast_weight_buffers[1],
+            &self.trace_buffer,
+            &self.reservoir_genome_buffers[0],
+            &self.reservoir_genome_buffers[1],
+            &self.reservoir_traits_buffer,
+            &self.reservoir_rng_buffer,
+        ]);
+        for buffer in buffers.iter() {
             let mut length = [0; 8];
             file.read_exact(&mut length).map_err(|e| e.to_string())?;
+            let stored = u64::from_le_bytes(length);
             let expected = buffer.size();
-            if u64::from_le_bytes(length) != expected {
+            if stored != expected {
                 return Err("Checkpoint layout mismatch".into());
             }
             let mut bytes = vec![0; expected as usize];
@@ -461,7 +514,6 @@ impl Simulation {
             .map(bytemuck::pod_read_unaligned::<AgentGpu>)
         {
             if a.lived_ticks > tick
-                || a.lifetime_padding != 0
                 || a.alive > 1
                 || a.action > 5
                 || !a.position[0].is_finite()
@@ -475,7 +527,7 @@ impl Simulation {
                     a.max_speed,
                     a.sensor_radius,
                     a.max_age,
-                    a.body_padding,
+                    a.heading,
                     a.signal_payload,
                     a.collected,
                     a.ingested,
@@ -487,6 +539,9 @@ impl Simulation {
                 .chain(&a.velocity)
                 .chain(&a.moved)
                 .any(|v| !v.is_finite())
+                || a.physical_previous
+                    .iter()
+                    .any(|bits| !f32::from_bits(*bits).is_finite())
                 || a.food < 0.0
                 || a.food > 8.001
                 || a.energy < 0.0
@@ -497,15 +552,47 @@ impl Simulation {
                 || a.max_speed < 0.0
                 || a.max_speed > 1.2
                 || a.hidden.iter().any(|v| v.abs() > 1.0)
+                || a.active_mask == 0
+                || a.active_mask & !ACTIVE_MASK_ALL != 0
+                || !a.trace_retention.is_finite()
+                || !a.learned_weight_retention.is_finite()
+                || !(0.0..=0.9999).contains(&a.trace_retention)
+                || !(0.0..=0.9999).contains(&a.learned_weight_retention)
+                || !a.parameter_mutation_rate.is_finite()
+                || !(0.25..=4.0).contains(&a.parameter_mutation_rate)
+                || !a.parameter_mutation_step.is_finite()
+                || !(0.25..=4.0).contains(&a.parameter_mutation_step)
+                || !a.topology_mutation_rate.is_finite()
+                || !(0.25..=4.0).contains(&a.topology_mutation_rate)
+                || a.plasticity_rate
+                    .iter()
+                    .any(|v| !v.is_finite() || v.abs() > 0.2)
                 || a.sensor_radius < 4.0
                 || a.sensor_radius > 48.0
             {
                 return Err("Invalid primitive-world body checkpoint".into());
             }
         }
-        let genes: &[f32] = bytemuck::cast_slice(&data[8]);
-        for genome in genes.chunks_exact(GENOME_SIZE) {
-            crate::brain::validate(genome)?;
+        let bank0: &[f32] = bytemuck::cast_slice(&data[8]);
+        let bank1: &[f32] = bytemuck::cast_slice(&data[9]);
+        for slot in 0..MAX_AGENTS as usize {
+            let mut genome = [0.0; GENOME_SIZE];
+            genome[..GENOME_BANK_STRIDE].copy_from_slice(
+                &bank0[slot * GENOME_BANK_STRIDE..(slot + 1) * GENOME_BANK_STRIDE],
+            );
+            genome[GENOME_BANK_STRIDE..].copy_from_slice(
+                &bank1[slot * GENOME_BANK_STRIDE
+                    ..slot * GENOME_BANK_STRIDE + GENOME_SIZE - GENOME_BANK_STRIDE],
+            );
+            crate::brain::validate(&genome)?;
+        }
+        if data[10..13].iter().any(|bytes| {
+            bytes
+                .chunks_exact(4)
+                .map(|v| f32::from_le_bytes(v.try_into().unwrap()))
+                .any(|v| !v.is_finite() || v.abs() > 1.0)
+        }) {
+            return Err("Invalid checkpoint learned memory state".into());
         }
         if data[2]
             .chunks_exact(4)
@@ -538,11 +625,10 @@ impl Simulation {
                 || p.regions.iter().any(|s| {
                     !s.food.is_finite() || !s.bodies.is_finite() || s.food < 0.0 || s.bodies < 0.0
                 })
-                || p.bodies.iter().any(|b| {
-                    !matches!(b.signal_present, 0.0 | 1.0)
-                        || !b.signal.is_finite()
-                        || b.offset.iter().chain(&b.velocity).any(|v| !v.is_finite())
-                        || b.slot > MAX_AGENTS
+                || p.regions.iter().any(|b| {
+                    !b.signal.is_finite()
+                        || !b.pressure.is_finite()
+                        || b.velocity.iter().any(|v| !v.is_finite())
                 })
             {
                 return Err("Invalid checkpoint perception".into());
@@ -555,7 +641,6 @@ impl Simulation {
             if d.evaluated > 1
                 || d.selected_action > 5
                 || d.invalid > 1
-                || d.target > MAX_AGENTS
                 || d.update_gates
                     .iter()
                     .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
@@ -563,38 +648,34 @@ impl Simulation {
                     .iter()
                     .chain(&d.movement)
                     .chain(&d.force)
+                    .chain(&d.placement)
                     .chain(&d.scores)
                     .chain(&d.hidden)
                     .chain(&d.inputs)
+                    .chain(&d.candidate)
+                    .chain(&d.outputs)
                     .any(|v| !v.is_finite())
             {
                 return Err("Invalid checkpoint decision".into());
             }
         }
-        let mut populations = Vec::new();
-        for expected in [
-            settings.population as usize * GENOME_SIZE,
-            if metadata.progress.phase == crate::evolution::Phase::Challenger {
-                settings.population as usize * GENOME_SIZE
-            } else {
-                0
-            },
-        ] {
-            let mut length = [0; 8];
-            file.read_exact(&mut length).map_err(|e| e.to_string())?;
-            if u64::from_le_bytes(length) != (expected * 4) as u64 {
-                return Err("Invalid founding population length".into());
+        let reservoir0: &[f32] = bytemuck::cast_slice(&data[13]);
+        let reservoir1: &[f32] = bytemuck::cast_slice(&data[14]);
+        let reservoir_traits: &[CognitiveTraits] = bytemuck::cast_slice(&data[15]);
+        for slot in 0..HEREDITARY_RESERVOIR_SIZE as usize {
+            let mut genome = [0.0; GENOME_SIZE];
+            genome[..GENOME_BANK_STRIDE].copy_from_slice(
+                &reservoir0[slot * GENOME_BANK_STRIDE..(slot + 1) * GENOME_BANK_STRIDE],
+            );
+            genome[GENOME_BANK_STRIDE..].copy_from_slice(
+                &reservoir1[slot * GENOME_BANK_STRIDE
+                    ..slot * GENOME_BANK_STRIDE + GENOME_SIZE - GENOME_BANK_STRIDE],
+            );
+            crate::brain::validate(&genome)?;
+            if !reservoir_traits[slot].validate() {
+                return Err("Invalid hereditary reservoir traits".into());
             }
-            let mut genes = vec![0.0f32; expected];
-            file.read_exact(bytemuck::cast_slice_mut(&mut genes))
-                .map_err(|e| e.to_string())?;
-            populations.push(genes);
         }
-        let search = crate::evolution::Search {
-            challenger: populations.pop().unwrap(),
-            incumbent: populations.pop().unwrap(),
-        };
-        search.validate(settings.population, metadata.progress.phase)?;
         let counters: &[u32] = bytemuck::cast_slice(&data[4]);
         if counters[18] > tick || counters[30] > 1 {
             return Err("Invalid world completion counters".into());
@@ -603,18 +684,12 @@ impl Simulation {
             let alive = bytemuck::cast_slice::<u8, AgentGpu>(&data[0])
                 .iter()
                 .any(|a| a.alive != 0);
-            let accepted = metadata
-                .progress
-                .baseline
-                .as_ref()
-                .map(|b| o.duration > b.duration && search.challenger != search.incumbent);
             if alive
                 || o.duration != counters[18]
                 || o.births != counters[3]
                 || o.maximum_generation != counters[23]
                 || o.food_ingested
                     != (u64::from(counters[0]) + (u64::from(counters[14]) << 32)) as f64 / 1000.0
-                || o.challenger_accepted != accepted
                 || o.assisted != (counters[30] != 0)
             {
                 return Err("Completed outcome does not match physical checkpoint".into());
@@ -642,15 +717,7 @@ impl Simulation {
         queue.write_buffer(&self.agent_buffers[1], 0, &data[0]);
         queue.write_buffer(&self.resource_display_buffer, 0, &data[1]);
         self.progress = metadata.progress;
-        if self.progress.best.is_none() {
-            self.progress.best = self
-                .progress
-                .history
-                .iter()
-                .max_by_key(|o| o.duration)
-                .cloned();
-        }
-        self.search = search;
+        self.progress.engine_saturated |= counters[36] != 0 || tick >= MAX_WORLD_TICKS;
         self.settings = settings;
         self.seed = seed;
         self.tick = tick;
@@ -675,6 +742,12 @@ pub struct InteractionEvent {
     pub actor_lineage: u32,
     pub other_lineage: u32,
     pub position: [f32; 2],
+    /// Diagnostic context for memory samples: carried food and local resource.
+    pub context: [f32; 2],
+    /// For memory samples, the action selected with memory retained.
+    /// Other event kinds leave this zero.
+    pub actual_action: u32,
+    pub padding: u32,
 }
 impl Simulation {
     pub fn recent_events(

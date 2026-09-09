@@ -1,116 +1,111 @@
 # Agents
 
-The controller owns intentions. The world owns consequences. All bodies use the
-same implementation in interactive and headless worlds.
+The controller owns intentions. The world owns consequences. The design contract
+is [direction.md](direction.md); all execution modes use the same biology.
 
-## Computation and memory
+## Controller and inherited state
 
-All brains contain eight fixed recurrent units, 108 senses, and 20 outputs.
-Dense sensory-to-candidate, previous-state-to-candidate, candidate-to-gate, and
-state-to-output matrices plus biases total 1,188 inherited float32 parameters.
-Eight units keep memory and gates compact without assigning semantic node roles.
-This size is an implementation choice, not a measured evolutionary optimum.
+There are 107 physical inputs, 16 potential gated recurrent units, and 14 outputs:
+2,494 inherited float32 parameters. A heritable mask expresses 1-16 units. Every
+unit has the same connectivity and update equations; inactive units have zero
+state, readout, learning, write cost, and upkeep effect. Latent inherited weights
+remain available to blind topology mutation.
 
-Candidates use tanh(sensory projection + previous-state projection + bias).
-Gates use a linear projection of candidate values plus bias, clamped to [0,1].
-Each next state is `(1-gate)*previous + gate*candidate`. Zero retains exactly,
-one replaces, and intermediate values blend. Outputs project the next state.
-Fresh gate biases center on .5; inherited parameters may close gates completely.
-No mandatory forgetting floor is imposed.
+Candidate activity is tanh(input projection + previous-state projection + bias).
+A gate is clamp(candidate projection + bias, 0, 1). Next state is
+`(1-gate)*previous + gate*candidate`; zero retains exactly and one replaces.
+Outputs are linear projections of next state. Candidate means an intermediate
+neural activation, not an evolutionary contestant.
 
-Structure and parameters stay fixed during life. Birth and cross-world founding
-reset recurrent state. Ordinary parameter mutation applies at paid reproduction
-and to next-world variants. The shared mutation law is not a brain output.
-There is no node/edge mutation, online optimizer, or authored action reward.
+Each active unit has an inherited signed local-plasticity rate. Local pre/post
+activity, inherited trace retention, and inherited learned-weight retention update
+bounded fast connection deltas. There is no reward, optimizer, outcome label, or
+mandatory learning. Birth clears recurrent state, traces, and learned deltas.
+Only inherited weights, the active mask, plasticity/retention traits and the three
+mutation controls enter hereditary storage. Speed and sensory radius copy at birth
+and are fixed by world physiology, not evolved morphology.
 
-Body and brain upkeep begin at .01 energy/tick and rise linearly to .06 by world
-tick 50,000. Construction is covered by the fixed .2 times reproduction-cost
-overhead. There is no separate connection upkeep or genome-length copying charge.
+Body upkeep is 0.015 energy/tick. Each active unit adds 0.0005; actual absolute
+recurrent/trace/learned-state changes cost 0.0001 energy per unit of change.
+Capacity and learning are optional and paid. Genome copying has no extra upkeep.
 
 ## Inputs (zero-based)
 
-| Inputs | Measurement |
+| Inputs | Physical measurement |
 | --- | --- |
-| 0–3 | Energy/100, inventory/8, food underfoot, age/10,000 |
-| 4–5 | Previous voluntary velocity/1.2 |
-| 6–9 | Previous collected food, digested food, spent energy, received food |
-| 10–11 | Previous actual displacement/1.2, including contact displacement |
-| 12 | All other bodies within sensory radius, divided by 16 |
-| 13 | Remaining reproductive recovery ticks/240 |
-| 14–19 | One-hot previous requested action: none, collect, transfer, force, emit, reproduce |
-| 20–51 | Sixteen regions, each: mean food, body count/16 |
-| 52–107 | Eight sector neighbors, each: offset x/y, voluntary velocity x/y, signal, body-present, signal-present |
+| 0-3 | Energy/100, inventory/8, food underfoot, age/10,000 |
+| 4-5 | Actual velocity in the body frame /1.2 |
+| 6-7 | Net own energy/100 and inventory/8 changes since last tick; zero at birth |
+| 8-9 | Last integrated displacement in the current body frame /1.2 |
+| 10 | Nearby body count /16 |
+| 11-106 | Sixteen repeated samples, six channels each |
 
-Neighbor offsets use sensory radius; velocities use 1.2. Others' inventories
-are not observable. Inspector identities are not cognitive inputs.
-Inputs are bounded to [-8,8]. Food sensing combines vegetation and dropped food;
-dropped stock is capped at eight food units for sensing, not possession.
+Each sample contains mean food density, body count/16, mean relative velocity x/y
+in the body frame /1.2, mean signed signal activity, and mean proximity pressure.
+Pressure is `max(0, 1-distance/radius)`. Channels are finite and clamped to [-8,8].
+There are no unused input slots, target identities, nearest-body records, signal
+self-history, success inputs, other bodies' inventories, absolute coordinates,
+absolute heading, lineage, map, or global population inputs.
 
-Eight fixed compass sectors run clockwise E, SE, S, SW, W, NW, N, NE, centered
-45 degrees apart. Regions 0–7 cover distance <= radius/2 (12 units by default);
-8–15 cover the remainder out to radius (24). Food is the arithmetic mean over
-every 4×4 food-cell center in each region. This is coarse grid-resolution coverage,
-not exact continuous vision: cells straddling region/range boundaries are assigned
-by their centers. Empty regions read zero; off-world cells are not counted or
-wrapped. Underfoot food is also measured directly.
+Samples partition the local disk into eight body-relative angular wedges and two
+radial bands (inside/outside radius/2). Default radius is 24. Every sample uses the
+same six channels, without nearest-neighbor selection. Food integrates wrapped
+4-unit grid-cell centers within the disk; bodies contribute according to their
+actual wrapped positions. Empty channels read zero. This is finite-resolution
+area sampling, not point vision or identity tracking. The square resource lattice
+has quarter-turn and grid-translation symmetries; arbitrary subcell rotations or
+translations can change sampled food through raster aliasing. Continuous body
+geometry uses the same body-frame transformation at every bearing.
 
-Every living other body within radius contributes to exactly one regional count.
-There is no per-cell candidate cap. The nearest body in each angular sector is
-individually observable and targetable; an exact-distance tie selects the lower
-storage slot. Coincident bodies are assigned to E. Sampling has no tick/RNG shuffle.
-Targets can still switch at sector boundaries or when nearest distances cross;
-this is not identity tracking. Counts are measurements, not crowding trends or
-advice to leave. The brain must infer trends using its own state and feedback.
-
-A neighbor signal is that neighbor's own scalar emission on the preceding tick.
-Presence distinguishes zero from silence. No signal says food, help, harm, lie,
-truth, or direction unless controllers develop such an interpretation.
-Signals contain only the sender's chosen scalar. They are visible only through
-the nearest body in each sector; transmission does not guarantee reception.
-No sender identity is fed to cognition. There is no persistent reputation,
-relationship list, map, patch ID, absolute position, destination, lineage or
-global population input.
+Signal activity averages other bodies' preceding-tick scalar emissions in each
+sample; silent bodies contribute zero. Signed cancellation and zero emissions are
+indistinguishable from silence in this aggregate measurement. Transmission has no
+built-in vocabulary, receiver identity, delivery guarantee, or authored meaning.
+Inspector metadata is not visible to the controller.
 
 ## Outputs (zero-based)
 
 | Outputs | Capability |
 | --- | --- |
-| 0–5 | Action logits: none, collect, transfer, force, emit, reproduce |
-| 6–7 | Voluntary movement vector |
-| 8 | Collection/transfer amount or offspring energy investment, sigmoid [0,1] |
-| 9 | Emitted scalar, tanh [-1,1] |
-| 10–17 | Target logits over the eight sector neighbors |
-| 18–19 | Contact displacement vector |
+| 0, 2-5 | Primary logits: none, transfer, contact impulse, emit, reproduce |
+| 1 | Independent gathering effort, clamp to [0,1] |
+| 6 | Turn effort, tanh, up to 0.25 radians/tick |
+| 7 | Signed forward thrust effort, tanh(output * motor gain) |
+| 8 | Transfer amount or offspring investment, sigmoid [0,1] |
+| 9 | Signal scalar, tanh [-1,1] |
+| 10-11 | Body-relative contact impulse, radial tanh, magnitude at most 3 |
+| 12-13 | Body-relative offspring placement, radial tanh, distance at most 2 |
 
-Largest action logit wins; ties favor the earlier slot. Movement accompanies one
-body action. Target choice applies to transfer and force, not local emissions.
-The shared amount/target outputs are a compact actuator interface, not a rule
-about when to help, attack, reproduce or migrate. Impossible finite intentions
-are not replaced with sensible ones.
+The largest enabled primary logit wins; exact ties use the earlier output index.
+This is an explicit categorical-effector convention, not a ranking of organisms.
+Movement and gathering can accompany any primary action. Transfer, impulse,
+emission, and reproduction share one primary effector. Impossible intentions are
+not replaced with useful ones. There are no controller target slots.
 
-Movement applies radial tanh saturation at gain 4, scaled by maximum body speed.
-Force uses radial tanh saturation at gain 1, scaled to at most three units.
-There is no preferred compass direction, minimum movement, or minimum force.
-Very small vectors use a numerical normalization floor of .0001.
+Heading updates first. Damped velocity becomes `0.85*velocity + thrust`, then
+position wraps after integration. Maximum adult voluntary thrust is 0.18, giving
+1.2 cruising speed under sustained straight effort without contacts. Contact can
+change speed independently. Thrust cost is `length(thrust)/0.15 * 0.01`; drifting
+velocity damps without another thrust charge. Force and placement vectors use the
+updated heading at the physical boundary. All bodies have equal unit inertial
+mass; no mass field exists because it never varies.
 
-A nonfinite decision is flagged, gets no movement/action, and clears state.
-It is not a viability rescue: metabolism and digestion continue.
+Nonfinite output is flagged, clears recurrent state and actuator intent, and does
+not bypass digestion, upkeep, or death. Numerical normalization floors are 0.0001.
 
-## Initialization and inheritance
+## Initialization and mutation
 
-Default founders each receive a seed-specific random genome. Sensory weights start
-uniformly in [-.1,.1]; other weights and biases start in [-.35,.35]. Gate biases
-receive an additional .5, giving [.15,.85]. These are numerical initial conditions,
-not authored food-seeking or reproduction policies. Random does not mean competent.
+Fresh founders use seed-specific random genomes: sensory weights uniform in
+[-0.1,0.1], other parameters in [-0.35,0.35], and an additional 0.5 gate bias.
+Active capacity is uniform from 1-16; unit locations are randomized. Heading is
+uniform relative to the world's rotation. There is no scripted founding policy.
 
-`--founders` imports an explicitly named current-format bank without initialization
-noise. It repeats across founding positions; invalid data fails without fallback.
-
-Paid births copy the parent's fixed genome and then apply the shared continuous
-mutation law: each inherited genome samples its own log-uniform temperature from
-1/8 to 8, scaling the .02 per-parameter chance and .03 step size. Every newborn
-therefore differs from its parent while retaining fresh body state and zero memory.
-Between worlds, [population selection](evolution.md) compares complete founding
-groups. A sparse uniform sample of terminal biological descendants can supply
-inherited sources for the next candidate, but each source is varied and only the
-complete candidate group's world duration decides what carries forward.
+Parameter-mutation rate, parameter-mutation step and topology-mutation rate are
+independent inherited multipliers bounded to [0.25,4], initially log-uniform.
+Parameter variation occurs with probability 0.25*rate; one expressed parameter,
+one active plasticity rate and both retention traits receive bounded 0.03*step
+perturbations. Each mutation control drifts independently during that event.
+Topology retirement and activation independently occur with probability
+0.01*topology-rate when eligible. Activation duplicates a random expressed unit
+with bounded jitter and splits outgoing weights. Mutation is blind; exact copies
+are permitted. See [evolution.md](evolution.md) for continuity and provenance.

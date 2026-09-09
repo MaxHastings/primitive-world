@@ -1,4 +1,4 @@
-//! Desktop lifecycle for the fixed-brain evolutionary loop.
+//! Desktop lifecycle for the masked-controller evolutionary loop.
 use crate::*;
 use std::path::Path;
 
@@ -104,7 +104,7 @@ impl AppState {
         self.prepare_replacement()?;
         let experiment = experiments::create(
             &self.ui.name,
-            "World-duration population search · random, untrained brains",
+            "Rolling hereditary reservoir · random, untrained brains",
         )?;
         self.simulation.settings = self.ui.setup.clone();
         self.simulation.use_random_founders();
@@ -113,8 +113,7 @@ impl AppState {
         self.activate_experiment(experiment)?;
         self.paused = false;
         self.file_status =
-            "Incumbent world running. A living candidate is promoted when it outlives the incumbent."
-                .into();
+            "World running; successful births update the hereditary reservoir.".into();
         Ok(())
     }
     pub(crate) fn load_experiment(
@@ -166,7 +165,7 @@ impl AppState {
                 &self.device,
                 &self.queue,
             )?;
-            let genomes = survivors.ok_or("Saved world has no living genomes; open it in the normal viewer to continue evolution")?.bank.genomes;
+            let bank = survivors.ok_or("Saved world has no living genomes; open it in the normal viewer to continue evolution")?.bank;
             self.simulation.settings.population =
                 (f64::from(source.population) * f64::from(width) * f64::from(height)
                     / (f64::from(source.habitat_width) * f64::from(source.habitat_height)))
@@ -178,7 +177,8 @@ impl AppState {
                 "descendants of {} world {} at tick {}",
                 saved.record.name, saved.record.world, saved.record.tick
             );
-            self.simulation.settings.founder_genomes = genomes;
+            self.simulation.settings.founder_genomes = bank.genomes;
+            self.simulation.settings.founder_traits = bank.traits;
             self.simulation.settings.validate()?;
             self.simulation.reset(&self.queue);
             let experiment = experiments::create(
@@ -213,7 +213,7 @@ impl AppState {
         }
         let experiment = experiments::create(
             "New evolution",
-            "World-duration population search · command line",
+            "Rolling hereditary reservoir · command line",
         )?;
         self.activate_experiment(experiment)?;
         self.paused = false;

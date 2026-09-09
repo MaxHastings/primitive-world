@@ -1,49 +1,86 @@
 # Performance and limits
 
-## Current implementation
+The model has 16 potential recurrent units, with 1–16 expressed per organism.
+Decisions and local plasticity use a cooperative GPU workgroup per living body.
+Each lane evaluates a unit or output, sharing intermediate activities through
+barriers. All biological ticks and active connections are evaluated at every speed.
 
-Population search adds no per-tick CPU population readback. Two flat CPU arrays
-hold the saved current and candidate founding groups; at 1,000 founders they use
-about 9.1 MiB together. Candidate construction happens once per comparison.
-Completion reads compact metrics, and reset uploads the selected founding group.
-The individual-parent qualification/ranking/capture GPU passes are removed.
+Inherited genomes and lifetime learned deltas each use two GPU banks. At 16,384
+slots they occupy 155.875 MiB and 153 MiB respectively; paired body buffers use
+9.25 MiB, perception 6.25 MiB, decisions 11.75 MiB, and activity traces 8.5625 MiB.
+The 4,096-record hereditary pool adds 38.96875 MiB of GPU genome storage plus traits.
+These are allocations, not total process-memory measurements. Sparse descendant
+sampling reads only selected genomes; learned-magnitude observation reduces on
+GPU before reading compact totals.
 
-The GPU still uses compact active-body sensing/decision/update dispatch, eight-lane
-workgroups, three-pass parallel scans, streamed parent-to-child parameter mutation,
-GPU clearing and active-founder uploads. Initial habitat is reused and independent
-terrain rows are built on up to eight CPU workers. No senses, gates or biological
-ticks are omitted at higher speed.
+The viewer adaptively batches up to 32 ticks so GPU readback stays bounded while
+timer pacing can still reach the selected rate. 1x requests
+60 ticks/s; 32x requests 1,920 ticks/s; MAX is uncapped.
+Requested speed does not override hardware throughput. Rendering, other GPU
+applications, body count, dense neighbors, and reproduction all affect speed.
+Full saves can pause playback while complete state is read and written.
 
-The viewer submits at most 32 full ticks per batch, uses compact telemetry and
-schedules rendering independently. 1x targets 60 ticks/s; MAX is uncapped. Render
-FPS is separate. Dense coincident populations retain quadratic neighbor work;
-resource updates, scans, synchronization, terrain and full saves still cost time.
-A save can pause playback while complete state is read and written.
+## v35 optimization probe
 
-There are 74.25 MiB of active genome storage at 16,384 slots, 5.75 MiB in paired
-body buffers, 6.25 MiB of perception and 8.875 MiB of decision traces. CPU founding
-snapshots add up to two population-sized arrays, with transient construction/reset
-storage. These are not total process-memory figures.
+The current model rebuilds spatial indexing after motion for contact correctness,
+uses generic body-relative area samples, and proportionally shares gathering.
+Population and expressed brain capacity also change over time; comparing requested
+speed alone does not isolate an execution regression.
 
-## Earlier measurements, not validation of this revision
+Execution optimizations preserve the physical model: distribute sensory input
+assembly/validation across the existing decision workgroup, cache shared learning
+traces and output activations once per body, and skip empty food cells plus exact
+zero/full-share integer division cases. No tick, sample,
+learning update, cost, or contact opportunity is removed. Persistence is unchanged.
 
-The preceding 0.8.0 intermediate implementation was measured on 2026-09-07:
-Windows 11 Pro 10.0.26200, Ryzen 7 7800X3D, RTX 4070 SUPER, NVIDIA 591.86, Vulkan.
-Without rendering, 32 warmup ticks followed by 512 ticks in batches of 32 gave:
+A local release probe on the RTX 4070 SUPER measured the following batch-32 rates:
 
-| Initial bodies | Earlier optimized range, ticks/s |
-| --- | ---: |
-| 32 | 2,097–2,219 |
-| 1,000 | 1,987–2,107 |
-| 4,096 | 1,504–1,547 |
+| Starting bodies | Before (ticks/s) | After (ticks/s) |
+| --- | ---: | ---: |
+| 32 | 690 | 807 |
+| 1,000 | 532 | 612 |
+| 4,096 | 286 | 341 |
 
-Those runs used the intermediate fixed random bank and individual-lifetime outer
-loop. They are not measurements of the current population-search revision or of
-interactive playback. Their initialization, active-dispatch and streamed-birth
-optimizations remain in the source. There has been no new benchmark, simulation
-experiment or test run since the user's code-only verification instruction.
+The viewer was running concurrently. These are preliminary shared-load measurements,
+not isolated benchmark claims or directly comparable to the historical table.
+Single-tick GPU timestamps identify decisions/plasticity as major costs at higher
+population; gathering decreased from roughly 32 to 12 microseconds in the sampled
+4,096-body tick, but individual timings are noisy. A clean benchmark requires
+pausing competing simulation work deliberately and repeating paired measurements.
 
-The current revision has formatting, Rust compilation/lint and static source
-review evidence only. It does not yet have runtime evidence of increased world
-duration, checkpoint replay or final throughput. See the
-[implementation checklist](implementation-checklist.md) for exact verification.
+For interactive use, 16x requests 960 ticks/s and 32x requests 1,920. Lowering
+presentation FPS (for example `--view-fps 30`, particularly in wallpaper mode on a
+high-refresh display) can free rendering budget without changing biology. It will
+not overcome a compute-bound controller/learning workload. Larger execution
+changes should focus on neural memory access and dispatch overhead, with parity
+and accounting tests; do not reduce learning frequency or sensory coverage as a
+performance shortcut.
+
+## Historical v26 measurements on September 8, 2026
+
+Windows, RTX 4070 SUPER, NVIDIA 591.86, Vulkan, release build, seed 42. Each case
+resets, warms for 32 ticks, then measures 512 ticks. The population grows during
+measurement. These are headless measurements on the user's machine, not a
+promise of the same interactive rate at every population size.
+
+| Starting bodies | Batch 32, ticks/s | Batch 8 + telemetry, ticks/s |
+| --- | ---: | ---: |
+| 32 | 1,768 | 2,009 |
+| 1,000 | 1,194 | 1,250 |
+| 4,096 | 536 | 544 |
+
+The preceding serial 32-unit implementation measured around 149–179 ticks/s
+in the same diagnostic session. At the smallest population, decision and
+plasticity passes consumed about 2.6 and 3.4 milliseconds. With 16 units and
+cooperative evaluation those passes measured about 24 and 28 microseconds.
+Both architecture and execution changed, so this is not an isolated capacity
+comparison. The measurements establish that 1,000 ticks/s is possible with
+1,000 starting bodies; they do not guarantee it for large or crowded worlds.
+
+Reproduce with the ignored `simulation::tests::profile_tick_throughput` test.
+The profiler includes all cognitive passes and keeps telemetry separate from
+GPU timestamps. Full survivor snapshots every eight ticks add substantial
+readback overhead and are diagnostic, not the ordinary playback path.
+
+These historical throughput values predate the composable hereditary-pool model.
+Use the long-run reports for current timing; they include checkpoint/restart overhead.
