@@ -25,7 +25,7 @@ Only inherited weights, the active mask, plasticity/retention traits and the thr
 mutation controls enter hereditary storage. Speed and sensory radius copy at birth
 and are fixed by world physiology, not evolved morphology.
 
-Body upkeep is 0.015 energy/tick. Each active unit adds 0.0005; actual absolute
+Body upkeep is 0.05 energy/tick. Each active unit adds 0.00025; actual absolute
 recurrent/trace/learned-state changes cost 0.0001 energy per unit of change.
 Capacity and learning are optional and paid. Genome copying has no extra upkeep.
 

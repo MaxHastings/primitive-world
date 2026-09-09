@@ -335,7 +335,7 @@ fn environment_rotation_preserves_body_traits_and_is_not_a_controller_input() {
             params.environment,
             [1.0, 1.0, 1.0, settings.memory_write_energy]
         );
-        near(params.time_and_costs[3], 0.015);
+        near(params.time_and_costs[3], 0.05);
     }
     for shader in [
         include_str!("../shaders/decide.wgsl"),
@@ -727,11 +727,13 @@ fn dead_slot_reuse_resets_experience_and_advances_incarnation() {
 #[test]
 fn fresh_world_defaults_match_documented_physical_settings() {
     let settings = SimSettings::default();
-    assert_eq!(settings.metabolic_cost, 0.015);
+    assert_eq!(settings.metabolic_cost, 0.05);
+    assert_eq!(settings.active_unit_upkeep, 0.00025);
+    assert_eq!(settings.memory_write_energy, 0.0001);
     for tick in [0, 25000, 50000, 100000] {
         near(
             params_for(tick, tick, &settings, 42).time_and_costs[3],
-            0.015,
+            0.05,
         );
     }
     assert!(settings.social_actions_enabled);

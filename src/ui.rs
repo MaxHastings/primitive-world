@@ -444,7 +444,7 @@ fn draw_new(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                         egui::Slider::new(&mut state.ui.setup.metabolic_cost, 0.0..=0.2)
                             .text("Metabolic cap"),
                     );
-                    ui.small("Body upkeep rises from .01 to the cap over 50,000 ticks. Environmental dynamics remain fully active from the first tick.");
+                    ui.small("Body upkeep is constant from the first tick (default 0.05 energy/tick). Environmental dynamics remain fully active.");
                     ui.add(egui::Slider::new(&mut state.ui.setup.habitat_contrast, 0.0..=1.0).text("Habitat contrast"));
                     ui.checkbox(&mut state.ui.setup.evolving_landscape, "Evolving geography");
                     ui.checkbox(

@@ -37,7 +37,7 @@ pool records uniformly with replacement, using a separate saved RNG. Their
 position, age, reserves and lifetime state are freshly initialized. There are no
 ranked founders, accepted candidates, mutation proposals or immigrant quotas.
 Environmental dynamics have fixed strength from tick zero, without an earned
-age floor or a staged curriculum. Body upkeep is stationary at 0.015 energy/tick. Random founder probes establish
+age floor or a staged curriculum. Body upkeep is stationary at 0.05 energy/tick. Random founder probes establish
 reachable reproductive life cycles without a founding curriculum.
 
 ## Observation and persistence

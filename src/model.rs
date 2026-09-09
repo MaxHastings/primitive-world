@@ -8,7 +8,7 @@ pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD055";
 /// Fixed rolling hereditary storage; independent of body-engine capacity.
 pub const HEREDITARY_RESERVOIR_SIZE: u32 = 4_096;
 /// Incremental maintenance paid for each expressed recurrent unit.
-pub const DEFAULT_ACTIVE_UNIT_UPKEEP: f32 = 0.0005;
+pub const DEFAULT_ACTIVE_UNIT_UPKEEP: f32 = 0.00025;
 /// Energy paid for each unit of actual bounded memory-state change.
 pub const DEFAULT_MEMORY_WRITE_ENERGY: f32 = 0.0001;
 /// Blind per-birth connection mutation probability and bounded magnitude.
@@ -339,7 +339,7 @@ impl Default for SimSettings {
             population: 1000,
             resource_regeneration: 0.01,
             movement_energy_cost: 0.01,
-            metabolic_cost: 0.015,
+            metabolic_cost: 0.05,
             active_unit_upkeep: DEFAULT_ACTIVE_UNIT_UPKEEP,
             memory_write_energy: DEFAULT_MEMORY_WRITE_ENERGY,
             motor_response_gain: 4.0,

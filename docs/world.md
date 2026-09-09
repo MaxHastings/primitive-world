@@ -35,8 +35,8 @@ time physiology, not simultaneous continuous physics.
 | --- | --- |
 | Energy/inventory capacity | 100 energy / 8 food |
 | Founder provision | 35 energy, zero food, age zero |
-| Body upkeep | Stationary 0.015 energy/tick from tick zero |
-| Cognitive upkeep/writes | 0.0005 per expressed unit; 0.0001 per absolute state change |
+| Body upkeep | Stationary 0.05 energy/tick from tick zero |
+| Cognitive upkeep/writes | 0.00025 per expressed unit; 0.0001 per absolute state change |
 | Gathering | clamp(output 1,0,1), up to 0.025 food/tick |
 | Gathering effort cost | 0.005 * effort, including unsuccessful effort |
 | Digestion | At most 0.1 carried food/tick, 8 energy/food, limited by energy headroom |
@@ -105,7 +105,7 @@ reductions may differ with unordered spatial scatter; the regression allows
 telemetry is an observation, not an exact ledger. Population counts must balance
 births and all death causes. There is no kinetic-energy conservation claim.
 
-Seeded moving patches, periodic weather, soil recovery, depletion and seasonal
+Seeded correlated geography, periodic weather, soil recovery, depletion and seasonal
 production operate at full fixed strength from tick zero. Habitat contrast blends
 the geography with its mean, preserving mean habitat but not guaranteeing equal
 carrying capacity. No parameter depends on population performance. There is no

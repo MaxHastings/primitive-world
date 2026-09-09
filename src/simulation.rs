@@ -1592,7 +1592,82 @@ fn terrain_pair(a: &[f32], b: &[f32]) -> Vec<[f32; 4]> {
         .collect()
 }
 
+/// Only geography changes: retain the legacy keyframe's food/capacity budget.
+/// The reference map contributes one scalar, never patch locations or routes.
 fn build_habitat_at(seed: u32, epoch: u32, contrast: f32) -> Vec<f32> {
+    let reference = build_legacy_habitat_at(seed, epoch, 1.0);
+    let target = reference.iter().map(|v| f64::from(*v)).sum::<f64>();
+    let mut habitat = Vec::with_capacity(reference.len());
+    for y in 0..RESOURCE_GRID {
+        for x in 0..RESOURCE_GRID {
+            habitat.push(correlated_habitat(
+                (x as f32 + 0.5) / RESOURCE_GRID as f32,
+                (y as f32 + 0.5) / RESOURCE_GRID as f32,
+                seed,
+                epoch,
+            ));
+        }
+    }
+    let total = habitat.iter().map(|v| f64::from(*v)).sum::<f64>();
+    let scale = (target / total.max(f64::MIN_POSITIVE)) as f32;
+    let mean = (target / habitat.len() as f64) as f32;
+    for value in &mut habitat {
+        *value = mean + contrast * (*value * scale - mean);
+    }
+    habitat
+}
+
+/// Periodic value noise with a C2 quintic interpolant, including at the seam.
+fn periodic_terrain_noise(x: f32, y: f32, period: i32, seed: u32) -> f32 {
+    let x = x.rem_euclid(period as f32);
+    let y = y.rem_euclid(period as f32);
+    let ix = x.floor() as i32;
+    let iy = y.floor() as i32;
+    let sample = |dx: i32, dy: i32| {
+        let mut h = seed
+            ^ ((ix + dx).rem_euclid(period) as u32).wrapping_mul(0x9e3779b9)
+            ^ ((iy + dy).rem_euclid(period) as u32).wrapping_mul(0x85ebca6b);
+        h = (h ^ (h >> 16)).wrapping_mul(0x7feb352d);
+        h = (h ^ (h >> 15)).wrapping_mul(0x846ca68b);
+        (h ^ (h >> 16)) as f32 / u32::MAX as f32
+    };
+    let fade = |t: f32| t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+    let sx = fade(x - x.floor());
+    let sy = fade(y - y.floor());
+    let top = sample(0, 0) * (1.0 - sx) + sample(1, 0) * sx;
+    let bottom = sample(0, 1) * (1.0 - sx) + sample(1, 1) * sx;
+    top * (1.0 - sy) + bottom * sy
+}
+
+fn correlated_habitat(x: f32, y: f32, seed: u32, epoch: u32) -> f32 {
+    let x = x.rem_euclid(1.0);
+    let y = y.rem_euclid(1.0);
+    let key = seed ^ epoch.wrapping_mul(0x9e3779b9);
+    // Retain smooth domain warping, now periodic in both world directions.
+    let wx = x + (periodic_terrain_noise(x * 7.0, y * 7.0, 7, seed) - 0.5) * 0.045;
+    let wy = y + (periodic_terrain_noise(x * 7.0, y * 7.0, 7, seed ^ 7919) - 0.5) * 0.045;
+    let noise = |frequency: i32, salt: u32| {
+        periodic_terrain_noise(
+            wx * frequency as f32,
+            wy * frequency as f32,
+            frequency,
+            key ^ salt,
+        )
+    };
+    let broad = noise(4, 991);
+    let medium = noise(11, 1777);
+    let detail = noise(23, 3137);
+    // Smooth narrow bands around random iso-contours; no endpoints or routes.
+    let ridge_signal = 2.0 * noise(8, 0x5f3759df) - 1.0;
+    let ridge = (-ridge_signal * ridge_signal * 65.0).exp();
+    let field = 0.55 * broad + 0.28 * medium + 0.07 * detail + 0.10 * ridge;
+    // A smooth zero shoulder creates actual barren areas without a hard edge.
+    let t = ((field - 0.43) / 0.57).clamp(0.0, 1.0);
+    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+}
+
+// Frozen pre-correlated generator: economic calibration and diagnostic baseline.
+fn build_legacy_habitat_at(seed: u32, epoch: u32, contrast: f32) -> Vec<f32> {
     let mut rng = seed ^ 0xa341_316c;
     let mut patches: Vec<[f32; 7]> = Vec::new();
     // Territory moves at constant strength from the first tick.
@@ -1837,3 +1912,7 @@ pub mod observability;
 #[cfg(test)]
 #[path = "simulation_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "habitat_tests.rs"]
+mod habitat_tests;

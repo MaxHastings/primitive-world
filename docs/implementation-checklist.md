@@ -10,7 +10,7 @@ operational checks below pass.** Boring runs are not a reason to redesign biolog
 - Model: `primitive-v35-body-frame-contact`.
 - Checkpoint: 55 (`PRIMWORLD055`); founder bank: 20.
 - Controller: 107 inputs, 1-16 expressed recurrent units, 14 outputs; 2,494 genes.
-- Stationary body upkeep: 0.015. The metabolism ramp and its persistence field are removed.
+- Stationary body upkeep: 0.05. The metabolism ramp and its persistence field are removed.
 - Retained lifecycle assumptions and reasons: [world.md](world.md).
 - No compatibility execution of earlier biological representations.
 
