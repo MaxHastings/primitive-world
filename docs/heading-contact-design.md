@@ -7,12 +7,15 @@ special-purpose semantics this change removes.
 
 ## Body state
 
-Each body has a heading angle, an actual velocity, and equal fixed unit inertial mass. Heading is
+Each body has a heading angle, linear and angular velocity, and equal fixed unit inertial mass. Heading is
 initialized from a uniform angle, reset for a newborn, and is never a cognitive
 input as an absolute world angle. Controller vectors are transformed between the
 body frame and world frame only at the physics boundary.
 
-Voluntary locomotion supplies bounded forward thrust and turn effort. Contact
+Voluntary locomotion supplies bounded forward thrust and turning torque. Angular
+velocity becomes `0.85*angular_velocity + 0.0375*turn_effort` before heading
+integration. Applied turning effort costs `0.005*abs(turn_effort)` energy;
+coasting is free. Angular velocity starts at zero for founders and newborns. Contact
 impulses change actual velocity independently. Damping and integration then
 advance position on the torus. This makes observed relative motion, recoil, and
 resistance consequences of the same state rather than separate feedback rules.
@@ -42,8 +45,8 @@ the equal-and-opposite impulse changes both bodies. Energy is charged for
 generated impulse/mechanical energy, not recipient displacement.
 
 Removing the eight target logits frees controller outputs for turn/thrust,
-body-relative impulse, and bounded body-relative offspring placement. Placement
-is applied only by reproduction and remains toroidally wrapped.
+body-relative impulse, and bounded body-relative packet placement. Placement
+is applied only by packet manufacture and remains toroidally wrapped.
 
 ## Required invariants
 

@@ -9,10 +9,10 @@ declared done.
 ## Build and data formats
 
 - Application version: 0.9.0.
-- Model: `primitive-v35-body-frame-contact`.
-- Checkpoint format: 55, including lifetime state, hereditary pool, RNG streams and world history.
-- Founder-bank format: 20; game receipts: 4.
-- Genome allocation: 155.875 MiB for 16,384 bodies, plus world/render buffers.
+- Model: `primitive-v39-shorter-lifespans`.
+- Checkpoint format: 57, including lifetime state, hereditary pool, RNG streams and world history.
+- Founder-bank format: 21; game receipts: 4.
+- Genome allocation: 155.875 MiB for 16,384 shared organism/packet slots, plus world/render buffers.
 
 These identities are separate from application version. Noncurrent files remain
 untouched and are rejected; no compatibility execution or conversion is provided.
@@ -23,7 +23,7 @@ The current model is checked with the serial release GPU test suite, including
 mutation parity, masked learning and energy costs, newborn state resets, and
 checkpoint replay. A historical v26 headless throughput measurement exceeded 1,000 ticks/s at
 1,000 starting bodies on an RTX 4070 SUPER; see [performance](performance.md).
-The previous 32-unit model's saves are incompatible with the 16-unit layout.
+Contact-reproduction saves are incompatible with the packet-only biology.
 Existing files are preserved.
 
 ## Before publishing a GitHub release

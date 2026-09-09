@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — reproductive packets and continuous gameplay
+
+- Keep food as the only painting tool; add live global metabolism controls in wallpaper and windowed play, including saves while paused. New worlds start with 4,096 agents.
+
+- Replace body mating with local, resource-bearing packets from different producers.
+  Packet size is inherited and mutable; fusion combines reserves and both genomes.
+  Packets have no propulsion, cognition, sex labels or prescribed signal meanings.
+- Keep transfer, pushing, generic local sensing, signaling and private memory.
+- Skip unallocated packet requests without charging; reuse a consumed packet slot
+  for fusion. Storage pressure no longer pauses gameplay. Accounting horizons
+  advance to another world; autosave failures report and retry while play continues.
+- Restore default body upkeep to 0.05, set organism lifespans to 9,000–11,000
+  ticks, and fade broad opening food coverage to normal over 100,000 ticks.
+  New worlds start with 4,096 agents. Rich patches retain normal growth and capacity. Ecology ramps from 10% speed.
+- Smooth weather strength, motion and growth-noise transitions. Replace instant
+  vegetation clipping and patch deletion with ecology-speed-scaled recession.
+- Increase packet fusion radius from 2 to 6 and reduce packet maintenance tenfold
+  at world start to make accidental encounters more accessible. Both ease back
+  to radius 2 and upkeep .02 by tick 100,000 with the ecology ramp. Compatibility,
+  local stationary release and construction accounting are unchanged.
+- Use model `primitive-v39-shorter-lifespans`, checkpoint 57 and founder bank
+  21. Preserve older saves on disk while excluding them from current-model resume.
+
 ## Unreleased - Windows desktop launch
 
 - Produce a self-contained Primitive World.exe that resumes wallpaper on double-click

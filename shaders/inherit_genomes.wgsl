@@ -7,6 +7,8 @@
 @group(0) @binding(6) var<storage,read_write> genomes0:array<f32>;
 @group(0) @binding(7) var<storage,read_write> genomes1:array<f32>;
 @group(0) @binding(8) var<storage,read_write> stats:array<atomic<u32>>;
+@group(0) @binding(9) var<storage,read> claims:array<u32>;
+@group(0) @binding(10) var<storage,read> source_agents:array<Agent>;
 fn mutation_draw(rng:ptr<function,u32>)->f32 {
  *rng=(*rng)*1664525u+1013904223u;return f32((*rng)>>8u)/16777216.0;
 }
@@ -51,8 +53,11 @@ fn clone_unit(ci:u32,donor:u32,new_unit:u32,mask:u32,rng:ptr<function,u32>) {
  }
 }
 fn inherit_child(ci:u32,pi:u32,seed:u32) {
- var child=agents[ci];
  for(var k=0u;k<GENOME_SIZE;k++){set_gene(ci,k,gene(pi,k));}
+ mutate_child(ci,pi,seed);
+}
+fn mutate_child(ci:u32,pi:u32,seed:u32) {
+ var child=agents[ci];
  var rng=seed;let capacity=countOneBits(child.active_mask);
  if(capacity>1u){if(mutation_draw(&rng)<min(0.01*child.topology_mutation_rate,1.0)){
   let h=nth_set(child.active_mask,u32(mutation_draw(&rng)*f32(capacity)));
@@ -81,9 +86,10 @@ fn inherit_child(ci:u32,pi:u32,seed:u32) {
   child.learned_weight_retention=clamp(child.learned_weight_retention+(mutation_draw(&rng)*2.0-1.0)*magnitude,0.0,0.9999);
   child.parameter_mutation_rate=clamp(child.parameter_mutation_rate*(0.97+0.06*mutation_draw(&rng)),0.25,4.0);
   child.parameter_mutation_step=clamp(child.parameter_mutation_step*(0.97+0.06*mutation_draw(&rng)),0.25,4.0);
-  child.topology_mutation_rate=clamp(child.topology_mutation_rate*(0.97+0.06*mutation_draw(&rng)),0.25,4.0);}
+  child.topology_mutation_rate=clamp(child.topology_mutation_rate*(0.97+0.06*mutation_draw(&rng)),0.25,4.0);
+  child.packet_size=clamp(child.packet_size*(0.9+0.2*mutation_draw(&rng)),1.0,48.0);}
  // Read-only accounting: exact inherited equality, including latent genes.
- let parent=agents[pi];var exact=child.active_mask==parent.active_mask
+ let parent=agents[pi];var exact=child.packet_size==parent.packet_size && child.active_mask==parent.active_mask
   && child.trace_retention==parent.trace_retention && child.learned_weight_retention==parent.learned_weight_retention
   && child.parameter_mutation_rate==parent.parameter_mutation_rate && child.parameter_mutation_step==parent.parameter_mutation_step
   && child.topology_mutation_rate==parent.topology_mutation_rate;
@@ -98,13 +104,47 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
  let parent_rank=(rank+hash_u32(params.tick)%birth_prefix[INVALID-1u])%birth_prefix[INVALID-1u];
  let pi=parents[parent_rank];let ci=free_indices[rank];let child=agents[ci];
  if(child.alive==0u || child.birth_tick!=params.tick || child.birth_parent_slot!=pi){return;}
- inherit_child(ci,pi,agents[pi].rng^params.tick);
+ for(var k=0u;k<GENOME_SIZE;k++){set_gene(ci,k,gene(pi,k));}
 }
 
+@compute @workgroup_size(64)
+fn fusion(@builtin(global_invocation_id) id:vec3<u32>){
+ let pi=id.x;if(pi>=params.agent_count||claims[2u*INVALID+pi]!=INVALID){return;}
+ let qi=claims[INVALID+pi];if(qi>=params.agent_count){return;}let child=agents[qi];
+ if(child.alive!=ORGANISM||child.birth_tick!=params.tick||child.birth_parent_slot!=pi){return;}
+ let seed=agents[pi].rng^params.tick;
+ recombine_child(qi,pi,qi,seed^0xa51293bdu);
+ mutate_child(qi,pi,seed);
+}
 // Accounting horizons are explicit engine limits, never ecological extinction.
 // Food low-word counter 0 has the explicitly maintained high word at 14.
 fn counter_add(index:u32,value:u32)->u32 {
  let prior=atomicAdd(&stats[index],value);
  if(index!=0u && prior>0xffffffffu-value){atomicStore(&stats[36],1u);}
  return prior;
+}
+
+// A module owns its input/recurrent/gate rows, biases, outgoing readout,
+// expression bit and plasticity rate. Global scalar traits segregate blindly.
+fn recombine_child(ci:u32,pi:u32,qi:u32,seed:u32) {
+ var rng=seed;var child=agents[ci];child.active_mask=0u;
+ var donors:array<u32,HIDDEN_COUNT>;
+ // Blind redraw only if segregation produced no expressed units.
+ loop {child.active_mask=0u;for(var h=0u;h<HIDDEN_COUNT;h++){let donor=select(pi,qi,mutation_draw(&rng)<0.5);donors[h]=donor;child.active_mask|=source_agents[donor].active_mask&(1u<<h);}if(child.active_mask!=0u){break;}}
+ for(var h=0u;h<HIDDEN_COUNT;h++) {
+ let donor=donors[h];let p=source_agents[donor];
+ child.active_mask|=p.active_mask&(1u<<h);child.plasticity_rate[h]=p.plasticity_rate[h];
+ set_gene(ci,NODE_BIAS+h,gene(donor,NODE_BIAS+h));set_gene(ci,GATE_BIAS+h,gene(donor,GATE_BIAS+h));
+ for(var k=0u;k<INPUT_COUNT;k++){let at=INPUT_BASE+h*INPUT_COUNT+k;set_gene(ci,at,gene(donor,at));}
+ for(var k=0u;k<HIDDEN_COUNT;k++){let at=h*HIDDEN_COUNT+k;set_gene(ci,RECURRENT_BASE+at,gene(donor,RECURRENT_BASE+at));set_gene(ci,GATE_BASE+at,gene(donor,GATE_BASE+at));}
+ for(var o=0u;o<OUTPUT_COUNT;o++){let at=OUTPUT_BASE+o*HIDDEN_COUNT+h;set_gene(ci,at,gene(donor,at));}
+ }
+ for(var o=0u;o<OUTPUT_COUNT;o++){let donor=select(pi,qi,mutation_draw(&rng)<0.5);set_gene(ci,OUTPUT_BIAS+o,gene(donor,OUTPUT_BIAS+o));}
+ child.packet_size=source_agents[select(pi,qi,mutation_draw(&rng)<0.5)].packet_size;
+ child.trace_retention=source_agents[select(pi,qi,mutation_draw(&rng)<0.5)].trace_retention;
+ child.learned_weight_retention=source_agents[select(pi,qi,mutation_draw(&rng)<0.5)].learned_weight_retention;
+ child.parameter_mutation_rate=source_agents[select(pi,qi,mutation_draw(&rng)<0.5)].parameter_mutation_rate;
+ child.parameter_mutation_step=source_agents[select(pi,qi,mutation_draw(&rng)<0.5)].parameter_mutation_step;
+ child.topology_mutation_rate=source_agents[select(pi,qi,mutation_draw(&rng)<0.5)].topology_mutation_rate;
+ agents[ci]=child;
 }

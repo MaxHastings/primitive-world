@@ -216,8 +216,8 @@ fn profile_neural_input_layout_and_capacity() {
                         );
                         for a in agents.iter_mut().filter(|a| a.alive != 0) {
                             a.active_mask = (1 << capacity) - 1;
-                            // Hold starting capacity fixed for this execution probe.
-                            a.next_birth = MAX_WORLD_TICKS;
+                            // Keep these controllers juvenile for this 288-tick probe.
+                            a.age = 0.0;
                         }
                         q.write_buffer(
                             &s.agent_buffers[s.current_buffer],

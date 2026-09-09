@@ -22,10 +22,14 @@ var<workgroup> candidates:array<f32,HIDDEN_COUNT>;
 var<workgroup> states:array<f32,HIDDEN_COUNT>;
 var<workgroup> gates:array<f32,HIDDEN_COUNT>;
 var<workgroup> outputs:array<f32,OUTPUT_COUNT>;
+var<workgroup> organism:u32;
 var<workgroup> fault:atomic<u32>;
 @compute @workgroup_size(32)
 fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index) h:u32){
  let i=live_slots[4u+group.x];let mask=agents[i].active_mask;
+ if(h==0u){organism=u32(agents[i].alive==ORGANISM);}
+ let is_organism=workgroupUniformLoad(&organism);
+ if(is_organism==0u){if(h==0u){var empty:Decision;decisions[i]=empty;}return;}
  if(h==0u){let a=agents[i];let p=perceptions[i];
 
  x[0]=a.energy/100.0;x[1]=a.food/8.0;x[2]=p.resource_here;x[3]=a.age/10000.0;let self_velocity=world_to_body(a.velocity,a.heading);x[4]=self_velocity.x/1.2;x[5]=self_velocity.y/1.2;

@@ -6,7 +6,7 @@
 @group(0) @binding(5) var<storage,read_write> stats:array<atomic<u32>>;
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id:vec3<u32>){
- let i=id.x;if(i>=INVALID){return;}let a=agents[i];if(a.alive==0u){return;}let p=perceptions[i];let d=decisions[i];
+ let i=id.x;if(i>=INVALID){return;}let a=agents[i];if(a.alive!=ORGANISM){return;}let p=perceptions[i];let d=decisions[i];
  var any_signal=false;
  for(var k=0u;k<16u;k++){
   // Diagnostics observe the same anonymous aggregate field cognition sees.

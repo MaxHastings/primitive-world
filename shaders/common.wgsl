@@ -3,21 +3,25 @@ const INVALID:u32=16384u;
 const FOOD_CAPACITY:f32=8.0;
 const INTERACTION_RADIUS:f32=6.0;
 const GATHER_EFFORT_COST:f32=0.005;
+const ANGULAR_DAMPING:f32=0.85;
+const TORQUE_STRENGTH:f32=0.0375;
+const TURN_EFFORT_COST:f32=0.005;
 const SIGNAL_ACTIVATION_COST:f32=0.01;
 const SIGNAL_AMPLITUDE_COST:f32=0.02;
+const ORGANISM:u32=1u; const PACKET:u32=2u;
 const NONE:u32=0u;
-const TRANSFER:u32=2u; const APPLY_FORCE:u32=3u; const EMIT:u32=4u; const REPRODUCE:u32=5u; const SIGNAL_OBSERVED:u32=6u; const MEMORY_SAMPLE:u32=8u;
+const TRANSFER:u32=2u; const APPLY_FORCE:u32=3u; const EMIT:u32=4u; const PRODUCE_PACKET:u32=5u; const SIGNAL_OBSERVED:u32=6u; const MEMORY_SAMPLE:u32=8u;
 struct Agent {
  position:vec2<f32>, velocity:vec2<f32>, energy:f32, age:f32, max_speed:f32, sensor_radius:f32,
  food:f32, action:u32, alive:u32,
- heading:f32,rng:u32,generation:u32,next_birth:u32,
+ heading:f32,rng:u32,generation:u32,packet_size:f32,
  max_age:f32,signal_payload:f32,signal_tick:u32,physical_previous:array<u32,2>,
  collected:f32,ingested:f32,
  spent:f32,received:f32,moved:vec2<f32>,
  lineage_id:u32,parent_lineage:u32,birth_tick:u32,birth_parent_slot:u32,
- ancestry_depth:u32,lifetime_births:u32,distance_travelled:f32,founder_family:u32,
+ ancestry_depth:u32,packets_produced:u32,distance_travelled:f32,founder_family:u32,
  active_mask:u32,plasticity_rate:array<f32,HIDDEN_COUNT>,trace_retention:f32,learned_weight_retention:f32,
- hidden:array<f32,HIDDEN_COUNT>,lived_ticks:u32,parameter_mutation_rate:f32,parameter_mutation_step:f32,topology_mutation_rate:f32,topology_padding:f32,
+ hidden:array<f32,HIDDEN_COUNT>,lived_ticks:u32,parameter_mutation_rate:f32,parameter_mutation_step:f32,topology_mutation_rate:f32,angular_velocity:f32,
 };
 // Every local sample has the same physical channels.  It deliberately carries
 // no body id, nearest-body record, absolute bearing, or social classification.

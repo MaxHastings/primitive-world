@@ -21,7 +21,7 @@ pub struct Point {
     pub velocity: [f32; 2],
     pub distance_travelled: f32,
     pub action: u32,
-    pub lifetime_births: u32,
+    pub packets_produced: u32,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -37,8 +37,8 @@ pub struct Journey {
     pub poor_corridor_end: Point,
     pub destination_collection: Point,
     pub destination_ingestion: Point,
-    pub reproduction_interval: [u32; 2],
-    pub reproduction_count: u32,
+    pub packet_production_interval: [u32; 2],
+    pub packet_production_count: u32,
     pub waypoints: Vec<Point>,
 }
 
@@ -157,7 +157,7 @@ fn point(tick: u32, a: &AgentGpu, resources: &[u32], world_size: [f32; 2]) -> Po
         velocity: a.velocity,
         distance_travelled: a.distance_travelled,
         action: a.action,
-        lifetime_births: a.lifetime_births,
+        packets_produced: a.packets_produced,
     }
 }
 
@@ -274,7 +274,7 @@ impl JourneyObserver {
         let previous_tick = self.last_tick.unwrap_or(tick);
         let mut current = HashMap::new();
         let mut completed = Vec::new();
-        for a in agents.iter().filter(|a| a.alive != 0) {
+        for a in agents.iter().filter(|a| a.alive == 1) {
             let key = (a.lineage_id, a.generation);
             if !a
                 .position
@@ -307,7 +307,7 @@ impl JourneyObserver {
                 && vegetation(resources, p.collection_position, world_size) >= 0.04;
             if let Some(t) = &mut track
                 && (t.points.len() >= 512
-                    || a.lifetime_births < t.points.last().unwrap().lifetime_births)
+                    || a.packets_produced < t.points.last().unwrap().packets_produced)
             {
                 self.stats.truncated_tracks += 1;
                 self.end_track(
@@ -381,7 +381,7 @@ impl JourneyObserver {
                 }
                 if let Some(ingestion) = &t.ingestion
                     && tick > ingestion.tick
-                    && a.lifetime_births > ingestion.lifetime_births
+                    && a.packets_produced > ingestion.packets_produced
                 {
                     let (departure_tick, source_vegetation_at_departure) = t.departure.unwrap();
                     let (poor_corridor_start, poor_corridor_end) = t.corridor.clone().unwrap();
@@ -397,9 +397,9 @@ impl JourneyObserver {
                         poor_corridor_end,
                         destination_collection: t.collection.clone().unwrap(),
                         destination_ingestion: ingestion.clone(),
-                        reproduction_interval: [previous_tick, tick],
-                        reproduction_count: a.lifetime_births
-                            - t.points[t.points.len() - 2].lifetime_births,
+                        packet_production_interval: [previous_tick, tick],
+                        packet_production_count: a.packets_produced
+                            - t.points[t.points.len() - 2].packets_produced,
                         waypoints: std::mem::take(&mut t.points),
                     });
                     track = None;
@@ -469,8 +469,8 @@ impl JourneyObserver {
     }
 
     pub fn report(&self, sample: u32) -> serde_json::Value {
-        serde_json::json!({"schema": 2, "sample_ticks": sample, "stats": self.stats,
-            "definition": "Sampled source collection in a vegetation footprint >=0.04; source falls to <=25% of its observed peak and <=0.02; departure >=48 units; consecutive poor-footprint samples <=0.01 with no observed collection or observed contact impulse cross >=48 net units; collection >=96 units from source in footprint >=0.04; later ingestion and an actual birth-counter increase while sampled positions remain within48 of destination.",
+        serde_json::json!({"schema": 3, "sample_ticks": sample, "stats": self.stats,
+            "definition": "Sampled source collection in a vegetation footprint >=0.04; source falls to <=25% of its observed peak and <=0.02; departure >=48 units; consecutive poor-footprint samples <=0.01 with no observed collection or observed contact impulse cross >=48 net units; collection >=96 units from source in footprint >=0.04; later ingestion and a packet-production counter increase while sampled positions remain within48 of destination.",
             "limits": ["Only the last tick's feeding is visible at each sample. Unsampled feeding, death and route details are missed. Poor-space continuity means consecutive samples, not every intervening tick.",
                 "Patch means a radius24 nine-point vegetation footprint, not a global connected-component identity. Dropped food is excluded from patch classification but can contribute to actual collection.",
                 "Records demonstrate a sampled sequence, not foresight, causation of survival, successful offspring survival, or event attribution to major geography renewal. Attribution to geographic relocation requires additional evidence.",
@@ -506,7 +506,7 @@ mod tests {
             energy: 60.0,
             collected,
             ingested,
-            lifetime_births: births,
+            packets_produced: births,
             ..Default::default()
         }
     }
@@ -545,8 +545,8 @@ mod tests {
             .observe(160, &[body(702.0, 0.0, 0.0, 2)], &destination)
             .unwrap();
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].reproduction_interval, [128, 160]);
-        assert_eq!(events[0].reproduction_count, 1);
+        assert_eq!(events[0].packet_production_interval, [128, 160]);
+        assert_eq!(events[0].packet_production_count, 1);
         assert_eq!(events[0].waypoints.len(), 6);
     }
     #[test]

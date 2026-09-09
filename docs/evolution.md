@@ -6,13 +6,16 @@ and paid reproduction. Evaluation never supplies online rewards or retention rul
 
 ## Inheritance and mutation
 
-Offspring inherit controller weights, active masks, plasticity rates, retention
-traits, parameter-mutation rate, parameter-mutation step, and topology-mutation
-rate. Recurrent state, learned deltas, traces and physical
+Two resource-bearing packets from different producers must meet locally. Each
+packet contains an inherited genome snapshot that survives its producer. Fusion
+blindly recombines both snapshots before ordinary mutation. Packet size segregates
+independently and can mutate; contribution size never determines genetic donation.
+See [agents.md](agents.md#reproductive-packets) for costs and module boundaries.
+Recurrent state, learned deltas, traces and physical
 feedback reset at birth. Eligible topology retirement and activation each have a
-probability of .01 times the inherited topology-mutation rate (.25â€“4). Activation
+probability of .01 times the inherited topology-mutation rate (.25–4). Activation
 duplicates a random active unit with bounded jitter, splitting outgoing weights.
-Separately, probability .25 times inherited parameter-mutation rate (.25â€“4)
+Separately, probability .25 times inherited parameter-mutation rate (.25–4)
 perturbs one random expressed weight, one active plasticity rate and both
 retention traits by bounded steps of .03 times inherited parameter-mutation step.
 The three controls drift independently when parameter variation occurs. Exact
@@ -20,13 +23,13 @@ copies are valid. Mutation never consults behavior, lifespan, or outcomes.
 
 ## The rolling pool
 
-A fixed 4,096-record pool is independent of the 16,384-body engine allocation.
+A fixed 4,096-record pool is independent of the 16,384-slot organism/packet allocation.
 Initial entries are uniform samples with replacement from the founding population.
 An empty diagnostic initializes pool storage from one random record but never
 restarts automatically.
 
 Each successful birth draws a random replacement slot. A claim pass resolves
-collisions in deterministic birth-allocation order before copying. Both genome
+collisions in deterministic child-slot order before copying. Both genome
 banks and traits always come from one complete child, as sequential replacement
 would produce. Private learning and failed births never enter the pool. This is
 rolling replacement, not a uniform sample of all historical births: older records
@@ -36,9 +39,10 @@ Natural extinction starts a newly seeded world. Fresh bodies sample unchanged
 pool records uniformly with replacement, using a separate saved RNG. Their
 position, age, reserves and lifetime state are freshly initialized. There are no
 ranked founders, accepted candidates, mutation proposals or immigrant quotas.
-Environmental dynamics have fixed strength from tick zero, without an earned
-age floor or a staged curriculum. Body upkeep is stationary at 0.05 energy/tick. Random founder probes establish
-reachable reproductive life cycles without a founding curriculum.
+Body upkeep is stationary at 0.05 energy/tick. New worlds receive a fixed
+ground-cover allowance: food starts across the whole map, then its habitat and
+productivity floor fades smoothly to zero by tick 100,000. It depends only on
+world age and does not multiply the capacity or growth of existing rich patches.
 
 ## Observation and persistence
 
@@ -47,20 +51,19 @@ observations. History length and values cannot affect hereditary draws. Completi
 is idempotent and requires natural extinction. A pause, save or requested work
 budget never completes a living world.
 
-Checkpoint format 55 preserves live physics, lifetime learning, both pool banks,
+Checkpoint format 57 preserves live physics, lifetime learning, both pool banks,
 traits, replacement state, founder RNG and history. Validation precedes live
 writes. Prior-world durations are independent of the new world's age. Previous
 models are rejected without changing their files.
 
 ## Engineering limits
 
-Insufficient body slots or impending lineage-ID overflow latches an engine fault
-and disables birth allocation. The host stops at the submitted batch boundary
-(at most 32 ticks in normal/headless operation). This boundary is censored:
-it cannot count as extinction or seed another world. Save it for diagnosis and
-start a separate experiment. The world tick horizon also stops explicitly.
-These are engine limitations, not biological rules. Atomic contention means
-population-wide bitwise replay is not guaranteed.
+Packet requests that exceed free storage are skipped without payment; a
+tick-varying allocation order shares admission opportunities. In-place fusion
+continues at full storage. This is an explicit gameplay limit and can influence
+outcomes near capacity. Accounting horizons automatically roll into a new world
+without claiming extinction. Atomic food/sensory reductions retain their existing
+floating-point tolerances; controlled checkpoint replay is regression-tested.
 
 
 ## Provenance and search-health observations
@@ -75,10 +78,12 @@ of the three mutation controls, expressed capacity, live founder-family counts,
 and changed-record reservoir slots between samples. The latter uses 64-bit record
 fingerprints and can miss multiple replacements or replacement by an identical
 record. Successful births count replacement attempts, including collisions.
-Exact-copy birth counts compare inherited genes and traits; topology counters
+Exact-copy birth counts compare inherited genes and traits with the arbitration-selected
+parent (not both parents or the pre-mutation recombinant); topology counters
 measure activation/retirement frequency. None is an optimization objective.
 Live founder-family labels describe the current world's founding bodies; they
-are not a reconstructed cross-world ancestry tree. The pool does not retain
+follow only the arbitration-selected parental branch and are not a complete
+two-parent pedigree or reconstructed cross-world ancestry tree. The pool does not retain
 individual lifetime histories or rank a historical lineage.
 
 Declining diversity is allowed. A finite run showing diversity, turnover or births

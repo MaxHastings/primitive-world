@@ -1,4 +1,4 @@
-"""Read journey JSONL schema 2; summarize attempts without scoring genes."""
+"""Read journey JSONL schema 3; summarize attempts without scoring genes."""
 import argparse
 from collections import Counter
 import hashlib
@@ -27,8 +27,8 @@ def analyze(path, metabolic, movement):
                 completed += 1
             elif item["type"] == "ended_attempt":
                 records.append(item["evidence"])
-    if header is None or footer is None or header["observer"]["schema"] != 2:
-        raise ValueError("Require completed schema2 observation, not a partial file")
+    if header is None or footer is None or header["observer"]["schema"] != 3:
+        raise ValueError("Require completed schema3 observation, not a partial file")
     rows = []
     for r in records:
         points = [p for p in r["waypoints"] if p["tick"] >= r["departure_tick"]]
@@ -57,7 +57,7 @@ def analyze(path, metabolic, movement):
             "nearest_beyond_observed_speed_range": nearest["distance"] > constant_speed_range if nearest else None,
             "rich_footprint_samples_after_departure": sum(p["local_vegetation"] >= .04 for p in points),
             "collection_samples_after_departure": sum(p["collected_last_tick"] > 0 for p in points),
-            "reproduction_after_departure": last["lifetime_births"] - first["lifetime_births"],
+            "packet_production_after_departure": last["packets_produced"] - first["packets_produced"],
             "last_seen_energy": last["energy"],
             "terminal_energy": terminal["energy"] if terminal else None,
             "terminal_age_limit": terminal["age"] >= terminal["max_age"] if terminal else None})
@@ -67,7 +67,7 @@ def analyze(path, metabolic, movement):
                    "ticks_observed_after_departure", "path_after_departure", "net_after_departure", "net_to_path",
                    "mean_path_speed", "optimistic_max_speed_range", "illustrative_constant_observed_speed_range",
                    "nearest_food_distance_at_departure", "rich_footprint_samples_after_departure",
-                   "collection_samples_after_departure", "reproduction_after_departure", "last_seen_energy"]
+                   "collection_samples_after_departure", "packet_production_after_departure", "last_seen_energy"]
         groups[name] = {"n": len(subset), "end_reasons": dict(Counter(r["end_reason"] for r in subset)),
             "stages": dict(Counter(r["last_stage"] for r in subset)),
             "distribution": {k: distribution([r[k] for r in subset]) for k in numeric},

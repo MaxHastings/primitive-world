@@ -14,9 +14,9 @@ pub enum Command {
     Pause,
     Step,
     WorldClick(egui::Pos2),
-    FoodClick(egui::Pos2),
-    FoodDrag(egui::Pos2),
-    FoodEnd,
+    BrushClick(egui::Pos2),
+    BrushDrag(egui::Pos2),
+    BrushEnd,
     BrushSize(f32),
     Pan(egui::Vec2),
     Zoom(f32),
@@ -73,22 +73,22 @@ pub fn apply(state: &mut AppState, command: Command) {
             state.handle_click(point);
             return;
         }
-        Command::FoodClick(point) => {
-            state.handle_food_click(point);
-            state.ui.food_brush.end();
+        Command::BrushClick(point) => {
+            state.handle_brush_click(point);
+            state.ui.paint_brush.end();
             return;
         }
-        Command::FoodDrag(point) => {
-            state.paint_food(point);
+        Command::BrushDrag(point) => {
+            state.paint_brush(point);
             return;
         }
-        Command::FoodEnd => {
-            state.ui.food_brush.end();
+        Command::BrushEnd => {
+            state.ui.paint_brush.end();
             return;
         }
         Command::BrushSize(notches) => {
-            if state.ui.food_brush.enabled {
-                state.ui.food_brush.resize(notches);
+            if state.ui.paint_brush.enabled {
+                state.ui.paint_brush.resize(notches);
             }
             return;
         }
@@ -132,7 +132,6 @@ pub fn apply(state: &mut AppState, command: Command) {
             .map(|p| state.file_status = format!("Exported {}", p.display())),
     };
     if let Err(error) = result {
-        state.paused = true;
         state.file_status = error;
         if !state.ui.has_world && state.ui.screen == ui::Screen::Play {
             state.ui.screen = ui::Screen::LoadGame;
@@ -187,14 +186,14 @@ mod tests {
 
 /// Distance-spaced stamps make a drag independent of event/frame frequency.
 /// UI-only state: never serialized into an experiment or exposed to agents.
-pub struct FoodBrush {
+pub struct PaintBrush {
     pub radius: f32,
     pub density: f32,
     pub enabled: bool,
     previous: Option<egui::Pos2>,
     remaining: f32,
 }
-impl Default for FoodBrush {
+impl Default for PaintBrush {
     fn default() -> Self {
         Self {
             radius: 36.0,
@@ -205,7 +204,7 @@ impl Default for FoodBrush {
         }
     }
 }
-impl FoodBrush {
+impl PaintBrush {
     pub fn toggle(&mut self) {
         self.enabled = !self.enabled;
         self.end();
@@ -257,12 +256,12 @@ impl FoodBrush {
 }
 
 #[cfg(test)]
-mod food_brush_tests {
+mod paint_brush_tests {
     use super::*;
     #[test]
     fn drag_stamps_are_independent_of_mouse_event_frequency() {
         let stroke = |points: Vec<f32>| {
-            let mut brush = FoodBrush::default();
+            let mut brush = PaintBrush::default();
             points
                 .into_iter()
                 .flat_map(|x| brush.stamps(egui::pos2(x, 20.0)))
@@ -278,7 +277,7 @@ mod food_brush_tests {
     }
     #[test]
     fn toggle_release_and_size_controls_do_not_leave_a_stale_stroke() {
-        let mut brush = FoodBrush::default();
+        let mut brush = PaintBrush::default();
         assert!(!brush.enabled);
         brush.toggle();
         assert!(brush.enabled);

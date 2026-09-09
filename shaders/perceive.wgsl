@@ -10,7 +10,7 @@ fn food_at_index(i:u32)->f32{return f32(resources[i]+min(atomicLoad(&ground[i].d
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id:vec3<u32>){
  let i=id.x;if(i>=params.agent_count){return;}let a=agents[i];var p:Perception;
- if(a.alive==0u){perceptions[i]=p;return;}
+ if(a.alive!=ORGANISM){perceptions[i]=p;return;}
  p.resource_here=food_at_index(ground_index(a.position,params.world_size.xy));
  let r=a.sensor_radius;let r2=r*r;let near2=r2*0.25;
  // Integrate every food-cell center in the local disk. Grid resolution,

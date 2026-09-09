@@ -166,11 +166,6 @@ impl AppState {
                 &self.queue,
             )?;
             let bank = survivors.ok_or("Saved world has no living genomes; open it in the normal viewer to continue evolution")?.bank;
-            self.simulation.settings.population =
-                (f64::from(source.population) * f64::from(width) * f64::from(height)
-                    / (f64::from(source.habitat_width) * f64::from(source.habitat_height)))
-                .round()
-                .clamp(1.0, f64::from(MAX_AGENTS)) as u32;
             self.simulation.settings.habitat_width = width;
             self.simulation.settings.habitat_height = height;
             self.simulation.settings.founder_name = format!(

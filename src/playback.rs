@@ -159,9 +159,7 @@ impl AppState {
             || self.simulation.tick >= model::MAX_WORLD_TICKS
         {
             self.simulation.record_engine_saturation();
-            self.paused = true;
-            self.file_status =
-                "World tick capacity reached. Save is available; this is not an extinction.".into();
+            self.service_completed_world();
             return;
         }
 
@@ -266,9 +264,8 @@ impl AppState {
             _ => {
                 self.pending_batch = None;
                 self.batch_readback.unmap();
-                self.paused = true;
-                self.file_status =
-                    "Simulation readback failed; paused to preserve the world".into();
+                self.scheduler.reset(Instant::now());
+                self.file_status = "Simulation readback failed; retrying on the next batch".into();
                 return;
             }
         }
@@ -293,10 +290,7 @@ impl AppState {
         self.interaction_stats = [u32_at(20), u32_at(24), u32_at(28), u32_at(32)];
         if u32_at(4 + 36 * 4) != 0 || self.simulation.tick >= model::MAX_WORLD_TICKS {
             self.simulation.record_engine_saturation();
-            self.paused = true;
-            self.file_status =
-                "Engine capacity reached; experiment paused. Save and start a new experiment."
-                    .into();
+            self.file_status = "Accounting horizon reached; continuing into the next world".into();
         }
         if let Some(timing) = &self.gpu_timing {
             let start = bytemuck::pod_read_unaligned::<u64>(
@@ -361,20 +355,29 @@ impl AppState {
 
     fn service_completed_world(&mut self) {
         if self.simulation.progress.engine_saturated {
-            if self.experiment.is_some() {
-                self.file_status = match self.save_experiment() {
-                    Ok(_) => "Engine capacity reached; paused and saved for diagnosis.".into(),
-                    Err(e) => format!("Engine capacity reached; save failed: {e}"),
-                };
+            match self.simulation.rollover_world(&self.device, &self.queue) {
+                Ok(()) => {
+                    self.file_status =
+                        "Accounting horizon passed; continued from the hereditary pool".into()
+                }
+                Err(e) => {
+                    self.simulation.reset(&self.queue);
+                    self.file_status = format!("World recovery used fresh founders: {e}");
+                }
             }
+            self.world_revision = self.world_revision.saturating_add(1);
+            self.clear_world_observers();
+            let _ = self.refresh_metrics();
             return;
         }
         if self.living_agents == 0 && self.simulation.progress.completed.is_none() {
             match self.simulation.complete_world(&self.device, &self.queue) {
                 Ok(()) => self.world_revision = self.world_revision.saturating_add(1),
                 Err(e) => {
-                    self.paused = true;
-                    self.file_status = format!("World transition paused: {e}");
+                    self.simulation.reset(&self.queue);
+                    self.clear_world_observers();
+                    let _ = self.refresh_metrics();
+                    self.file_status = format!("World recovered with fresh founders: {e}");
                     return;
                 }
             }
@@ -392,8 +395,10 @@ impl AppState {
                 Ok(())
             })();
             if let Err(e) = result {
-                self.paused = true;
-                self.file_status = format!("Evolution paused: {e}");
+                self.simulation.reset(&self.queue);
+                self.clear_world_observers();
+                let _ = self.refresh_metrics();
+                self.file_status = format!("World recovered with fresh founders: {e}");
             }
         }
         if self.experiment.is_some()
@@ -402,10 +407,7 @@ impl AppState {
         {
             self.file_status = match self.save_experiment() {
                 Ok(m) => m,
-                Err(e) => {
-                    self.paused = true;
-                    format!("Autosave failed; paused: {e}")
-                }
+                Err(e) => format!("Autosave failed; play continues and saving will retry: {e}"),
             };
             self.last_autosave = Instant::now();
         }

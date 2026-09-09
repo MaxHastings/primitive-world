@@ -32,7 +32,7 @@ pub struct Progress {
     pub rng: u32,
     pub completed: Option<Outcome>,
     pub history: Vec<Outcome>,
-    /// Capacity exhaustion pauses the engine; it is never an extinction.
+    /// An accounting horizon requests an automatic world rollover, not a pause.
     pub engine_saturated: bool,
 }
 
@@ -140,6 +140,16 @@ impl Simulation {
         queue: &wgpu::Queue,
     ) -> Result<(), String> {
         self.complete_world(device, queue)?;
+        self.rollover_world(device, queue)
+    }
+
+    /// Continue gameplay across accounting horizons without claiming extinction.
+    /// The same blind hereditary pool supplies the next world.
+    pub fn rollover_world(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<(), String> {
         let count = self.settings.population as usize;
         let bank0 = read_buffer(device, queue, &self.reservoir_genome_buffers[0])?;
         let bank1 = read_buffer(device, queue, &self.reservoir_genome_buffers[1])?;

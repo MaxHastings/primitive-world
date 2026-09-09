@@ -330,7 +330,7 @@ fn previous_model_checkpoint_is_rejected_before_any_world_change() {
     let a = body([602.0, 902.0]);
     put(&s, &q, 0, a, &fixed(0, [0.0; 2]));
     let err = s
-        .load_checkpoint_reader(&q, std::io::Cursor::new(b"PRIMWORLD016"))
+        .load_checkpoint_reader(&q, std::io::Cursor::new(b"PRIMWORLD055"))
         .unwrap_err();
     assert!(err.contains(&format!("format {CHECKPOINT_VERSION}")));
     assert_eq!(s.tick, 0);

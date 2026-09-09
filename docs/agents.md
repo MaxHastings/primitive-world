@@ -67,14 +67,14 @@ Inspector metadata is not visible to the controller.
 
 | Outputs | Capability |
 | --- | --- |
-| 0, 2-5 | Primary logits: none, transfer, contact impulse, emit, reproduce |
+| 0, 2-5 | Primary logits: none, transfer, contact impulse, emit, manufacture packet |
 | 1 | Independent gathering effort, clamp to [0,1] |
-| 6 | Turn effort, tanh, up to 0.25 radians/tick |
+| 6 | Turn effort, tanh, torque up to 0.0375 radians/tick² |
 | 7 | Signed forward thrust effort, tanh(output * motor gain) |
-| 8 | Transfer amount or offspring investment, sigmoid [0,1] |
+| 8 | Transfer amount or fraction of reserves available for packet manufacture, sigmoid [0,1] |
 | 9 | Signal scalar, tanh [-1,1] |
 | 10-11 | Body-relative contact impulse, radial tanh, magnitude at most 3 |
-| 12-13 | Body-relative offspring placement, radial tanh, distance at most 2 |
+| 12-13 | Body-relative packet placement, radial tanh, distance at most 2 |
 
 The largest enabled primary logit wins; exact ties use the earlier output index.
 This is an explicit categorical-effector convention, not a ranking of organisms.
@@ -82,7 +82,12 @@ Movement and gathering can accompany any primary action. Transfer, impulse,
 emission, and reproduction share one primary effector. Impossible intentions are
 not replaced with useful ones. There are no controller target slots.
 
-Heading updates first. Damped velocity becomes `0.85*velocity + thrust`, then
+Turn output applies torque: `angular_velocity = 0.85*angular_velocity +
+0.0375*turn_effort`, then heading integrates angular velocity and wraps. Applied
+turn effort costs `0.005*abs(turn_effort)` energy; effort scales down when energy
+is insufficient. Angular coasting incurs no effort charge. Founders and newborns
+start with zero angular velocity. Heading updates first, then
+damped velocity becomes `0.85*velocity + thrust`, then
 position wraps after integration. Maximum adult voluntary thrust is 0.18, giving
 1.2 cruising speed under sustained straight effort without contacts. Contact can
 change speed independently. Thrust cost is `length(thrust)/0.15 * 0.01`; drifting
@@ -109,3 +114,66 @@ Topology retirement and activation independently occur with probability
 0.01*topology-rate when eligible. Activation duplicates a random expressed unit
 with bounded jitter and splits outgoing weights. Mutation is blind; exact copies
 are permitted. See [evolution.md](evolution.md) for continuity and provenance.
+
+## Reproductive packets
+
+Action 5 requests manufacture of one packet. After physical upkeep, learning and
+body interactions, the organism must be mature (age 400) and its spending budget
+`energy * sigmoid(output 8)` must cover its inherited `packet_size`. Manufacturing
+debits exactly that size in energy. It neither needs a partner present nor causes
+a birth. Output 12/13 places the packet within two body-relative world units of
+the producer. Output 8 limits spending; it does not determine packet size.
+
+Packet size is a heritable scalar bounded to [1,48], initially uniform. It is
+blindly inherited from either packet at fusion and, during the existing parameter
+mutation event, multiplied by a uniform [0.9,1.1] factor and clamped to its bounds.
+Smaller packets permit more manufacturing from the same energy; larger packets
+carry more offspring provisioning. At most one packet is manufactured per body
+per tick, an explicit throughput ceiling. There is no reproductive cooldown.
+
+Packets carry their own immutable genome and trait snapshots. They do not think,
+gather, signal, learn, or propel themselves. They remain at their release location
+and spend `packet_upkeep * packet_size^(2/3)` energy per tick. The upkeep
+coefficient smoothly rises from .002 to .02 over world ticks 0–100,000. They expire at zero energy, without a separate lifetime timer. A fresh
+packet has an initial viability scale of approximately 500–1,817 ticks, falling
+to 50–182 at normal upkeep. Existing packets pay the current world-age rate. This is a
+modeling choice, not a measured biological constant or guaranteed social outcome.
+
+The fusion radius smoothly falls from six wrapped units to two over world ticks
+0–100,000 (four at tick 50,000). Two packets within that radius fuse if they
+came from different producers.
+Producer provenance is a physical compatibility check, never a controller input;
+there are no kinship classes, mating types, sex labels, preferences or mate scores.
+Nearest contact and a tick-varying unique arbitration key resolve contention;
+each packet participates at most once. Packets released this tick are eligible
+starting next tick. Producers need not still be alive or release simultaneously.
+
+Fusion consumes both packets. Remaining energies sum, and a fixed default
+`fusion_loss = 10` is dissipated constructing the offspring. If that exhausts the
+reserves, fusion fails and leaves no organism. Neither producer pays again.
+The offspring appears at the wrapped midpoint with zero velocity, age, signals,
+memory, traces and learned deltas. Its heading is uniformly randomized.
+
+For each of sixteen neural modules, a fair draw chooses either packet's expression
+bit, input/recurrent/gate rows, biases, readout weights and plasticity coefficient
+together, including latent units. Empty expression is blindly redrawn. Output
+biases and global hereditary traits segregate independently; mutation follows.
+Genome donation never depends on packet size or contribution.
+
+Signals retain their existing local physical range (default 24 units), much
+longer than fusion range. There is no signal requirement, predefined meaning,
+cooperation reward or scripted courtship. Transfer, pushing, local sensing and
+private memory remain available. Packets contribute unsigned physical occupancy
+to the existing generic samples, without a semantic packet channel.
+
+Organisms and packets share 16,384 entity slots. When manufacture exceeds free
+storage, a tick-varying cyclic allocation order admits the requests that fit;
+others are counted and skipped without charge. The game never pauses for this
+limit. Fusion reuses a consumed packet's slot and can occur with no free slots.
+This admission rule is an acknowledged gameplay limit, not a biological result.
+
+Body observers exclude packets. `packets_produced` records manufacturing, not
+successful offspring. An offspring's family/parent annotation describes one
+producer branch; it is not a complete two-parent pedigree. Extinction waits until
+both organisms and viable packets are gone. Successful offspring alone enter
+the hereditary reservoir.

@@ -1,10 +1,10 @@
 //! primitive-world: body-relative sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
 /// Persistence accepts only this model's controller and lifetime-state layout.
-pub const MODEL_ID: &str = "primitive-v35-body-frame-contact";
-pub const FOUNDER_BANK_VERSION: u32 = 20;
-pub const CHECKPOINT_VERSION: u32 = 55;
-pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD055";
+pub const MODEL_ID: &str = "primitive-v39-shorter-lifespans";
+pub const FOUNDER_BANK_VERSION: u32 = 21;
+pub const CHECKPOINT_VERSION: u32 = 57;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD057";
 /// Fixed rolling hereditary storage; independent of body-engine capacity.
 pub const HEREDITARY_RESERVOIR_SIZE: u32 = 4_096;
 /// Incremental maintenance paid for each expressed recurrent unit.
@@ -14,8 +14,10 @@ pub const DEFAULT_MEMORY_WRITE_ENERGY: f32 = 0.0001;
 /// Blind per-birth connection mutation probability and bounded magnitude.
 pub const BASE_MUTATION_PROBABILITY: f32 = 0.25;
 pub const BASE_MUTATION_MAGNITUDE: f32 = 0.03;
+pub const FOOD_EASING_TICKS: u32 = 100_000;
+pub const INITIAL_GROUND_COVER: f32 = 0.5;
 pub const MAX_AGENTS: u32 = 16_384;
-/// Reserve room for the largest permitted birth cooldown in shader tick arithmetic.
+/// Leave headroom for bounded tick arithmetic and observer windows.
 pub const MAX_WORLD_TICKS: u32 = u32::MAX - 1_000_001;
 pub const LIVE_WORKGROUP_SIZE: usize = 8;
 pub const RESOURCE_GRID: u32 = 512;
@@ -23,7 +25,7 @@ pub const OCCUPANCY_GRID: u32 = 256;
 pub const SPATIAL_CELL_COUNT: u32 = OCCUPANCY_GRID * OCCUPANCY_GRID;
 pub const WORLD_SIZE: f32 = 2048.0;
 /// Cumulative physical and cognitive accounting counters.
-pub const DEATH_STATS_COUNT: u32 = 38;
+pub const DEATH_STATS_COUNT: u32 = 40;
 pub const EVENT_RING_SIZE: u32 = 65_536;
 pub const SECTORS: usize = 8;
 pub const BEARING_NAMES: [&str; SECTORS] = [
@@ -68,7 +70,8 @@ pub const ACTIVE_MASK_ALL: u32 = (1u32 << HIDDEN) - 1;
 #[derive(Clone, Copy, Debug, PartialEq, Pod, Zeroable, serde::Serialize, serde::Deserialize)]
 pub struct CognitiveTraits {
     pub active_mask: u32,
-    pub padding: [u32; 3],
+    pub padding: [u32; 2],
+    pub packet_size: f32,
     pub plasticity_rate: [f32; HIDDEN],
     pub trace_retention: f32,
     pub learned_weight_retention: f32,
@@ -80,7 +83,9 @@ pub struct CognitiveTraits {
 }
 impl CognitiveTraits {
     pub fn validate(&self) -> bool {
-        self.active_mask != 0
+        self.packet_size.is_finite()
+            && (1.0..=48.0).contains(&self.packet_size)
+            && self.active_mask != 0
             && self.active_mask & !ACTIVE_MASK_ALL == 0
             && self.trace_retention.is_finite()
             && self.learned_weight_retention.is_finite()
@@ -104,7 +109,7 @@ pub const ACTION_NAMES: [&str; 6] = [
     "transfer",
     "force",
     "emit",
-    "reproduce",
+    "produce packet",
 ];
 pub const EMIT: u32 = 4;
 /// Event-ring action code for a receiver decision made while a signal was visible.
@@ -122,13 +127,14 @@ pub struct AgentGpu {
     pub sensor_radius: f32,
     pub food: f32,
     pub action: u32,
+    /// Entity state: 0 empty, 1 organism, 2 reproductive packet.
     pub alive: u32,
     /// Physical orientation in world radians; it is never exposed as an
     /// absolute controller input.
     pub heading: f32,
     pub rng: u32,
     pub generation: u32,
-    pub next_birth: u32,
+    pub packet_size: f32,
     pub max_age: f32,
     pub signal_payload: f32,
     /// One-based tick of emission; zero means never emitted.
@@ -145,7 +151,7 @@ pub struct AgentGpu {
     pub birth_tick: u32,
     pub birth_parent_slot: u32,
     pub ancestry_depth: u32,
-    pub lifetime_births: u32,
+    pub packets_produced: u32,
     pub distance_travelled: f32,
     /// Founder genome slot; observer bookkeeping, never a cognitive input.
     pub founder_family: u32,
@@ -165,9 +171,8 @@ pub struct AgentGpu {
     pub parameter_mutation_rate: f32,
     pub parameter_mutation_step: f32,
     pub topology_mutation_rate: f32,
-    /// Explicitly matches the WGSL tail alignment for the storage-buffer
-    /// array stride. It is not inherited state.
-    pub topology_padding: f32,
+    /// Lifetime angular velocity in radians per tick; zero for new entities.
+    pub angular_velocity: f32,
 }
 impl Default for AgentGpu {
     fn default() -> Self {
@@ -179,6 +184,7 @@ impl Default for AgentGpu {
             parameter_mutation_rate: 1.0,
             parameter_mutation_step: 1.0,
             topology_mutation_rate: 1.0,
+            packet_size: 16.0,
             ..Self::zeroed()
         }
     }
@@ -188,7 +194,8 @@ impl AgentGpu {
     pub fn cognitive_traits(&self) -> CognitiveTraits {
         CognitiveTraits {
             active_mask: self.active_mask,
-            padding: [0; 3],
+            padding: [0; 2],
+            packet_size: self.packet_size,
             plasticity_rate: self.plasticity_rate,
             trace_retention: self.trace_retention,
             learned_weight_retention: self.learned_weight_retention,
@@ -314,9 +321,8 @@ pub struct SimSettings {
     pub conversion_efficiency: f32,
     pub heterogeneity: f32,
     pub sensor_radius: f32,
-    pub reproduction_cost: f32,
+    pub fusion_loss: f32,
     pub maturity_age: f32,
-    pub birth_cooldown: u32,
     /// Enables transfer, force, and signalling as selectable controller actions.
     /// They are enabled in the ordinary world; this is an experiment control,
     /// never a behavior rule.
@@ -336,7 +342,7 @@ impl Default for SimSettings {
             habitat_height: WORLD_SIZE,
             environment_rotation: 0,
             habitat_contrast: 1.0,
-            population: 1000,
+            population: 4096,
             resource_regeneration: 0.01,
             movement_energy_cost: 0.01,
             metabolic_cost: 0.05,
@@ -347,9 +353,8 @@ impl Default for SimSettings {
             conversion_efficiency: 8.0,
             heterogeneity: 0.85,
             sensor_radius: 24.0,
-            reproduction_cost: 50.0,
+            fusion_loss: 10.0,
             maturity_age: 400.0,
-            birth_cooldown: 240,
             social_actions_enabled: true,
             force_enabled: true,
             communication_enabled: true,
@@ -368,7 +373,6 @@ impl SimSettings {
             || !(256.0..=32768.0).contains(&self.habitat_width)
             || !(256.0..=32768.0).contains(&self.habitat_height)
             || self.population > MAX_AGENTS
-            || self.birth_cooldown > 1_000_000
             || [
                 self.habitat_contrast,
                 self.resource_regeneration,
@@ -381,7 +385,7 @@ impl SimSettings {
                 self.conversion_efficiency,
                 self.heterogeneity,
                 self.sensor_radius,
-                self.reproduction_cost,
+                self.fusion_loss,
                 self.maturity_age,
             ]
             .iter()
@@ -389,8 +393,8 @@ impl SimSettings {
             || self.sensor_radius < 4.0
             || self.sensor_radius > 48.0
             || self.conversion_efficiency <= 0.0
-            || self.reproduction_cost < 1.0
-            || self.reproduction_cost > 100.0
+            || self.fusion_loss < 1.0
+            || self.fusion_loss > 100.0
             || self.consume_amount > 8000.0
             || self.resource_regeneration > 1.0
             || self.movement_energy_cost > 100.0

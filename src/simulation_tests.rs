@@ -333,7 +333,7 @@ fn environment_rotation_preserves_body_traits_and_is_not_a_controller_input() {
         assert_eq!(params.mutation[2], 1.0);
         assert_eq!(
             params.environment,
-            [1.0, 1.0, 1.0, settings.memory_write_energy]
+            [ecology_speed(10), 1.0, 1.0, settings.memory_write_energy]
         );
         near(params.time_and_costs[3], 0.05);
     }
@@ -702,7 +702,7 @@ fn displacement_does_not_impose_a_hidden_reproduction_penalty() {
     step(&mut s, &d, &q, 1);
     let m = s.metrics(&d, &q).unwrap();
     assert_eq!(m.birth_gates[4], 1);
-    assert_eq!(m.birth_gates[5], 1);
+    assert_eq!(m.birth_gates[5], 0); // Packet manufacture is not an organism birth.
     assert_eq!(m.events[5], 1);
 }
 #[test]
@@ -715,11 +715,13 @@ fn dead_slot_reuse_resets_experience_and_advances_incarnation() {
     put(&s, &q, 0, dead, &fixed(0, [0.0; 2]));
     s.kill_agents_in_region(&d, &q, [500.0, 500.0], 2.0);
     put(&s, &q, 1, body([602.0, 902.0]), &fixed(5, [0.0; 2]));
+    put_second_producer(&s, &q, body([602.0, 902.0]), &fixed(5, [0.0; 2]));
     step(&mut s, &d, &q, 1);
     let bodies = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
+    assert_eq!(bodies[0].alive, 2);
     assert_eq!(bodies[0].generation, 9);
     assert_eq!(bodies[0].hidden, [0.0; HIDDEN]);
-    assert_eq!(bodies[0].ancestry_depth, 1);
+    assert_eq!(bodies[0].ancestry_depth, 0);
     assert_eq!(bodies[0].signal_tick, 0);
     near(s.metrics(&d, &q).unwrap().dropped_food as f32, 2.0);
 }
@@ -740,7 +742,7 @@ fn fresh_world_defaults_match_documented_physical_settings() {
     assert_eq!(settings.movement_energy_cost, 0.01);
     assert_eq!(settings.motor_response_gain, 4.0);
     assert_eq!(settings.resource_regeneration, 0.01);
-    assert_eq!(settings.population, 1000);
+    assert_eq!(settings.population, 4096);
     assert!(settings.evolving_landscape);
     settings.validate().unwrap();
 }
@@ -1024,7 +1026,8 @@ fn founder_export_requires_descendants_and_preserves_existing_files() {
     assert!(s.export_founders(&d, &q, &path).is_err());
     assert!(!path.exists());
     put(&s, &q, 0, body([602.0, 902.0]), &fixed(5, [0.0; 2]));
-    step(&mut s, &d, &q, 1);
+    put_second_producer(&s, &q, body([602.0, 902.0]), &fixed(5, [0.0; 2]));
+    step(&mut s, &d, &q, 2);
     s.export_founders(&d, &q, &path).unwrap();
     let before = std::fs::read(&path).unwrap();
     assert!(s.export_founders(&d, &q, &path).is_err());
@@ -1040,7 +1043,8 @@ fn survivor_sample_keeps_current_child_genes_after_extinction() {
     let mut s = scene(&d, &q);
     let parent = fixed(5, [0.0; 2]);
     put(&s, &q, 0, body([602.0, 902.0]), &parent);
-    step(&mut s, &d, &q, 1);
+    put_second_producer(&s, &q, body([602.0, 902.0]), &parent);
+    step(&mut s, &d, &q, 2);
     let agents = s.agent_snapshot(&d, &q).unwrap();
     let child_slot = agents
         .iter()
@@ -1072,26 +1076,6 @@ fn survivor_sample_keeps_current_child_genes_after_extinction() {
     s.tick += 128;
     crate::survivor_observer::observe(&mut latest, &s, &d, &q).unwrap();
     assert_eq!(serde_json::to_vec(&latest).unwrap(), before);
-}
-
-#[test]
-fn birth_can_copy_a_parent_genome_exactly() {
-    let (d, q) = gpu();
-    let mut s = scene(&d, &q);
-    let parent = fixed(5, [0.0; 2]);
-    put(&s, &q, 0, body([602.0, 902.0]), &parent);
-    step(&mut s, &d, &q, 1);
-    let agents = s.agent_snapshot(&d, &q).unwrap();
-    let child_slot = agents
-        .iter()
-        .position(|a| a.alive != 0 && a.ancestry_depth == 1)
-        .expect("fixture must produce a child");
-    let genomes = s.read_genomes(&d, &q, MAX_AGENTS as usize).unwrap();
-    assert_eq!(
-        &genomes[child_slot * GENOME_SIZE..(child_slot + 1) * GENOME_SIZE],
-        parent.as_slice(),
-        "an unchanged inheritance is a valid birth"
-    );
 }
 
 #[test]
@@ -1229,6 +1213,11 @@ fn body(pos: [f32; 2]) -> AgentGpu {
         ..Default::default()
     }
 }
+// Explicit second parent in a high slot leaves low child-slot reuse fixtures intact.
+fn put_second_producer(s: &Simulation, q: &wgpu::Queue, mut a: AgentGpu, g: &[f32; GENOME_SIZE]) {
+    a.lineage_id = 2;
+    put(s, q, MAX_AGENTS as usize - 1, a, g);
+}
 fn fixed(action: usize, motion: [f32; 2]) -> [f32; GENOME_SIZE] {
     let mut g = crate::brain::blank();
     g[OUTPUT_BIAS + action] = 2.0;
@@ -1333,7 +1322,7 @@ fn recurrent_cpu_gpu_parity_and_observer_isolation() {
     }
     a.lineage_id = 123456;
     a.ancestry_depth = 100;
-    a.lifetime_births = 1000;
+    a.packets_produced = 1000;
     a.distance_travelled = 30000.0;
     put(&s, &q, 0, a, &g);
     let mut e = d.create_command_encoder(&Default::default());
@@ -1380,6 +1369,8 @@ fn perception_is_local_and_body_relative() {
 fn physical_collection_ingestion_and_movement_conserve_reserves() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
+    // Test collection conservation after temporary opening cover has ended.
+    s.tick = FOOD_EASING_TICKS;
     let mut a = body([602.0, 902.0]);
     a.food = 0.0;
     a.energy = 50.0;
@@ -1390,7 +1381,11 @@ fn physical_collection_ingestion_and_movement_conserve_reserves() {
     let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
     let food = read::<u32>(&d, &q, &s.resource_buffer, 512 * 512);
     near(
-        food[idx as usize] as f32 / 1000.0 + after.food + after.ingested,
+        food[idx as usize] as f32 / 1000.0
+            + after.food
+            + after.ingested
+            + read::<u32>(&d, &q, &s.ground_buffer, 512 * 512 * 8)[idx as usize * 8 + 4] as f32
+                / 1000.0,
         1.0,
     );
     near(after.food + after.ingested, after.collected);
@@ -1462,6 +1457,8 @@ fn digestion_is_inventory_limited_rate_limited_and_energy_capped() {
 fn automatic_digestion_does_not_gather_unrequested_ground_food() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
+    // Isolate digestion from temporary opening-ground-cover capacity changes.
+    s.tick = FOOD_EASING_TICKS;
     let mut a = body([602.0, 902.0]);
     a.energy = 10.0;
     a.food = 0.0;
@@ -1476,15 +1473,16 @@ fn automatic_digestion_does_not_gather_unrequested_ground_food() {
     near(b.energy, 9.94);
     assert_eq!(
         read::<u32>(&d, &q, &s.resource_buffer, 512 * 512)[idx as usize],
-        1000
+        990
     );
 }
 
 #[test]
-fn vegetation_does_not_survive_a_barren_habitat_cell() {
+fn vegetation_recedes_gradually_when_a_patch_becomes_barren() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     s.settings.evolving_landscape = true;
+    s.tick = FOOD_EASING_TICKS;
     s.update_params(&q);
     let cell = 225 * 512 + 150;
     q.write_buffer(&s.resource_buffer, cell * 4, bytemuck::bytes_of(&1000u32));
@@ -1501,44 +1499,10 @@ fn vegetation_does_not_survive_a_barren_habitat_cell() {
 
     assert_eq!(
         read::<u32>(&d, &q, &s.resource_buffer, 512 * 512)[cell as usize],
-        0
+        990
     );
 }
 
-#[test]
-fn reproduction_is_requested_can_coexist_with_motion_and_conserves() {
-    let (d, q) = gpu();
-    let mut s = scene(&d, &q);
-    let mut a = body([602.0, 902.0]);
-    a.energy = 90.0;
-    a.hidden = [0.5; HIDDEN];
-    let g = fixed(5, [0.5, 0.0]);
-    put(&s, &q, 0, a, &g);
-    step(&mut s, &d, &q, 1);
-    let agents = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
-    let p = agents[0];
-    let c = agents[1];
-    assert_eq!(c.alive, 1);
-    assert_eq!(c.ancestry_depth, 1);
-    assert_eq!(c.parent_lineage, p.lineage_id);
-    assert_eq!(c.hidden, [0.0; HIDDEN]);
-    assert!(p.velocity[0] > 0.0);
-    near(p.food + c.food + p.ingested, a.food);
-    near(
-        p.energy
-            + c.energy
-            + s.settings.metabolic_cost
-            + p.velocity[0].abs() / 0.15 * s.settings.movement_energy_cost
-            + 10.0,
-        90.0 + 8.0 * p.ingested,
-    );
-    assert_eq!(s.metrics(&d, &q).unwrap().events[3], 1);
-    step(&mut s, &d, &q, 1);
-    assert_eq!(s.metrics(&d, &q).unwrap().events[3], 1);
-    let genes = s.read_genomes(&d, &q, 2).unwrap();
-    assert_eq!(&genes[..GENOME_SIZE], &g);
-    assert!(genes.iter().all(|x| x.is_finite() && x.abs() <= 4.0));
-}
 #[test]
 fn abundant_reserves_do_not_trigger_automatic_birth() {
     let (d, q) = gpu();
@@ -1742,23 +1706,6 @@ fn zero_signal_is_present_local_and_does_not_claim_a_physical_pair() {
 }
 
 #[test]
-fn reproduction_requires_paid_energy_not_an_arbitrary_food_stockpile() {
-    let (d, q) = gpu();
-    let mut s = scene(&d, &q);
-    let mut parent = body([602.0, 902.0]);
-    parent.food = 0.0;
-    put(&s, &q, 0, parent, &fixed(5, [0.0; 2]));
-    step(&mut s, &d, &q, 1);
-    let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
-    assert_eq!(after[1].alive, 1);
-    assert_eq!(after[0].food + after[1].food, 0.0);
-    near(
-        after[0].energy + after[1].energy + s.settings.metabolic_cost + 10.0,
-        parent.energy,
-    );
-}
-
-#[test]
 fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
     let full = build_habitat_at(42, 3, 1.0);
     let uniform = build_habitat_at(42, 3, 0.0);
@@ -1772,15 +1719,18 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v35-body-frame-contact");
+    assert_eq!(MODEL_ID, "primitive-v39-shorter-lifespans");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
     assert_eq!(crate::founders::bundled().version, FOUNDER_BANK_VERSION);
 }
 
 #[test]
-fn ecological_dynamics_have_no_age_or_progress_curriculum() {
+fn ecology_speed_eases_with_world_age_without_changing_climate_amplitudes() {
     for age in [0, 50_000, 150_000, 375_000, 625_000, 750_000, u32::MAX] {
-        assert_eq!(ecological_pressures(age), [1.0, 1.0, 1.0, 0.0]);
+        assert_eq!(
+            ecological_pressures(age),
+            [ecology_speed(age), 1.0, 1.0, 0.0]
+        );
     }
 }
 
@@ -2060,6 +2010,7 @@ fn family_observer_counts_every_tick_and_preserves_dead_family_outcomes() {
     dying.energy = 0.1;
     dying.founder_family = 1;
     put(&s, &q, 0, parent, &fixed(5, [0.0; 2]));
+    put_second_producer(&s, &q, parent, &fixed(5, [0.0; 2]));
     put(&s, &q, 1, dying, &fixed(0, [0.0; 2]));
     s.family_observer = Some(crate::family_observer::FamilyObserver::new(&d, &q, &s, 8).unwrap());
     let mut expected = [[0u32; 7]; 2];
@@ -2069,7 +2020,7 @@ fn family_observer_counts_every_tick_and_preserves_dead_family_outcomes() {
             .agent_snapshot(&d, &q)
             .unwrap()
             .iter()
-            .filter(|a| a.alive != 0)
+            .filter(|a| a.alive == 1)
         {
             let row = &mut expected[a.founder_family as usize];
             row[5] = row[5].max(a.ancestry_depth);
@@ -2100,11 +2051,15 @@ fn family_observer_counts_every_tick_and_preserves_dead_family_outcomes() {
         );
     }
     assert_eq!(report.families[1].last_alive_tick, 1);
-    assert_eq!(report.families[0].births, 1);
+    assert_eq!(
+        report.families[0].births,
+        s.metrics(&d, &q).unwrap().events[3]
+    );
     let observed = s.agent_snapshot(&d, &q).unwrap();
     s.reset(&q);
     assert!(s.family_observer.is_none());
     put(&s, &q, 0, parent, &fixed(5, [0.0; 2]));
+    put_second_producer(&s, &q, parent, &fixed(5, [0.0; 2]));
     put(&s, &q, 1, dying, &fixed(0, [0.0; 2]));
     step(&mut s, &d, &q, 8);
     let unobserved = s.agent_snapshot(&d, &q).unwrap();
@@ -2121,8 +2076,9 @@ fn family_diagnostics_record_underfunded_births_and_terminal_juvenile_deaths_onc
     let mut parent = body([602.0, 902.0]);
     parent.food = 0.0;
     let mut genes = fixed(5, [0.0; 2]);
-    genes[OUTPUT_BIAS + 8] = 0.0; // 20 energy, below stationary 24.
+    genes[OUTPUT_BIAS + 8] = -(3.0f32).ln(); // Limits production budget; resulting offspring cannot reach maturity here.
     put(&s, &q, 0, parent, &genes);
+    put_second_producer(&s, &q, parent, &genes);
     s.family_observer =
         Some(crate::family_observer::FamilyObserver::new(&d, &q, &s, 2048).unwrap());
     for _ in 0..64 {
@@ -2132,7 +2088,7 @@ fn family_diagnostics_record_underfunded_births_and_terminal_juvenile_deaths_onc
     let f = &report.families[0];
     assert!(f.births > 0);
     assert_eq!(f.births_below_stationary_maturity_energy, f.births);
-    assert_eq!(f.birth_energy_milli, u64::from(f.births) * 20000);
+    assert!(f.birth_energy_milli > 0 && f.birth_energy_milli < u64::from(f.births) * 24000);
     assert_eq!(f.juvenile_starvation_deaths, f.births);
     assert_eq!(f.matured_descendants, 0);
     assert_eq!(f.births_to_descendant_parents, 0);
@@ -2174,49 +2130,6 @@ fn family_diagnostics_count_juvenile_feeding_maturity_and_terminal_flow() {
     assert_eq!(
         f.collected_milli,
         (metrics.harvested * 1000.0).round() as u64
-    );
-}
-
-#[test]
-fn birth_variation_preserves_parent_cost_and_resets_child_memory() {
-    let (d, q) = gpu();
-    let mut s = scene(&d, &q);
-    s.settings.metabolic_cost = 0.1;
-    let g = fixed(5, [0.0; 2]);
-    let mut a = body([602.0, 902.0]);
-    a.food = 0.0;
-    a.hidden = [0.8; HIDDEN];
-    put(&s, &q, 0, a, &g);
-    step(&mut s, &d, &q, 1);
-    let agents = s.agent_snapshot(&d, &q).unwrap();
-    let (slot, child) = agents
-        .iter()
-        .enumerate()
-        .find(|(_, b)| b.alive != 0 && b.ancestry_depth == 1)
-        .unwrap();
-    assert!(
-        agents[0].energy < a.energy - child.energy,
-        "parent pays body, active-capacity, and local-memory write upkeep as well as birth cost"
-    );
-    assert_eq!(child.hidden, [0.0; HIDDEN]);
-    let genes = s.read_genomes(&d, &q, slot + 1).unwrap();
-    assert_eq!(
-        &genes[..GENOME_SIZE],
-        &g,
-        "birth must not alter the parent genome"
-    );
-    crate::brain::validate(&genes[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE]).unwrap();
-    // Rejected birth spends only ordinary upkeep and never publishes a child genome.
-    let mut s = scene(&d, &q);
-    a.energy = 20.0;
-    put(&s, &q, 0, a, &g);
-    step(&mut s, &d, &q, 1);
-    assert_eq!(s.metrics(&d, &q).unwrap().living, 1);
-    assert!(s.agent_snapshot(&d, &q).unwrap()[0].energy < a.energy);
-    assert!(
-        s.read_genomes(&d, &q, 2).unwrap()[GENOME_SIZE..]
-            .iter()
-            .all(|v| *v == 0.0)
     );
 }
 
@@ -2289,7 +2202,42 @@ fn proportional_gathering_and_contact_are_independent_of_storage_order() {
 }
 
 #[test]
-fn contact_impulse_and_offspring_placement_follow_parent_heading() {
+fn angular_torque_coasts_reverses_and_charges_effort() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings.metabolic_cost = 0.0;
+    let mut a = body([100.0, 100.0]);
+    a.food = 0.0;
+    a.heading = std::f32::consts::TAU - 0.003;
+    let mut spin = 0.0;
+    let mut heading = a.heading;
+    for effort in [1.0f32, 1.0, 0.0, -1.0, -1.0, -1.0] {
+        put(&s, &q, 0, a, &fixed(0, [0.0, effort]));
+        step(&mut s, &d, &q, 1);
+        let next = s.agent_snapshot(&d, &q).unwrap()[0];
+        spin = 0.85 * spin + effort.tanh() * 0.0375;
+        heading = (heading + spin).rem_euclid(std::f32::consts::TAU);
+        assert!((next.angular_velocity - spin).abs() < 0.00001);
+        near(next.heading, heading);
+        assert!((next.spent - 0.005 * effort.tanh().abs()).abs() < 0.00001);
+        near(a.energy - next.energy, next.spent);
+        assert_eq!(next.position, a.position);
+        a = next;
+    }
+    assert!(a.angular_velocity < 0.0);
+    // Insufficient reserves pay only for affordable torque; momentum survives.
+    a.energy = 0.001;
+    let prior_spin = a.angular_velocity;
+    put(&s, &q, 0, a, &fixed(0, [0.0, 1.0]));
+    step(&mut s, &d, &q, 1);
+    let after = s.agent_snapshot(&d, &q).unwrap()[0];
+    assert!((after.angular_velocity - (0.85 * prior_spin + 0.2 * 0.0375)).abs() < 0.00001);
+    assert!((after.spent - 0.001).abs() < 0.00001);
+    assert_eq!(after.energy, 0.0);
+}
+
+#[test]
+fn contact_impulse_and_packet_placement_follow_parent_heading() {
     let (d, q) = gpu();
     for heading in [0.0f32, std::f32::consts::FRAC_PI_2, 1.234] {
         let mut s = scene(&d, &q);
@@ -2319,12 +2267,10 @@ fn contact_impulse_and_offspring_placement_follow_parent_heading() {
         let mut genes = fixed(5, [0.0; 2]);
         genes[OUTPUT_BIAS + PLACEMENT_OUTPUT] = 4.0;
         put(&s, &q, 0, a, &genes);
+        put_second_producer(&s, &q, a, &genes);
         step(&mut s, &d, &q, 1);
         let after = s.agent_snapshot(&d, &q).unwrap();
-        let child = after
-            .iter()
-            .find(|a| a.alive != 0 && a.ancestry_depth == 1)
-            .unwrap();
+        let child = after.iter().find(|a| a.alive == 2).unwrap();
         let distance = 2.0 * 4.0f32.tanh();
         near(
             child.position[0],
@@ -2335,6 +2281,7 @@ fn contact_impulse_and_offspring_placement_follow_parent_heading() {
             (a.position[1] + distance * heading.sin()).rem_euclid(2048.0),
         );
         assert_eq!(child.velocity, [0.0; 2]);
+        assert_eq!(child.angular_velocity, 0.0);
         assert_eq!(child.hidden, [0.0; HIDDEN]);
         assert_eq!(child.age, 0.0);
     }
@@ -2367,7 +2314,7 @@ fn assisted_provenance_survives_restarts_history_eviction_and_checkpoint() {
 }
 
 #[test]
-fn accounting_counter_horizon_is_an_engine_stop_not_extinction() {
+fn accounting_counter_horizon_requests_rollover_not_extinction() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     put(&s, &q, 0, body([602.0, 902.0]), &fixed(0, [0.0; 2]));
@@ -2381,3 +2328,6 @@ fn accounting_counter_horizon_is_an_engine_stop_not_extinction() {
 
 #[path = "performance_tests.rs"]
 mod performance;
+
+#[path = "packet_tests.rs"]
+mod packets;

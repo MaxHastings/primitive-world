@@ -8,9 +8,10 @@
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x == 0u) {
     let births=prefix[INVALID-1u];
-    if(births>free_prefix[INVALID-1u]){atomicOr(&stats[36],1u);}
+    if(births>free_prefix[INVALID-1u]){atomicAdd(&stats[39],births-free_prefix[INVALID-1u]);}
     if(atomicLoad(&stats[10])>0xffffffffu-2u*INVALID-1u){atomicOr(&stats[36],2u);}
-    dispatch[0] = select((births+63u)/64u,0u,atomicLoad(&stats[36])!=0u);
+    // Keep ticking while a rollover is pending, but do not allocate identities.
+    dispatch[0] = select((min(births,free_prefix[INVALID-1u])+63u)/64u,0u,atomicLoad(&stats[36])!=0u);
     dispatch[1] = 1u; dispatch[2] = 1u;
   }
   if (id.x >= INVALID || flags[id.x] == 0u) { return; }

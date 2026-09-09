@@ -4,16 +4,18 @@ fn streamed_birth_mutation_matches_cpu_and_preserves_parent_parameters() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let parent = fixed(5, [0.0; 2]);
-    put(&s, &q, 0, body([200.0, 200.0]), &parent);
+    put(&s, &q, 0, packets::packet([200.0, 200.0], 1, 16.0), &parent);
+    put(&s, &q, 1, packets::packet([200.0, 200.0], 2, 16.0), &parent);
     step(&mut s, &d, &q, 1);
     let agents = s.agent_snapshot(&d, &q).unwrap();
     let slot = agents
         .iter()
-        .position(|a| a.alive != 0 && a.ancestry_depth == 1)
+        .position(|a| a.alive == 1 && a.ancestry_depth == 1)
         .unwrap();
     let mut expected = parent;
-    let mut expected_traits = agents[0].cognitive_traits();
-    crate::brain::mutate_inherited(&mut expected, &mut expected_traits, agents[0].rng);
+    let pi = agents[slot].birth_parent_slot as usize;
+    let mut expected_traits = agents[pi].cognitive_traits();
+    crate::brain::mutate_inherited(&mut expected, &mut expected_traits, agents[pi].rng);
     assert_eq!(agents[slot].active_mask, expected_traits.active_mask);
     near(
         agents[slot].parameter_mutation_rate,
@@ -28,7 +30,7 @@ fn streamed_birth_mutation_matches_cpu_and_preserves_parent_parameters() {
         expected_traits.topology_mutation_rate,
     );
     let genes = s.read_genomes(&d, &q, slot + 1).unwrap();
-    assert_eq!(&genes[..GENOME_SIZE], &parent);
+    assert_eq!(&genes[pi * GENOME_SIZE..(pi + 1) * GENOME_SIZE], &parent);
     for (x, y) in genes[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE]
         .iter()
         .zip(expected)
@@ -213,7 +215,8 @@ fn newborns_clear_reused_slot_traces_and_learned_connections() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let genome = fixed(5, [0.0; 2]);
-    put(&s, &q, 0, body([200.0, 200.0]), &genome);
+    put(&s, &q, 0, packets::packet([200.0, 200.0], 1, 16.0), &genome);
+    put(&s, &q, 1, packets::packet([200.0, 200.0], 2, 16.0), &genome);
     for bank in &s.fast_weight_buffers {
         q.write_buffer(
             bank,
@@ -306,15 +309,23 @@ fn simultaneous_births_replace_whole_reservoir_records_deterministically() {
             100.0 + (i % 32) as f32 * 30.0,
             100.0 + (i / 32) as f32 * 30.0,
         ]);
+        a.alive = 2;
+        a.energy = 16.0;
+        a.food = 0.0;
+        a.age = 0.0;
         a.lineage_id = i as u32 + 1;
-        a.hidden = [0.25; HIDDEN];
+        a.parent_lineage = a.lineage_id;
+        a.hidden = [0.0; HIDDEN];
         put(&s, &q, i, a, &g);
+        a.lineage_id += COUNT as u32;
+        a.parent_lineage = a.lineage_id;
+        put(&s, &q, MAX_AGENTS as usize - COUNT + i, a, &g);
     }
     let before = s.reservoir_snapshot(&d, &q).unwrap();
     step(&mut s, &d, &q, 1);
     let after = s.reservoir_snapshot(&d, &q).unwrap();
     let agents = s.agent_snapshot(&d, &q).unwrap();
-    let genes = s.read_genomes(&d, &q, COUNT * 2).unwrap();
+    let genes = s.read_genomes(&d, &q, MAX_AGENTS as usize).unwrap();
     let hash = |mut v: u32| {
         v = (v ^ 61) ^ (v >> 16);
         v = v.wrapping_add(v << 3);
@@ -323,11 +334,16 @@ fn simultaneous_births_replace_whole_reservoir_records_deterministically() {
         v ^ (v >> 15)
     };
     let mut replacement_claims = std::collections::BTreeMap::new();
-    for rank in 0..COUNT {
-        assert_eq!(agents[COUNT + rank].ancestry_depth, 1);
+    let children: Vec<_> = agents
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| a.alive == 1 && a.ancestry_depth == 1)
+        .collect();
+    assert_eq!(children.len(), COUNT);
+    for (slot, _) in children {
         replacement_claims.insert(
-            hash(before.2.wrapping_add(rank as u32)) as usize % HEREDITARY_RESERVOIR_SIZE as usize,
-            COUNT + rank,
+            hash(before.2.wrapping_add(slot as u32)) as usize % HEREDITARY_RESERVOIR_SIZE as usize,
+            slot,
         );
     }
     assert!(
@@ -348,9 +364,9 @@ fn simultaneous_births_replace_whole_reservoir_records_deterministically() {
             assert_eq!(after.1[slot], before.1[slot]);
         }
     }
-    // Cooldown prevents another birth; private learning cannot alter the pool.
+    // Consumed packets cannot fuse again; juvenile learning cannot alter the pool.
     step(&mut s, &d, &q, 1);
-    assert_eq!(s.reservoir_snapshot(&d, &q).unwrap(), after);
+    assert!(s.reservoir_snapshot(&d, &q).unwrap() == after);
 }
 
 #[test]
@@ -407,7 +423,7 @@ fn reservoir_and_world_transitions_resume_without_observer_selection() {
 }
 
 #[test]
-fn capacity_exhaustion_is_not_extinction_or_hereditary_selection() {
+fn capacity_skips_packet_requests_without_stopping_gameplay() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     // Exercise a full body allocator without running thousands of brains.
@@ -421,7 +437,8 @@ fn capacity_exhaustion_is_not_extinction_or_hereditary_selection() {
     s.scan(&mut e, "birth", MAX_AGENTS);
     s.dispatch(&mut e, "birth_compact", 0, 1, 1);
     q.submit(Some(e.finish()));
-    assert!(s.refresh_engine_status(&d, &q).unwrap());
+    assert!(!s.refresh_engine_status(&d, &q).unwrap());
+    assert_eq!(s.metrics(&d, &q).unwrap().capacity_blocked_packets, 1);
     assert_eq!(read::<u32>(&d, &q, &s.birth_dispatch, 3)[0], 0);
     assert!(s.complete_world(&d, &q).is_err());
     assert!(s.advance_world(&d, &q).is_err());
@@ -439,6 +456,9 @@ fn gathering_composes_with_reproduction_but_requires_a_neural_request() {
         let mut parent = body([602.0, 902.0]);
         parent.food = 0.0;
         put(&s, &q, 0, parent, &g);
+        let mut partner = parent;
+        partner.position[0] += 4.0;
+        put_second_producer(&s, &q, partner, &g);
         q.write_buffer(
             &s.resource_buffer,
             (225 * 512 + 150) * 4,
@@ -447,7 +467,8 @@ fn gathering_composes_with_reproduction_but_requires_a_neural_request() {
         step(&mut s, &d, &q, 1);
         let agents = s.agent_snapshot(&d, &q).unwrap();
         assert_eq!(agents[0].action, 5);
-        assert_eq!(agents[1].ancestry_depth, 1);
+        assert_eq!(agents[1].alive, 2);
+        assert_eq!(agents[1].ancestry_depth, 0);
         near(agents[0].collected, (25.0 * effort) as u32 as f32 / 1000.0);
         assert_eq!(agents[0].collected > 0.0, effort > 0.0);
     }
@@ -475,4 +496,87 @@ fn gathering_effort_is_not_a_redundant_primary_action() {
         agent.collected > 0.0,
         "gathering effort still harvests food"
     );
+}
+
+#[test]
+fn blind_recombination_inherits_whole_modules_from_both_parents() {
+    let (d, q) = gpu();
+    let s = scene(&d, &q);
+    let mut a = body([100.0, 100.0]);
+    let mut b = a;
+    a.active_mask = 0x5555;
+    b.active_mask = 0xaaaa;
+    a.plasticity_rate = [0.1; HIDDEN];
+    b.plasticity_rate = [-0.1; HIDDEN];
+    a.trace_retention = 0.2;
+    b.trace_retention = 0.8;
+    put(&s, &q, 0, a, &[1.0; GENOME_SIZE]);
+    put(&s, &q, 1, b, &[-1.0; GENOME_SIZE]);
+    let mut source =
+        include_str!("../shaders/inherit_genomes.wgsl").replace("fn main(", "fn birth_main(");
+    source.push_str("\n@compute @workgroup_size(64) fn main(@builtin(global_invocation_id) id:vec3<u32>){if(id.x<32u){recombine_child(id.x+2u,0u,1u,id.x*7919u);}}");
+    let dummy = buffer(&d, "unused indices", MAX_AGENTS as u64 * 4);
+    let pass = Compute::new(
+        &d,
+        "blind module segregation",
+        &source,
+        "main",
+        "wrrrruwwwrr",
+        vec![vec![
+            &s.agent_buffers[0],
+            &dummy,
+            &dummy,
+            &dummy,
+            &dummy,
+            &s.params_buffer,
+            &s.genome_buffers[0],
+            &s.genome_buffers[1],
+            &s.death_stats_buffer,
+            &dummy,
+            &s.agent_buffers[1],
+        ]],
+    );
+    let mut e = d.create_command_encoder(&Default::default());
+    pass.dispatch(&mut e, 0, 1, 1);
+    q.submit(Some(e.finish()));
+    let genes = s.read_genomes(&d, &q, 34).unwrap();
+    let agents = s.agent_snapshot(&d, &q).unwrap();
+    assert!(genes[..GENOME_SIZE].iter().all(|v| *v == 1.0));
+    assert!(
+        genes[GENOME_SIZE..2 * GENOME_SIZE]
+            .iter()
+            .all(|v| *v == -1.0)
+    );
+    let mut mixed = 0;
+    for slot in 2..34 {
+        let g = &genes[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE];
+        let c = agents[slot];
+        assert_ne!(c.active_mask, 0);
+        assert!([0.2, 0.8].contains(&c.trace_retention));
+        mixed += usize::from(g[..HIDDEN].contains(&1.0) && g[..HIDDEN].contains(&-1.0));
+        for h in 0..HIDDEN {
+            let value = g[NODE_BIAS + h];
+            assert!([1.0, -1.0].contains(&value));
+            let donor = if value == 1.0 { a } else { b };
+            assert_eq!(c.active_mask & (1 << h), donor.active_mask & (1 << h));
+            assert_eq!(c.plasticity_rate[h], donor.plasticity_rate[h]);
+            assert_eq!(g[GATE_BIAS + h], value);
+            assert!(
+                g[INPUT_BASE + h * INPUTS..INPUT_BASE + (h + 1) * INPUTS]
+                    .iter()
+                    .all(|v| *v == value)
+            );
+            for base in [RECURRENT_BASE, GATE_BASE] {
+                assert!(
+                    g[base + h * HIDDEN..base + (h + 1) * HIDDEN]
+                        .iter()
+                        .all(|v| *v == value)
+                );
+            }
+            for o in 0..OUTPUTS {
+                assert_eq!(g[OUTPUT_BASE + o * HIDDEN + h], value);
+            }
+        }
+    }
+    assert!(mixed > 24);
 }

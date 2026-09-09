@@ -20,6 +20,18 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
             "Energy {:.2} · inventory {:.3} · age {:.0} · lived {} ticks",
             s.agent.energy, s.agent.food, s.agent.age, s.agent.lived_ticks
         ));
+        if s.agent.alive == 2 {
+            ui.label(format!(
+                "Reproductive packet · original size {:.2}",
+                s.agent.packet_size
+            ));
+            ui.small("Stationary; reserves pay for viability. No controller is running.");
+            return;
+        }
+        ui.small(format!(
+            "Inherited packet size {:.2} · packets produced {}",
+            s.agent.packet_size, s.agent.packets_produced
+        ));
         ui.label(format!(
             "Position {:.1}, {:.1} · body-relative sensors",
             s.agent.position[0], s.agent.position[1]
@@ -182,6 +194,17 @@ pub fn events(ui: &mut egui::Ui, state: &mut AppState, command: &mut controls::C
 }
 
 pub fn stats(ui: &mut egui::Ui, state: &mut AppState) {
+    ui.small(format!(
+        "Opening coverage assistance: {:.0}% · ecology speed: {:.0}% · normal at tick 100,000",
+        100.0 * simulation::opening_ground_cover(state.simulation.tick)
+            / model::INITIAL_GROUND_COVER,
+        100.0 * simulation::ecology_speed(state.simulation.tick)
+    ));
+    ui.small(format!(
+        "Packet fusion radius: {:.2} · packet upkeep: {:.4} × size^(2/3)",
+        simulation::packet_fusion_radius(state.simulation.tick),
+        simulation::packet_upkeep(state.simulation.tick)
+    ));
     ui.label(format!(
         "Deaths: {} starvation / {} age",
         state.starvation_deaths, state.age_deaths
@@ -194,10 +217,24 @@ pub fn stats(ui: &mut egui::Ui, state: &mut AppState) {
     if u64::from(state.living_agents) * 100 >= u64::from(MAX_AGENTS) * 95 {
         ui.colored_label(
             egui::Color32::YELLOW,
-            "Capacity warning: slots nearly full; births need free slots.",
+            "Storage nearly full: new packets may be skipped; the game keeps running.",
         );
     }
     if let Some(m) = state.history.back() {
+        ui.label(format!(
+            "{} bodies · {} packets · {:.1} packet energy",
+            m.living - m.packets,
+            m.packets,
+            m.packet_energy
+        ));
+        ui.small(format!(
+            "Packet requests skipped at capacity: {}",
+            m.capacity_blocked_packets
+        ));
+        ui.small(format!(
+            "Mean inherited packet size: {:.2} · failed fusions: {}",
+            m.mean_packet_size, m.failed_fusions
+        ));
         ui.label(format!(
             "Food: {:.1} vegetation / {:.1} dropped / {:.1} carried",
             m.vegetation, m.dropped_food, m.carried_food
@@ -210,10 +247,10 @@ pub fn stats(ui: &mut egui::Ui, state: &mut AppState) {
             for (name, count) in [
                 "Immature attempts",
                 "Insufficient energy",
-                "Recovery active",
+                "Packets produced",
                 "Requested",
-                "Eligible before interactions",
-                "Resolved",
+                "Funded production requests",
+                "Offspring constructed",
             ]
             .iter()
             .zip(m.birth_gates)

@@ -19,8 +19,8 @@ pub struct TravelStats {
     /// Sum of endpoint Euclidean distances, not run-wide displacement.
     pub net_displacement: f64,
     pub intervals_net_at_least_sensor_radius: u64,
-    /// Lifetime-birth counter deltas for the same matched agents only.
-    pub reproduction_delta: u64,
+    /// Packet-production counter deltas for the same matched organisms only.
+    pub packet_production_delta: u64,
     pub invalid_observations: u64,
     pub reset_counter_intervals: u64,
 }
@@ -29,7 +29,7 @@ pub struct TravelStats {
 struct Observation {
     position: [f32; 2],
     distance_travelled: f32,
-    lifetime_births: u32,
+    packets_produced: u32,
     sensor_radius: f32,
     birth_tick: u32,
 }
@@ -55,7 +55,7 @@ impl TravelObserver {
             None => None,
         };
         let mut current = HashMap::new();
-        for agent in agents.iter().filter(|agent| agent.alive != 0) {
+        for agent in agents.iter().filter(|agent| agent.alive == 1) {
             if !agent.position.iter().all(|value| value.is_finite())
                 || !agent.distance_travelled.is_finite()
                 || agent.distance_travelled < 0.0
@@ -70,7 +70,7 @@ impl TravelObserver {
                 && previous.birth_tick == agent.birth_tick
             {
                 if agent.distance_travelled >= previous.distance_travelled
-                    && agent.lifetime_births >= previous.lifetime_births
+                    && agent.packets_produced >= previous.packets_produced
                 {
                     let dx = agent.position[0] as f64 - previous.position[0] as f64;
                     let dy = agent.position[1] as f64 - previous.position[1] as f64;
@@ -82,8 +82,8 @@ impl TravelObserver {
                     self.stats.net_displacement += net;
                     self.stats.intervals_net_at_least_sensor_radius +=
                         u64::from(net >= previous.sensor_radius as f64);
-                    self.stats.reproduction_delta +=
-                        (agent.lifetime_births - previous.lifetime_births) as u64;
+                    self.stats.packet_production_delta +=
+                        (agent.packets_produced - previous.packets_produced) as u64;
                 } else {
                     self.stats.reset_counter_intervals += 1;
                 }
@@ -93,7 +93,7 @@ impl TravelObserver {
                 Observation {
                     position: agent.position,
                     distance_travelled: agent.distance_travelled,
-                    lifetime_births: agent.lifetime_births,
+                    packets_produced: agent.packets_produced,
                     sensor_radius: agent.sensor_radius,
                     birth_tick: agent.birth_tick,
                 },
@@ -145,7 +145,7 @@ mod tests {
             generation,
             position: [x, 0.0],
             distance_travelled: path,
-            lifetime_births: births,
+            packets_produced: births,
             sensor_radius: 5.0,
             ..Default::default()
         }
@@ -162,13 +162,13 @@ mod tests {
         observer.observe(30, &[newborn]).unwrap();
         assert_eq!(observer.stats.tracked_agent_intervals, 0);
         assert_eq!(observer.stats.path_distance, 0.0);
-        assert_eq!(observer.stats.reproduction_delta, 0);
+        assert_eq!(observer.stats.packet_production_delta, 0);
         newborn.position[0] += 5.0;
         newborn.distance_travelled += 5.0;
-        newborn.lifetime_births += 1;
+        newborn.packets_produced += 1;
         observer.observe(40, &[newborn]).unwrap();
         assert_eq!(observer.stats.tracked_agent_intervals, 1);
-        assert_eq!(observer.stats.reproduction_delta, 1);
+        assert_eq!(observer.stats.packet_production_delta, 1);
     }
 
     #[test]
@@ -179,7 +179,7 @@ mod tests {
         assert_eq!(observer.stats.path_distance, 40.0);
         assert_eq!(observer.stats.net_displacement, 0.0);
         assert_eq!(observer.stats.intervals_net_at_least_sensor_radius, 0);
-        assert_eq!(observer.stats.reproduction_delta, 2);
+        assert_eq!(observer.stats.packet_production_delta, 2);
     }
 
     #[test]
@@ -192,7 +192,7 @@ mod tests {
             observer.observe(30, &[agent(1, 0, 15.0, 15.0, 4)]).unwrap();
             assert_eq!(observer.stats.tracked_agent_intervals, 1);
             assert_eq!(observer.stats.path_distance, 5.0);
-            assert_eq!(observer.stats.reproduction_delta, 1);
+            assert_eq!(observer.stats.packet_production_delta, 1);
         }
     }
 
@@ -213,7 +213,7 @@ mod tests {
         assert_eq!(observer.stats.path_distance, 9.0);
         assert_eq!(observer.stats.net_displacement, 9.0);
         assert_eq!(observer.stats.intervals_net_at_least_sensor_radius, 1);
-        assert_eq!(observer.stats.reproduction_delta, 1);
+        assert_eq!(observer.stats.packet_production_delta, 1);
         assert!(observer.observe(22, &[]).is_err());
         assert!(observer.observe(21, &[]).is_err());
         assert_eq!(observer.stats.samples, 4);
@@ -252,7 +252,7 @@ mod tests {
         assert_eq!(observer.stats.invalid_observations, 1);
         assert_eq!(observer.stats.tracked_agent_intervals, 1);
         assert_eq!(observer.stats.path_distance, 2.0);
-        assert_eq!(observer.stats.reproduction_delta, 1);
+        assert_eq!(observer.stats.packet_production_delta, 1);
         assert!(serde_json::to_string(&observer.report(10)).is_ok());
     }
 }

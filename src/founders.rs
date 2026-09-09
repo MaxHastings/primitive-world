@@ -57,7 +57,8 @@ pub fn bundled() -> &'static FounderBank {
             ) = crate::brain::random_plasticity(&mut rng);
             traits.push(CognitiveTraits {
                 active_mask: crate::brain::random_active_mask(&mut rng),
-                padding: [0; 3],
+                padding: [0; 2],
+                packet_size: crate::brain::random_packet_size(&mut rng),
                 plasticity_rate,
                 trace_retention,
                 learned_weight_retention,
@@ -117,7 +118,7 @@ impl Simulation {
         let mut descendants: Vec<_> = bytemuck::cast_slice::<u8, AgentGpu>(&bytes)
             .iter()
             .enumerate()
-            .filter(|(_, a)| a.alive != 0 && a.ancestry_depth > 0)
+            .filter(|(_, a)| a.alive == 1 && a.ancestry_depth > 0)
             .collect();
         if descendants.is_empty() {
             return Err("No living descendants: founder bank was not exported".into());
@@ -148,7 +149,8 @@ impl Simulation {
                 .iter()
                 .map(|(_, a)| CognitiveTraits {
                     active_mask: a.active_mask,
-                    padding: [0; 3],
+                    padding: [0; 2],
+                    packet_size: a.packet_size,
                     plasticity_rate: a.plasticity_rate,
                     trace_retention: a.trace_retention,
                     learned_weight_retention: a.learned_weight_retention,
@@ -178,7 +180,7 @@ mod tests {
             "version": FOUNDER_BANK_VERSION, "model": model, "name": "test-pool",
             "source_seed": 42, "source_tick": 128, "assisted": false,
             "genomes": [crate::brain::blank().to_vec()],
-            "traits": [{"active_mask":1,"padding":[0,0,0],"plasticity_rate":vec![0.0; crate::model::HIDDEN],"trace_retention":0.9,"learned_weight_retention":0.99,"parameter_mutation_rate":1.0,"parameter_mutation_step":1.0,"topology_mutation_rate":1.0}]
+            "traits": [{"active_mask":1,"padding":[0,0],"packet_size":16.0,"plasticity_rate":vec![0.0; crate::model::HIDDEN],"trace_retention":0.9,"learned_weight_retention":0.99,"parameter_mutation_rate":1.0,"parameter_mutation_step":1.0,"topology_mutation_rate":1.0}]
         }))
         .unwrap()
     }

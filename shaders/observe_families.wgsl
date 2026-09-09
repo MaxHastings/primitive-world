@@ -20,7 +20,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
  let b=family*32u;
  // Slots alive at tick start cannot be reused this tick. Include terminal flows
  // and deaths once, without recounting stale dead slots on subsequent ticks.
- if(old.alive!=0u && old.lineage_id==a.lineage_id && old.generation==a.generation){
+ if(old.alive==ORGANISM && old.lineage_id==a.lineage_id && old.generation==a.generation){
   total(b+20u,a.collected);total(b+22u,a.ingested);
   if(old.ancestry_depth>0u){
    total(b+24u,a.spent);
@@ -32,7 +32,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
      atomicAdd(&families[b+30u],1u);
      atomicAdd(&families[b+31u],u32(a.collected>0.0));
     }
-    if(a.alive!=0u && a.age>=params.sensor_and_padding.y){
+    if(a.alive==ORGANISM && a.age>=params.sensor_and_padding.y){
      atomicAdd(&families[b+7u],1u);total(b+28u,a.energy);
     }
    }
@@ -45,7 +45,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
    }
   }
  }
- if(a.alive==0u){return;}
+ if(a.alive!=ORGANISM){return;}
  atomicMax(&families[b+6u],tick);atomicMax(&families[b+5u],a.ancestry_depth);
  if(a.ancestry_depth==0u){atomicAdd(&families[b],1u);return;}
  atomicAdd(&families[b+1u],1u);

@@ -16,7 +16,7 @@ fn fast_output(o:u32,h:u32)->u32{return HIDDEN_COUNT*INPUT_COUNT+2u*HIDDEN_COUNT
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id:vec3<u32>){
  let i=id.x;if(i>=params.agent_count){return;}let a=agents[i];let p=perceptions[i];var d:Decision;
- if(a.alive==0u){decisions[i]=d;return;}d.evaluated=1u;
+ if(a.alive!=ORGANISM){decisions[i]=d;return;}d.evaluated=1u;
  var x:array<f32,INPUT_COUNT>;
  x[0]=a.energy/100.0;x[1]=a.food/8.0;x[2]=p.resource_here;x[3]=a.age/10000.0;let self_velocity=world_to_body(a.velocity,a.heading);x[4]=self_velocity.x/1.2;x[5]=self_velocity.y/1.2;
  // Raw body state and consequences only: no named outcome, action, or

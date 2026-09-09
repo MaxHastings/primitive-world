@@ -1,6 +1,6 @@
 # Long-run testing
 
-Start a **New Game** for model `primitive-v35-body-frame-contact`; old and
+Start a **New Game** for model `primitive-v39-shorter-lifespans`; old and
 intermediate saves are incompatible. Existing saves are preserved.
 
 ## Desktop experiment
@@ -51,8 +51,9 @@ the previous completed receipt remains resumable. `-ChunkTicks 10000` gives more
 frequent recovery points at greater save overhead. Output samples every 4,096 ticks.
 A directory lock prevents two runners from advancing the same experiment.
 
-Engine body/identity/tick capacity stops are explicit and censored. The runner
-saves that boundary and stops rather than treating it as extinction or reseeding.
+Entity capacity skips unallocated packet requests while simulation continues.
+The interactive game and rolling headless runs roll over accounting horizons
+automatically; explicit single-world diagnostics still report their boundary.
 A failed executable, checkpoint validation, or disk write stops the runner and
 preserves its last completed receipt. Inspect the attempt logs before resuming.
 A backup `session.json.bak` retains the preceding receipt; the two most recent
@@ -62,42 +63,12 @@ The headless test uses the same physical rules and transitions as the viewer,
 but does not test rendering, tray behavior or Explorer hosting. Reports and
 checkpoints are local artifacts; do not commit them.
 
-## Current reachability evidence
+## Packet-model validation
 
-The stationary v35 model was tested on Windows with an RTX 4070 SUPER, NVIDIA
-591.86 and Vulkan, using 1,000 seed-specific random founders, default contrast 1,
-stationary body upkeep 0.015, no imported policy and no interventions. The final
-20,000-tick probes include proportional gathering and the body-frame/contact
-migration. Seeds were fixed at 7, 42 and 123; no further viability tuning followed.
+The packet model is a fresh experiment. Historical contact-reproduction survival
+and throughput results are not evidence for its ecology. See the current
+[validation ledger](implementation-checklist.md) for checks actually performed.
 
-| Seed | Living at 20,000 | Births | Invalid outputs |
-| --- | ---: | ---: | ---: |
-| 7 | 2,766 | 23,632 | 0 |
-| 42 | 1,694 | 10,330 | 0 |
-| 123 | 3,514 | 19,473 | 0 |
-
-All exceed the maximum founding lifespan of 11,000 ticks, so these are descendant
-populations. This demonstrates nonzero reachable reproductive life cycles and
-supports removing the metabolism ramp. It does not establish a general success
-probability, intelligence, adaptation, or indefinite persistence. Extinction is
-allowed. Do not retune toward more attractive trajectories.
-
-Local raw artifacts are `reports/final-v35-seed{7,42,123}.json`; they include actual
-settings and hardware. The small checked-in evidence ledger is in
-[implementation-checklist.md](implementation-checklist.md). Reports and checkpoints
-remain ignored local artifacts.
-
-## Interpreting long runs
-
-Rolling headless reports include read-only reservoir genome diversity, mutation
-control/capacity histograms, current-world founder-family representation, changed
-pool records between samples, exact-copy births and topology events. They retain
-at most 4,096 recent report samples per invocation. A replaced slot may contain an
-identical record, and multiple replacements can occur between samples; observed
-changed slots undercount turnover. Successful births count replacement attempts.
-
-Observe freezing, explosion or collapse without adding rewards, ranking, novelty
-bonuses or escape mutations. Engineering stops are censored outcomes. Finite
-snapshot/report histories and process working-set samples help diagnose operation,
-but a short headless run cannot prove multi-day desktop or sleep/wake stability.
-Do not mark those checks complete without evidence from the target desktop.
+Track organisms and packets separately, including packet energy, inherited size,
+failed fusions and storage-rejected production. None of these observers guides
+reproduction, mutation or hereditary retention.

@@ -2,7 +2,7 @@
 
 [direction.md](direction.md) is the design contract. These constants describe the
 implemented world, not inevitable laws of life. Model identity is
-`primitive-v35-body-frame-contact`, checkpoint format 55, founder-bank format 20.
+`primitive-v39-shorter-lifespans`, checkpoint format 57, founder-bank format 21.
 The release/freeze evidence is tracked in [implementation-checklist.md](implementation-checklist.md).
 
 ## Geometry and tick order
@@ -17,13 +17,15 @@ headings use continuous relative geometry.
 1. Reserve slots dead at tick start; update ecology and pre-action spatial indexing.
 2. Sample the same pre-action world; evaluate controllers and read-only observers.
 3. Gather at pre-movement positions using proportional sharing within each food cell.
-4. Digest, pay gathering effort, turn, damp velocity, apply thrust and integrate.
-   Pay body/cognitive upkeep, age, check death, emit, and request reproduction.
+4. Organisms digest, pay gathering effort, turn, damp velocity, apply thrust and
+   integrate; pay body/cognitive upkeep, age, check death and emit. Packets consume
+   their reserves for viability without running a controller.
 5. Apply paid local plasticity; rebuild post-movement contact indexing.
 6. Choose contact proposals from an immutable snapshot, then resolve disjoint pairs.
-7. Allocate affordable births; copy/mutate inherited records; clear newborn learning.
-   Successful births replace random whole records in the hereditary pool.
-8. Release dead inventory once and count living bodies.
+7. Manufacture affordable packets into free slots; fuse contacting packets in place,
+   recombine/mutate inherited records and clear newborn learning. Only successful
+   organism births replace whole records in the hereditary pool.
+8. Release dead inventory once; count organisms and viable packets.
 
 Contact impulses change velocity for the next integration, rather than teleporting
 recipients. Newborns act on the following tick. This ordering is explicit discrete
@@ -68,29 +70,27 @@ Newtonian kinetic/thermal energy. Damping transfers momentum to an implicit
 substrate. No collision packing, injury, food spill, loot, or recipient reserve
 penalty is modeled. Both beneficial and harmful displacements are possible.
 
-## Reproduction and retained lifecycle assumptions
+## Reproductive packets and social opportunity
 
-For B=50 and investment a=sigmoid(output 8), child energy is 0.8*B*a and
-construction dissipation is 0.2*B. The parent pays their sum; no food is created or
-required as a separate prerequisite. Actual parental affordability and survival
-are rechecked after contact. Placement is a parent-controlled body-relative vector
-of length at most two, wrapped onto the torus. Child heading is a uniform offset
-from parent heading; velocity, age, signals, feedback and learned state reset.
+Organisms manufacture local, stationary reproductive packets using their energy.
+Packet size is inherited and evolves; production timing and bounded local release
+position remain controller-owned. Two packets from different producers fuse within
+a radius that smoothly shrinks from six to two wrapped units by tick 100,000. Offspring receive the combined remaining reserves minus ten
+energy of construction loss. No body mating or cooldown path remains.
 
-The following are deliberately retained physiology, not turnover controls:
+Packet maintenance costs `(.002 + .018 * smoothstep) * size^(2/3)` per tick,
+using the same world-age smoothstep as the ecology ramp. Resource depletion ends
+viability; there is no arbitrary expiry timer. The opening 500–1,817 tick viability scale falls to 50–182 at normal upkeep; it leaves room for asynchronous coordination without indefinite
+broadcast storage. These constants are declared assumptions, not a claim that
+coordination or differentiated packet-size strategies must evolve.
 
-| Mechanism | Decision and reason |
-| --- | --- |
-| Maturity at age 400 | Retain a fixed organ-development time before reproduction; energy alone does not complete development instantly. |
-| Reproduction cooldown 240 ticks | Retain a fixed reproductive-effector recovery time; reserve availability does not remove the tissue-recovery constraint. |
-| Juvenile speed factor 0.6 to 1 through age 400 | Retain gradual motor development, coupled to the same maturity interval. |
-| Maximum age sampled uniformly from 9,000-11,000 ticks | Retain a coarse finite tissue-maintenance horizon; this is an acknowledged hard-aging approximation, not an engineering capacity rule. |
+Signals are generic, optional and longer-range than fusion. Gathering, transfer,
+pushing, local sensing and memory retain their previous physical meanings.
+See [the exact packet contract](agents.md#reproductive-packets).
 
-These are modeling assumptions, not empirically derived necessities. Costs and
-resource access remain the primary affordability constraints. The current model
-has no evolving development, tissue health or repair physiology. Do not tune
-these timers to obtain faster turnover or more interesting behavior. Reopen them
-only under the evidence criteria in the direction/freeze contract.
+Organism maturity at age 400, juvenile motor development, and uniformly sampled
+maximum age of 9,000-11,000 ticks remain coarse physiological assumptions. There is no
+packet aging deadline and no prescribed reproductive role.
 
 ## Accounting and ecology
 
@@ -102,23 +102,38 @@ energy. Per-step float32 regression comparisons allow 0.002 energy/food units;
 long-run budgets must include accumulated quantization bounds. Crowded sample
 reductions may differ with unordered spatial scatter; the regression allows
 1e-6 for those float32 values while requiring integer body counts to match exactly. Rounded cumulative
-telemetry is an observation, not an exact ledger. Population counts must balance
-births and all death causes. There is no kinetic-energy conservation claim.
+telemetry is an observation, not an exact ledger. Body counts balance births and body deaths; packet counts separately track
+manufacturing, fusion and resource depletion. There is no kinetic-energy conservation claim.
 
 Seeded correlated geography, periodic weather, soil recovery, depletion and seasonal
-production operate at full fixed strength from tick zero. Habitat contrast blends
+production evolve on the gradually accelerating environmental clock. Habitat contrast blends
 the geography with its mean, preserving mean habitat but not guaranteeing equal
 carrying capacity. No parameter depends on population performance. There is no
-metabolism ramp, environmental curriculum, inherited age floor or online rescue.
-Fresh random founder probes demonstrate reproductive reachability at stationary
-upkeep; they do not establish intelligence, adaptation or permanent survival.
+metabolism ramp, inherited age floor or population-triggered rescue.
+New worlds start with 4,096 agents by default. Opening ground cover supplies food across the whole map, including normally
+barren cells. With t=clamp(world_tick/100000,0,1), the temporary habitat and
+productivity floor is 0.5*(1-t*t*(3-2*t)). Initial food uses the same floor.
+It reaches zero smoothly by tick 100,000. Existing rich patches retain normal
+capacity and growth; there is no food-quantity multiplier. Climate
+and geography start at 10% speed and smoothly accelerate to 100% by tick 100,000.
+Soil changes use the same speed factor. The environmental clock integrates this
+rate (55,000 environmental ticks have elapsed at world tick 100,000); it never
+jumps forward when the opening allowance ends. Rain/drought strength, weather
+positions and local growth variation interpolate smoothly between event endpoints.
+Food capacity is a target: excess vegetation recedes at 1% of the excess per
+environmental tick, scaled by ecology speed. Fractional losses are carried across
+ticks. Even disappearing patches fade; dropped food is separate. At tick 100,000
+the targets are normal, while existing vegetation continues responding gradually. Agent speed is unchanged; no population or behavior controls the
+allowance. Every new world restarts it; checkpoint continuation does not.
+The packet model's social outcomes and long-run persistence remain open.
 
 ## Persistence, observation and engineering limits
 
-There are 16,384 body slots and a separate fixed 4,096-record hereditary pool.
-Exhausting body/identity/tick/accounting capacity censors and stops the engine; it
-cannot count as extinction or seed a successor. Counters must not silently wrap
-and then guide reset behavior. Finite budgets and ceilings are engineering limits.
+There are 16,384 shared entity slots and a separate 4,096-record hereditary pool.
+Excess packet-manufacturing requests are counted and skipped without charge;
+fusion reuses a packet slot even at full capacity. The game keeps running.
+Accounting/tick horizons roll over to another world from the hereditary pool,
+without recording a natural extinction. This is an explicit gameplay policy.
 
 Current checkpoints preserve physiology, settings, genomes, learning, resources,
 hereditary pool/RNG streams, bounded history and assisted provenance. Derived

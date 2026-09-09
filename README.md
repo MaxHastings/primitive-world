@@ -83,18 +83,27 @@ learned connection deltas reset at birth.
 Sixteen repeated body-relative area samples measure food, body occupancy,
 relative motion, aggregate signed signals and proximity. Outputs request turn,
 thrust, gathering, contact transfer/impulse, signaling, or paid reproduction with
-bounded body-relative offspring placement. There are no neighbor identities,
+bounded body-relative packet placement. There are no neighbor identities,
 compass targets, rewards, scripted food-seeking policies or privileged self-signal
 history. See the exact [agent interface](docs/agents.md).
 
-Body upkeep is stationary from tick zero. Random founders have demonstrated
-reproductive reachability; this is not a claim of intelligence or indefinite
+Body upkeep defaults to .05 per tick and can be adjusted live. The packet model is a new experiment; this is not a claim of intelligence or indefinite
 survival. Selection means ecological persistence through paid births and deaths.
 Across extinction, a bounded random hereditary pool supplies unchanged founder
 records without ranking; acquired lifetime learning is never inherited.
 
-All modes use `primitive-v35-body-frame-contact`, checkpoint format 55 and founder
-bank format 20. Other biological layouts are rejected. The current freeze status,
+Reproduction requires two local packets from different producers. Organisms pay
+for packets with inherited, evolvable sizes; packets remain where released and
+consume their resources while viable. Fusion combines their remaining energy,
+pays construction loss, and recombines both genomes. Signals remain optional and
+meaningless: proximity and timing can help without prescribed courtship or sexes.
+
+The game keeps running at storage capacity. Requests for packets that cannot fit
+are skipped without charge, while fusion reuses a consumed packet slot. Bodies
+and packets are counted separately in the statistics panel.
+
+All modes use `primitive-v39-shorter-lifespans`, checkpoint format 57 and founder
+bank format 21. Other biological layouts are rejected. The current freeze status,
 validation evidence and remaining operational checks are recorded in the
 [finish-line checklist](docs/implementation-checklist.md).
 
@@ -116,11 +125,17 @@ records from that pool. Lifetime learning is never inherited.
 Gathering can compose with movement, reproduction and other actions; it remains
 controlled by the organism. Brains receive body state, changes in their own body
 state, movement, local fields, and nearby signals—not labels such as “collected,”
-“successful,” or “received.” Environmental dynamics operate from tick zero
-without a curriculum. Body upkeep alone rises from .01 to .06 over a fresh
-world's first 50,000 ticks, providing limited founding runway without granting
-food or energy. Extinction remains a valid outcome; a world
+“successful,” or “received.” Body upkeep defaults to .05 per tick and can be adjusted live. Each new
+world begins with 4,096 agents and food across the whole map, including normally barren travel
+space. This temporary ground cover fades smoothly to the normal sparse geography
+by tick 100,000. Rich patches keep their normal capacity and growth rate.
+Terrain, weather, seasons and soil
+start at 10% speed and smoothly reach normal speed over the same interval.
+Resuming preserves both phases. Organisms live up to 9,000–11,000 ticks. Extinction remains a valid outcome; a world
 that closes off nearly every viable life cycle is a design problem to investigate.
+Packet assistance follows the same 100,000-tick ramp: fusion radius falls from
+six to two units while upkeep rises from .002 to .02 times size^(2/3), allowing
+early accidental encounters before coordination evolves.
 Read the exact [inheritance protocol](docs/evolution.md).
 
 ## Explore and contribute

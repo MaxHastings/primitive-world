@@ -244,8 +244,8 @@ impl Simulation {
         let reservoir_rng_buffer = buffer(device, "rolling hereditary rng", 4);
         let reservoir_claims_buffer = buffer(
             device,
-            "reservoir replacement claims",
-            HEREDITARY_RESERVOIR_SIZE as u64 * 4,
+            "reservoir replacement claims and birth count",
+            (HEREDITARY_RESERVOIR_SIZE as u64 + 1) * 4,
         );
         let fast_weight_buffers = std::array::from_fn(|_| {
             buffer(
@@ -579,13 +579,13 @@ impl Simulation {
                 }),
             ),
         );
-        for entry in ["clear", "propose", "resolve"] {
+        for entry in ["clear", "propose", "resolve", "production"] {
             let name = format!("interact_{entry}");
             add!(
                 &name,
                 "../shaders/interactions.wgsl",
                 entry,
-                "wrwuw wwrr".replace(' ', "").as_str(),
+                "wrwuw wwrrw".replace(' ', "").as_str(),
                 pair(|s| vec![
                     &agent_buffers[s],
                     &decision_buffer,
@@ -596,6 +596,7 @@ impl Simulation {
                     &event_buffer,
                     &cell_offsets,
                     &indices,
+                    &birth_flags,
                 ])
             );
         }
@@ -646,7 +647,7 @@ impl Simulation {
             "birth",
             "../shaders/apply_births.wgsl",
             "main",
-            "wrrrruwr",
+            "wrrrruwrr",
             pair(|s| vec![
                 &agent_buffers[s],
                 &free_indices,
@@ -655,14 +656,15 @@ impl Simulation {
                 &birth_prefix,
                 &params_buffer,
                 &death_stats_buffer,
-                &decision_buffer
+                &decision_buffer,
+                &claims
             ])
         );
         add!(
             "inherit_genomes",
             "../shaders/inherit_genomes.wgsl",
             "main",
-            "wrrrruwww",
+            "wrrrruwwwrr",
             pair(|s| vec![
                 &agent_buffers[s],
                 &free_indices,
@@ -673,6 +675,44 @@ impl Simulation {
                 &genome_buffers[0],
                 &genome_buffers[1],
                 &death_stats_buffer,
+                &claims,
+                &agent_buffers[1 - s],
+            ])
+        );
+        add!(
+            "fusion",
+            "../shaders/apply_births.wgsl",
+            "fusion",
+            "wrrrruwrr",
+            pair(|s| vec![
+                &agent_buffers[s],
+                &free_indices,
+                &free_prefix,
+                &parents,
+                &birth_prefix,
+                &params_buffer,
+                &death_stats_buffer,
+                &decision_buffer,
+                &claims
+            ])
+        );
+        add!(
+            "inherit_fusion",
+            "../shaders/inherit_genomes.wgsl",
+            "fusion",
+            "wrrrruwwwrr",
+            pair(|s| vec![
+                &agent_buffers[s],
+                &free_indices,
+                &free_prefix,
+                &parents,
+                &birth_prefix,
+                &params_buffer,
+                &genome_buffers[0],
+                &genome_buffers[1],
+                &death_stats_buffer,
+                &claims,
+                &agent_buffers[1 - s]
             ])
         );
         for (name, entry) in [
@@ -1038,7 +1078,7 @@ impl Simulation {
             0,
             bytemuck::bytes_of(&params_for(
                 self.tick,
-                self.tick.saturating_add(self.environment_start_age),
+                ecology_time(self.tick).saturating_add(self.environment_start_age),
                 &self.settings,
                 self.seed,
             )),
@@ -1155,7 +1195,7 @@ impl Simulation {
                 let tick = self.tick + n;
                 params_for(
                     tick,
-                    tick.saturating_add(self.environment_start_age),
+                    ecology_time(tick).saturating_add(self.environment_start_age),
                     &self.settings,
                     self.seed,
                 )
@@ -1164,7 +1204,8 @@ impl Simulation {
         queue.write_buffer(&self.tick_params_buffer, 0, bytemuck::cast_slice(&ps));
         let groups = MAX_AGENTS.div_ceil(64);
         for offset in 0..ticks {
-            let environment_tick = self.tick.saturating_add(self.environment_start_age);
+            let environment_tick =
+                ecology_time(self.tick).saturating_add(self.environment_start_age);
             let epoch = environment_tick / 8192;
             if self.terrain_epoch != epoch && self.settings.evolving_landscape {
                 let staging = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -1225,16 +1266,23 @@ impl Simulation {
             self.scan(e, "spatial", SPATIAL_CELL_COUNT);
             self.dispatch(e, "cursors", 0, 1024, 1);
             self.dispatch(e, "scatter", d, groups, 1);
-            for n in ["interact_clear", "interact_propose", "interact_resolve"] {
+            for n in [
+                "interact_clear",
+                "interact_propose",
+                "interact_resolve",
+                "interact_production",
+            ] {
                 self.dispatch(e, n, d, groups, 1);
             }
             self.scan(e, "birth", MAX_AGENTS);
             self.dispatch(e, "birth_compact", 0, groups, 1);
             self.passes["birth"].dispatch_indirect(e, d, &self.birth_dispatch);
             self.passes["inherit_genomes"].dispatch_indirect(e, d, &self.birth_dispatch);
+            self.dispatch(e, "fusion", d, groups, 1);
+            self.dispatch(e, "inherit_fusion", d, groups, 1);
             e.clear_buffer(&self.reservoir_claims_buffer, 0, None);
-            self.passes["claim_reservoir"].dispatch_indirect(e, d, &self.birth_dispatch);
-            self.passes["update_reservoir"].dispatch_indirect(e, d, &self.birth_dispatch);
+            self.dispatch(e, "claim_reservoir", d, groups, 1);
+            self.dispatch(e, "update_reservoir", d, groups, 1);
             self.dispatch(e, "advance_reservoir", d, 1, 1);
             self.dispatch(e, "reset_cognitive_birth_state", d, groups, 1);
             self.dispatch(e, "release", d, groups, 1);
@@ -1458,10 +1506,9 @@ impl Simulation {
         Some(result)
     }
 }
-/// Environmental dynamics operate at fixed strength, independent of progress.
+/// Opening ecology is slow, with timing determined only by world age.
 pub(crate) fn ecological_pressures(age: u32) -> [f32; 4] {
-    let _ = age;
-    [1.0, 1.0, 1.0, 0.0]
+    [ecology_speed(age), 1.0, 1.0, 0.0]
 }
 
 fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> SimParams {
@@ -1472,7 +1519,7 @@ fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> S
         tick,
         world_padding: 0,
         time_and_costs: [
-            0.0,
+            opening_ground_cover(tick),
             s.resource_regeneration,
             s.movement_energy_cost,
             s.metabolic_cost,
@@ -1483,19 +1530,19 @@ fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> S
             s.heterogeneity,
             f32::from(s.social_actions_enabled),
         ],
-        sensor_and_padding: [s.sensor_radius, s.maturity_age, 0.0, s.reproduction_cost],
+        sensor_and_padding: [
+            s.sensor_radius,
+            s.maturity_age,
+            packet_upkeep(tick),
+            s.fusion_loss,
+        ],
         physical: [
             f32::from(s.force_enabled),
             f32::from(s.communication_enabled),
             s.motor_response_gain,
-            0.0,
+            packet_fusion_radius(tick),
         ],
-        lifecycle: [
-            seed,
-            s.birth_cooldown,
-            s.environment_rotation,
-            environment_tick,
-        ],
+        lifecycle: [seed, 0, s.environment_rotation, environment_tick],
         mutation: [
             BASE_MUTATION_PROBABILITY,
             BASE_MUTATION_MAGNITUDE,
@@ -1503,7 +1550,7 @@ fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> S
             s.active_unit_upkeep,
         ],
         environment: {
-            let mut pressure = ecological_pressures(environment_tick);
+            let mut pressure = ecological_pressures(tick);
             pressure[3] = s.memory_write_energy;
             pressure
         },
@@ -1519,13 +1566,23 @@ fn build_agents_with_traits(
     s: &SimSettings,
     traits: &[CognitiveTraits],
 ) -> Vec<AgentGpu> {
+    build_agent_records(seed, s, traits, MAX_AGENTS)
+}
+
+fn build_agent_records(
+    seed: u32,
+    s: &SimSettings,
+    traits: &[CognitiveTraits],
+    count: u32,
+) -> Vec<AgentGpu> {
     let mut rng = seed.max(1);
-    (0..MAX_AGENTS)
+    (0..count)
         .map(|i| {
             let trait_index = (i as usize).min(traits.len().saturating_sub(1));
             let trait_data = traits.get(trait_index).copied().unwrap_or(CognitiveTraits {
                 active_mask: 1,
-                padding: [0; 3],
+                padding: [0; 2],
+                packet_size: 16.0,
                 plasticity_rate: [0.0; HIDDEN],
                 trace_retention: 0.9,
                 learned_weight_retention: 0.99,
@@ -1565,6 +1622,7 @@ fn build_agents_with_traits(
                 } else {
                     (i as usize % s.founder_genomes.len()) as u32
                 },
+                packet_size: trait_data.packet_size,
                 active_mask: trait_data.active_mask,
                 plasticity_rate: trait_data.plasticity_rate,
                 trace_retention: trait_data.trace_retention,
@@ -1595,7 +1653,8 @@ fn build_traits(seed: u32, s: &SimSettings) -> Vec<CognitiveTraits> {
                 ) = crate::brain::random_plasticity(&mut rng);
                 CognitiveTraits {
                     active_mask,
-                    padding: [0; 3],
+                    padding: [0; 2],
+                    packet_size: crate::brain::random_packet_size(&mut rng),
                     plasticity_rate,
                     trace_retention,
                     learned_weight_retention,
@@ -1887,8 +1946,40 @@ fn terrain_noise(x: f32, y: f32, seed: u32) -> f32 {
 fn build_resources(habitat: &[f32]) -> Vec<u32> {
     habitat
         .iter()
-        .map(|h| (h * 0.55 * RESOURCE_SCALE) as u32)
+        .map(|h| (h.max(opening_ground_cover(0)) * 0.55 * RESOURCE_SCALE) as u32)
         .collect()
+}
+
+/// A fixed world-age opening allowance, independent of population or behavior.
+/// Smoothstep has zero slope at both ends, avoiding a tick-100,000 food cliff.
+pub(crate) fn opening_ground_cover(tick: u32) -> f32 {
+    INITIAL_GROUND_COVER * (1.0 - opening_progress(tick))
+}
+
+pub(crate) fn ecology_speed(tick: u32) -> f32 {
+    0.1 + 0.9 * opening_progress(tick)
+}
+
+fn opening_progress(tick: u32) -> f32 {
+    let t = (tick as f32 / FOOD_EASING_TICKS as f32).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+pub(crate) fn packet_upkeep(tick: u32) -> f32 {
+    0.002 + 0.018 * opening_progress(tick)
+}
+
+pub(crate) fn packet_fusion_radius(tick: u32) -> f32 {
+    6.0 - 4.0 * opening_progress(tick)
+}
+
+/// Integral of the speed curve: deriving the clock from saved world age avoids
+/// accumulated rounding error and preserves the exact phase across resume.
+pub(crate) fn ecology_time(tick: u32) -> u32 {
+    let duration = f64::from(FOOD_EASING_TICKS);
+    let t = (f64::from(tick) / duration).min(1.0);
+    let opening = duration * (0.1 * t + 0.9 * (t.powi(3) - 0.5 * t.powi(4)));
+    (opening + f64::from(tick.saturating_sub(FOOD_EASING_TICKS))) as u32
 }
 
 fn build_ground(habitat: &[f32]) -> Vec<[u32; 8]> {

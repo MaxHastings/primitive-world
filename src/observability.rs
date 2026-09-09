@@ -17,6 +17,12 @@ pub struct WorldMetrics {
     pub food_ingested: f64,
     pub tick: u32,
     pub living: u64,
+    pub packets: u64,
+    pub painted_agents: u32,
+    pub packet_energy: f64,
+    pub mean_packet_size: f64,
+    pub failed_fusions: u32,
+    pub capacity_blocked_packets: u32,
     pub juveniles: u64,
     pub carried_food: f64,
     pub energy: f64,
@@ -32,7 +38,7 @@ pub struct WorldMetrics {
     pub moving_agents: u64,
     pub eating_agents: u64,
     pub harvested: f64,
-    /// Reproduction attempts: immature, energy, cooldown, requested, eligible, resolved.
+    /// Packet production: immature, budget shortfall, produced, requested, eligible; then births.
     pub birth_gates: [u32; 6],
     pub action_ticks: [u32; 6],
     pub invalid_outputs: u32,
@@ -75,6 +81,8 @@ pub struct EvolutionSnapshot {
     pub food_gradient_samples: u64,
     /// Distribution over capacities 1..16; index zero is intentionally unused.
     pub active_capacity_distribution: Vec<u64>,
+    /// Body packet-size traits in bins [1,6), [6,12), ... [42,48].
+    pub packet_size_distribution: [u64; 8],
     pub mean_active_capacity: f64,
     pub mean_hidden_memory_magnitude: f64,
     pub mean_learned_weight_magnitude: f64,
@@ -191,8 +199,9 @@ impl Simulation {
             active_capacity_distribution: vec![0; HIDDEN + 1],
             ..Default::default()
         };
-        for (slot, agent) in agents.iter().enumerate().filter(|(_, a)| a.alive != 0) {
+        for (slot, agent) in agents.iter().enumerate().filter(|(_, a)| a.alive == 1) {
             snapshot.living += 1;
+            snapshot.packet_size_distribution[((agent.packet_size / 6.0) as usize).min(7)] += 1;
             let capacity = agent.active_mask.count_ones() as usize;
             snapshot.active_capacity_distribution[capacity] += 1;
             snapshot.mean_active_capacity += capacity as f64;
@@ -316,6 +325,12 @@ impl Simulation {
                 / 1000.0,
             tick: self.tick,
             living: total[0],
+            packets: total[8],
+            painted_agents: counters[11],
+            packet_energy: total[9] as f64 / 1000.0,
+            mean_packet_size: total[10] as f64 / (1000.0 * (total[0] - total[8]).max(1) as f64),
+            failed_fusions: counters[38],
+            capacity_blocked_packets: counters[39],
             juveniles: total[1],
             carried_food: total[2] as f64 / 1000.0,
             energy: total[3] as f64 / 1000.0,
@@ -539,7 +554,7 @@ impl Simulation {
             .map(bytemuck::pod_read_unaligned::<AgentGpu>)
         {
             if a.lived_ticks > tick
-                || a.alive > 1
+                || a.alive > 2
                 || a.action > 5
                 || !a.position[0].is_finite()
                 || !a.position[1].is_finite()
@@ -553,6 +568,7 @@ impl Simulation {
                     a.sensor_radius,
                     a.max_age,
                     a.heading,
+                    a.angular_velocity,
                     a.signal_payload,
                     a.collected,
                     a.ingested,
@@ -571,6 +587,13 @@ impl Simulation {
                 || a.food > 8.001
                 || a.energy < 0.0
                 || a.energy > 100.001
+                || !a.packet_size.is_finite()
+                || !(1.0..=48.0).contains(&a.packet_size)
+                || (a.alive == 2
+                    && (a.energy > a.packet_size + 0.001
+                        || a.food != 0.0
+                        || a.velocity != [0.0; 2]
+                        || a.hidden != [0.0; HIDDEN]))
                 || a.age < 0.0
                 || a.max_age < 1.0
                 || a.max_age > 11000.0

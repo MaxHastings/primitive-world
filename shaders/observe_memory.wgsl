@@ -18,7 +18,7 @@ fn readout(slot:u32,offset:u32)->f32 {
 }
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id:vec3<u32>){
- let i=id.x;if(i>=INVALID){return;}let a=agents[i];if(a.alive==0u){return;}let d=decisions[i];if(d.invalid!=0u){return;}
+ let i=id.x;if(i>=INVALID){return;}let a=agents[i];if(a.alive!=ORGANISM){return;}let d=decisions[i];if(d.invalid!=0u){return;}
  if((hash_u32(a.lineage_id^params.tick^0x51ed270bu)&511u)==0u){
  var memory_effect=0.0;var old_norm_sq=0.0;var new_norm_sq=0.0;
   for(var h=0u;h<HIDDEN_COUNT;h++){if(!unit_active(a.active_mask,h)){continue;}

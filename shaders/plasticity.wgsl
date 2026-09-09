@@ -35,7 +35,7 @@ var<workgroup> output_activity:array<f32,OUTPUT_COUNT>;
 fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index) h:u32){
  let i=live_slots[4u+group.x];
  // The entire workgroup takes the same body-death branch.
- if(after[i].alive==0u){return;}
+ if(after[i].alive!=ORGANISM){return;}
  let trace_base=i*TRACE_COUNT;var change=0.0;let mask=after[i].active_mask;
  if(decisions[i].invalid!=0u){
   for(var k=h;k<CONNECTION_COUNT;k+=32u){let value=fast_value(i,k);if(finite(value)){change+=abs(value);}set_fast(i,k,0.0);}

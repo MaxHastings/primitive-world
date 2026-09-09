@@ -59,7 +59,8 @@ impl Inspection {
 
     pub fn has_decision_trace(&self) -> bool {
         self.snapshot.is_some_and(|s| {
-            s.agent.alive != 0
+            s.agent.alive == 1
+                && s.agent.lived_ticks > 0
                 && self.tick > 0
                 && (s.agent.ancestry_depth == 0 || self.tick > s.agent.birth_tick.saturating_add(1))
         })
@@ -125,6 +126,7 @@ mod tests {
         let mut s = snapshot();
         view.select(Some(s), 0);
         assert!(!view.has_decision_trace());
+        s.agent.lived_ticks = 1;
         view.refresh(Ok(Some(s)), 1);
         assert!(view.has_decision_trace());
         s.agent.ancestry_depth = 3;
@@ -133,5 +135,13 @@ mod tests {
         assert!(!view.has_decision_trace());
         view.refresh(Ok(Some(s)), 12);
         assert!(view.has_decision_trace());
+        s.agent.ancestry_depth = 0;
+        s.agent.lived_ticks = 0;
+        s.agent.birth_tick = 12;
+        view.select(Some(s), 12);
+        assert!(
+            !view.has_decision_trace(),
+            "painted founders have no old slot decision"
+        );
     }
 }

@@ -33,7 +33,7 @@ fn slots(agents: &[AgentGpu], seed: u32, tick: u32) -> Vec<usize> {
     let mut indices: Vec<_> = agents
         .iter()
         .enumerate()
-        .filter(|(_, a)| a.alive != 0)
+        .filter(|(_, a)| a.alive == 1)
         .map(|(i, _)| i)
         .collect();
     // Hash ordering does not inspect food, energy, action, family or ancestry.
@@ -111,10 +111,10 @@ pub fn observe_cached(
             genomes,
             traits: chosen.iter().map(|&slot| {
                 let a = agents[slot];
-                crate::model::CognitiveTraits { active_mask: a.active_mask, padding: [0; 3], plasticity_rate: a.plasticity_rate, trace_retention: a.trace_retention, learned_weight_retention: a.learned_weight_retention, parameter_mutation_rate: a.parameter_mutation_rate, parameter_mutation_step: a.parameter_mutation_step, topology_mutation_rate: a.topology_mutation_rate }
+                crate::model::CognitiveTraits { active_mask: a.active_mask, padding: [0; 2], packet_size: a.packet_size, plasticity_rate: a.plasticity_rate, trace_retention: a.trace_retention, learned_weight_retention: a.learned_weight_retention, parameter_mutation_rate: a.parameter_mutation_rate, parameter_mutation_step: a.parameter_mutation_step, topology_mutation_rate: a.topology_mutation_rate }
             }).collect(),
         },
-        source_population: agents.iter().filter(|a| a.alive != 0).count(),
+        source_population: agents.iter().filter(|a| a.alive == 1).count(),
         bodies: chosen
             .into_iter()
             .map(|slot| {

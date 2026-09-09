@@ -43,8 +43,9 @@ overwrites the source checkpoint or feeds observations back to brains.
 The sampled journey definition requires collection at a source, depletion to
 at most 25% of its observed peak and 0.02 food, departure by at least 48 units,
 a sampled food-poor crossing of at least 48 net units, collection at least 96
-units from the source, subsequent ingestion, and reproduction near the destination.
-These are observer thresholds, not agent rules or rewards.
+units from the source, subsequent ingestion, and packet production near the destination.
+These are observer thresholds, not agent rules or rewards. Packet production
+is not proof of fusion or offspring survival. Journey files use schema 3.
 
 The observer samples every 32 ticks by default. It misses between-sample events;
 food footprints are not whole ecological regions; a lost identity is not a

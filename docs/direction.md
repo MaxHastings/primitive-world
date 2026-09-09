@@ -20,7 +20,10 @@ simple test controllers while designing the world. Such tests never become
 founder policies, behavioral rewards, online difficulty adjustments or selection
 rules. Longer survival alone is not evidence that the search space is viable.
 
-The simulator should provide possibilities, not preferred solutions.
+The simulator should provide possibilities, not preferred solutions. A declared
+gameplay allowance extends food across the map at the start of each world and
+smoothly restores the normal sparse coverage by tick 100,000. It is tied to world age, never to observed success,
+and does not prescribe gathering, signaling or reproduction behavior.
 
 A good primitive supports many incompatible strategies. Movement may be used to flee, hunt, explore, migrate, follow, orbit, or remain still. Signals may become communication, deception, coordination, noise, or be ignored. Memory and plasticity may become useful, useless, or actively selected against.
 
@@ -151,9 +154,14 @@ Reports, UI metrics, diagnostics, experimental forks, and analysis tools never d
 
 Implementation limits are not automatically biological laws.
 
-GPU capacity, buffer sizes, counter limits, save limits, logging limits, and tick horizons must not silently become selection pressures.
-
-If an engineering ceiling is reached, treat it explicitly as an engine limitation unless that constraint was intentionally designed as part of the world's physics.
+Continuous gameplay takes priority over experiment purity. Storage pressure must
+not automatically pause the game. At full entity storage, manufacture requests
+that cannot fit are visibly counted and skipped without charging their producers;
+existing entities continue, and fusion reuses a consumed packet slot. This is an
+acknowledged admission limit that can affect outcomes, not an emergent biological
+law. Accounting horizons automatically begin another world from the hereditary
+pool without reporting a natural extinction. Autosave errors report a failure
+and retry while play continues. Pause remains an explicit user control.
 
 ## Decision test
 

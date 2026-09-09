@@ -635,8 +635,12 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
     let mut history = Vec::new();
     let start = std::time::Instant::now();
     let mut living = sim.metrics(&d, &q)?.living;
-    while elapsed < ticks && !sim.progress.engine_saturated {
-        if living == 0 {
+    while elapsed < ticks {
+        if sim.progress.engine_saturated || sim.tick >= MAX_WORLD_TICKS {
+            let at = std::time::Instant::now();
+            sim.rollover_world(&d, &q)?;
+            restart_seconds += at.elapsed().as_secs_f64();
+        } else if living == 0 {
             let at = std::time::Instant::now();
             sim.advance_world(&d, &q)?;
             restart_seconds += at.elapsed().as_secs_f64();
@@ -674,13 +678,7 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
     if let Some(path) = a.get("--save-checkpoint") {
         sim.save_checkpoint(&d, &q, Path::new(path))?;
     }
-    let termination_reason = if sim.progress.engine_saturated {
-        "engine_capacity"
-    } else if sim.tick >= MAX_WORLD_TICKS {
-        "tick_capacity"
-    } else {
-        "tick_budget"
-    };
+    let termination_reason = "tick_budget";
     let value = serde_json::json!({"schema":6,"model":MODEL_ID,"build_version":env!("CARGO_PKG_VERSION"),"adapter":format!("{info:?}"),"requested_ticks":ticks,"elapsed_ticks":elapsed,
         "wall_seconds":start.elapsed().as_secs_f64(),"restart_seconds":restart_seconds,"simulation_and_sync_seconds":simulation_seconds,"settings":settings,"initial_progress":initial,"final_progress":sim.progress,
         "initial_search":initial_search,"history_limit":4096,"history":history,"termination_reason":termination_reason,"extinction_detection_max_delay_ticks":31,

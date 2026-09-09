@@ -39,11 +39,12 @@ fn vs(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: u32) -
     var colors=array<vec3<f32>,6>(vec3<f32>(0.5),vec3<f32>(0.3,0.65,1.0),vec3<f32>(1.0,0.75,0.1),vec3<f32>(0.95,0.4,0.9),vec3<f32>(1.0,0.12,0.1),vec3<f32>(0.4,1.0,1.0));
     color=colors[min(agent.action,5u)];
   }
+  if(agent.alive==PACKET){color=vec3<f32>(0.35,0.85,0.85);}
   if (index == camera.selected_id && agent.generation == camera.selected_generation) { color = vec3<f32>(1.0, 1.0, 1.0); }
   var corners = array<vec2<f32>, 6>(
     vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0),
     vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0));
-  let pixel = camera.point_size * 2.0 * camera.zoom / camera.world_size.y;
+  let pixel = camera.point_size * select(2.0,0.6+0.08*sqrt(agent.energy),agent.alive==PACKET) * camera.zoom / camera.world_size.y;
   let corner_offset = corners[vertex] * vec2<f32>(pixel / camera.aspect, pixel);
   return VertexOutput(vec4<f32>(ndc + corner_offset, 0.0, 1.0), vec4<f32>(color, 0.90));
 }

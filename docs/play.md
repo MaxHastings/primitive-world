@@ -22,7 +22,7 @@ it for:
   registered to resume wallpaper at sign-in. Enabling it from a different copy
   replaces the previously registered path; disabling removes the login entry.
 - **Save and quit**: saves before exiting. A save failure displays an error and
-  keeps the app paused so you can retry.
+  keeps the app open so you can retry.
 
 Copy the executable to its permanent location before enabling startup. Windows
 Startup Apps settings or organizational policy can override login registration.
@@ -50,6 +50,8 @@ The compact top-right strip shows the world number and living population. Click
 the current view or speed to open its menu; Details shows world ticks, population
 history, survival records, and performance. Click outside an open menu to dismiss
 it without adding food. Manual food additions are saved as part of the experiment.
+
+The live Metabolism slider adjusts global agent upkeep from 0.00 to 0.20 energy per tick (default 0.05).
 
 The top-right paintbrush button toggles food painting (off when the app starts).
 When enabled, a translucent brush ghost previews the radius and dense center on
@@ -107,7 +109,7 @@ cargo run --release -- --seed 42 --view-speed MAX --view-fps 30
 ## Saving
 
 Save, Main menu, close and five-minute autosaves preserve changed state. A failed
-save pauses and leaves earlier complete saves available. Snapshot pairs
+autosave reports the failure and retries while play continues; earlier complete saves remain available. Snapshot pairs
 `save-*.json` and `save-*.checkpoint` belong together. The hereditary pool,
 its RNG streams, current brains/memory, ecology and recent world history are saved.
 Each experiment retains its six newest complete snapshots. The complete library is
@@ -124,8 +126,8 @@ overrides it. Import a current receipt with Load Game or:
 cargo run --release -- --load-game path/to/save-123.json
 ```
 
-The current model is `primitive-v35-body-frame-contact`: receipts 4,
-checkpoints 54, founder banks 19. Noncurrent data is rejected without conversion
+The current model is `primitive-v39-shorter-lifespans`: receipts 4,
+checkpoints 57, founder banks 21. Noncurrent data is rejected without conversion
 or deletion.
 Exports require new paths. See [headless observation](observing.md),
 [performance limits](performance.md), and the [implementation checklist](implementation-checklist.md).

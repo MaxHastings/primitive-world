@@ -104,11 +104,11 @@ fn habitat_old_new_diagnostics() {
                 assert!(ac[0] > 0.95 && ac[2] > ac[4]);
             }
         }
+        // Compare baseline geography budgets, without the opening coverage floor.
         // Quantization may lose at most one milli-food per cell in either map.
         let sum = |a: &[f32]| {
-            build_resources(a)
-                .iter()
-                .map(|v| i64::from(*v))
+            a.iter()
+                .map(|v| (v * 0.55 * RESOURCE_SCALE) as i64)
                 .sum::<i64>()
         };
         assert!((sum(&old) - sum(&new)).abs() <= new.len() as i64);

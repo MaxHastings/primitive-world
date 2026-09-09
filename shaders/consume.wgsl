@@ -9,7 +9,7 @@
 @group(0) @binding(8) var<storage,read> indices:array<u32>;
 fn demand(i:u32)->u32 {
  let a=agents[i];let d=decisions[i];
- if(a.alive==0u || d.invalid!=0u){return 0u;}
+ if(a.alive!=ORGANISM || d.invalid!=0u){return 0u;}
  return min(u32(params.resource_and_noise.x*clamp(d.outputs[1],0.0,1.0)),u32(max(0.0,FOOD_CAPACITY-a.food)*1000.0));
 }
 // Exact floor(stock * request / total), without u64 or floating rounding.

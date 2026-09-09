@@ -28,7 +28,7 @@ pub struct UiState {
     pub library_scan: experiments::LibraryScan,
     pub world_rect: egui::Rect,
     pub wallpaper_controls: WallpaperControls,
-    pub food_brush: controls::FoodBrush,
+    pub paint_brush: controls::PaintBrush,
     pub brush_cursor: Option<egui::Pos2>,
     #[cfg(not(windows))]
     pub import_path: String,
@@ -45,6 +45,7 @@ pub enum WallpaperMenu {
 pub enum BrushAdjustment {
     Size,
     Density,
+    Metabolism,
 }
 
 pub struct WallpaperControls {
@@ -54,6 +55,7 @@ pub struct WallpaperControls {
     pub speed_button: egui::Rect,
     pub details_button: egui::Rect,
     pub paint_button: egui::Rect,
+    pub metabolism_rect: egui::Rect,
     pub brush_size_rect: egui::Rect,
     pub brush_sizing: Option<BrushAdjustment>,
     pub brush_density_rect: egui::Rect,
@@ -81,6 +83,7 @@ impl Default for WallpaperControls {
             speed_button: egui::Rect::NOTHING,
             details_button: egui::Rect::NOTHING,
             paint_button: egui::Rect::NOTHING,
+            metabolism_rect: egui::Rect::NOTHING,
             brush_size_rect: egui::Rect::NOTHING,
             brush_sizing: None,
             brush_density_rect: egui::Rect::NOTHING,
@@ -109,7 +112,7 @@ impl UiState {
             library_scan: experiments::LibraryScan::default(),
             world_rect: egui::Rect::NOTHING,
             wallpaper_controls: WallpaperControls::default(),
-            food_brush: controls::FoodBrush::default(),
+            paint_brush: controls::PaintBrush::default(),
             brush_cursor: None,
             #[cfg(not(windows))]
             import_path: String::new(),
@@ -178,19 +181,19 @@ pub fn draw(ctx: &egui::Context, state: &mut AppState) -> Action {
             state.ui.brush_cursor = ctx.pointer_hover_pos();
         }
         let controls = &state.ui.wallpaper_controls;
-        if state.ui.food_brush.enabled
+        if state.ui.paint_brush.enabled
             && controls.menu.is_none()
             && let Some(point) = state.ui.brush_cursor
             && state.ui.world_rect.contains(point)
             && !controls.hud_rect.contains(point)
         {
-            let radius = state.ui.food_brush.radius
+            let radius = state.ui.paint_brush.radius
                 * state.ui.world_rect.height()
                 * state.renderer.camera.zoom
                 / state.simulation.settings.habitat_height;
             let painter = ctx.layer_painter(egui::LayerId::new(
                 egui::Order::Foreground,
-                egui::Id::new("food_brush_preview"),
+                egui::Id::new("paint_brush_preview"),
             ));
             // Keep the overlapping disks faint so agents and food stay visible beneath the preview.
             for layer in (1..=12).rev() {
@@ -203,7 +206,7 @@ pub fn draw(ctx: &egui::Context, state: &mut AppState) -> Action {
                         245,
                         161,
                         ((2.0 + 8.0 * (1.0 - fraction).powi(2))
-                            * state.ui.food_brush.density.sqrt()
+                            * state.ui.paint_brush.density.sqrt()
                             * 0.25)
                             .min(10.0) as u8,
                     ),
@@ -234,6 +237,11 @@ pub fn draw(ctx: &egui::Context, state: &mut AppState) -> Action {
     action
 }
 
+pub fn metabolism_at(x: f32, rect: egui::Rect) -> f32 {
+    let track = rect.shrink2(egui::vec2(8.0, 0.0));
+    ((x - track.left()) / track.width().max(1.0)).clamp(0.0, 1.0) * 0.2
+}
+
 fn brush_slider(ui: &mut egui::Ui, value: &mut f32, min: f32, max: f32) -> egui::Rect {
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(140.0, 24.0), egui::Sense::click_and_drag());
@@ -244,7 +252,7 @@ fn brush_slider(ui: &mut egui::Ui, value: &mut f32, min: f32, max: f32) -> egui:
         *value = min + ((point.x - track.left()) / track.width()).clamp(0.0, 1.0) * (max - min);
     }
     let knob = egui::pos2(
-        track.left() + (*value - min) / (max - min) * track.width(),
+        track.left() + ((*value - min) / (max - min)).clamp(0.0, 1.0) * track.width(),
         track.center().y,
     );
     ui.painter().line_segment(
@@ -271,15 +279,15 @@ fn draw_wallpaper(ctx: &egui::Context, state: &mut AppState, action: &mut Action
             if world.clicked()
                 && let Some(point) = world.interact_pointer_pos()
             {
-                *action = Action::FoodClick(point);
+                *action = Action::BrushClick(point);
             }
             if world.dragged_by(egui::PointerButton::Primary)
                 && let Some(point) = world.interact_pointer_pos()
             {
-                *action = Action::FoodDrag(point);
+                *action = Action::BrushDrag(point);
             }
             if world.drag_stopped_by(egui::PointerButton::Primary) {
-                *action = Action::FoodEnd;
+                *action = Action::BrushEnd;
             }
             if world.hovered() {
                 let scroll = ui.input(|i| i.raw_scroll_delta.y);
@@ -306,7 +314,7 @@ fn draw_wallpaper(ctx: &egui::Context, state: &mut AppState, action: &mut Action
                             ))
                             .strong(),
                         );
-                        ui.label(format!("{} alive", state.living_agents));
+                        ui.label(format!("{} entities", state.living_agents));
                         ui.separator();
                         let view = ui.button(Lens::from_u32(state.renderer.camera.lens).name());
                         state.ui.wallpaper_controls.lens_button = view.rect;
@@ -319,11 +327,11 @@ fn draw_wallpaper(ctx: &egui::Context, state: &mut AppState, action: &mut Action
                             state.ui.wallpaper_controls.toggle(WallpaperMenu::Speed);
                         }
                         let paint = ui.add(
-                            egui::Button::new("     Paint").selected(state.ui.food_brush.enabled),
+                            egui::Button::new("     Food").selected(state.ui.paint_brush.enabled),
                         );
                         state.ui.wallpaper_controls.paint_button = paint.rect;
                         let origin = paint.rect.left_center() + egui::vec2(10.0, 0.0);
-                        let ink = if state.ui.food_brush.enabled {
+                        let ink = if state.ui.paint_brush.enabled {
                             egui::Color32::from_rgb(140, 244, 161)
                         } else {
                             ui.visuals().text_color()
@@ -345,7 +353,7 @@ fn draw_wallpaper(ctx: &egui::Context, state: &mut AppState, action: &mut Action
                             egui::Stroke::NONE,
                         ));
                         if paint.clicked() {
-                            state.ui.food_brush.toggle();
+                            state.ui.paint_brush.toggle();
                         }
                         paint.on_hover_text(
                             "Toggle food painting. Drag on empty desktop; wheel adjusts size.",
@@ -356,18 +364,26 @@ fn draw_wallpaper(ctx: &egui::Context, state: &mut AppState, action: &mut Action
                             state.ui.wallpaper_controls.toggle(WallpaperMenu::Details);
                         }
                     });
+                    let mut metabolism = state.simulation.settings.metabolic_cost;
+                    ui.horizontal(|ui| {
+                        ui.small("Metabolism").on_hover_text("Global energy cost per agent per tick. Changes apply live; default 0.05.");
+                        state.ui.wallpaper_controls.metabolism_rect = brush_slider(
+                            ui, &mut metabolism, 0.0, 0.2);
+                        ui.small(format!("{:.3} energy/tick", state.simulation.settings.metabolic_cost));
+                    });
+                    state.set_metabolism(metabolism);
                     state.ui.wallpaper_controls.brush_size_rect = egui::Rect::NOTHING;
                     state.ui.wallpaper_controls.brush_density_rect = egui::Rect::NOTHING;
-                    if state.ui.food_brush.enabled {
+                    if state.ui.paint_brush.enabled {
                         ui.horizontal(|ui| {
                             ui.small("Size");
                             state.ui.wallpaper_controls.brush_size_rect =
-                                brush_slider(ui, &mut state.ui.food_brush.radius, 8.0, 240.0);
-                            ui.small(format!("{:.0}", state.ui.food_brush.radius));
+                                brush_slider(ui, &mut state.ui.paint_brush.radius, 8.0, 240.0);
+                            ui.small(format!("{:.0}", state.ui.paint_brush.radius));
                             ui.small("Density");
                             state.ui.wallpaper_controls.brush_density_rect =
-                                brush_slider(ui, &mut state.ui.food_brush.density, 0.1, 4.0);
-                            ui.small(format!("{:.1}x", state.ui.food_brush.density));
+                                brush_slider(ui, &mut state.ui.paint_brush.density, 0.1, 4.0);
+                            ui.small(format!("{:.1}x", state.ui.paint_brush.density));
                         });
                         ui.small("Drag to paint / wheel to resize");
                     }
@@ -598,9 +614,9 @@ fn draw_new(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                     );
                     ui.add(
                         egui::Slider::new(&mut state.ui.setup.metabolic_cost, 0.0..=0.2)
-                            .text("Metabolic cap"),
+                            .text("Body upkeep"),
                     );
-                    ui.small("Body upkeep is constant from the first tick (default 0.05 energy/tick). Environmental dynamics remain fully active.");
+                    ui.small("Body upkeep stays at 0.05 energy/tick by default. New worlds start with food across the map and 10% ecology speed, easing to normal sparse coverage and speed by tick 100,000.");
                     ui.add(egui::Slider::new(&mut state.ui.setup.habitat_contrast, 0.0..=1.0).text("Habitat contrast"));
                     ui.checkbox(&mut state.ui.setup.evolving_landscape, "Evolving geography");
                     ui.checkbox(
@@ -754,6 +770,16 @@ fn draw_play(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
         .width_range(320.0..=480.0)
         .resizable(true)
         .show(ctx, |ui| {
+            let mut metabolism = state.simulation.settings.metabolic_cost;
+            ui.add(
+                egui::Slider::new(&mut metabolism, 0.0..=0.2)
+                    .text("Metabolism")
+                    .fixed_decimals(3),
+            )
+            .on_hover_text(
+                "Global energy cost per agent per tick. Changes apply live; default 0.05.",
+            );
+            state.set_metabolism(metabolism);
             ui.horizontal(|ui| {
                 for (tab, label) in [
                     (Tab::Overview, "Overview"),
@@ -862,7 +888,7 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
         .num_columns(2)
         .striped(true)
         .show(ui, |ui| {
-            ui.label("Living");
+            ui.label("Bodies + packets");
             ui.strong(state.living_agents.to_string());
             ui.end_row();
             ui.label("Births");

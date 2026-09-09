@@ -2,6 +2,9 @@
 //! inherited; runtime memory and learned deltas are deliberately not.
 //! Mutation draw order and arithmetic match the GPU inheritance pass.
 use crate::model::*;
+pub fn random_packet_size(rng: &mut u32) -> f32 {
+    1.0 + 47.0 * draw(rng)
+}
 pub type Genome = [f32; GENOME_SIZE];
 #[cfg(test)]
 pub fn blank() -> Genome {
@@ -176,6 +179,7 @@ fn mutate_expressed(g: &mut [f32], traits: &mut CognitiveTraits, rng: &mut u32) 
         parameter_mutation_rate,
         parameter_mutation_step,
         topology_mutation_rate,
+        packet_size,
         ..
     } = traits;
     assert!(mask != 0 && g.len() == GENOME_SIZE);
@@ -222,6 +226,7 @@ fn mutate_expressed(g: &mut [f32], traits: &mut CognitiveTraits, rng: &mut u32) 
             (*parameter_mutation_step * (0.97 + 0.06 * draw(rng))).clamp(0.25, 4.0);
         *topology_mutation_rate =
             (*topology_mutation_rate * (0.97 + 0.06 * draw(rng))).clamp(0.25, 4.0);
+        *packet_size = (*packet_size * (0.9 + 0.2 * draw(rng))).clamp(1.0, 48.0);
     }
 }
 
@@ -352,7 +357,8 @@ mod tests {
         let before = genome;
         let mut traits = CognitiveTraits {
             active_mask: 1,
-            padding: [0; 3],
+            padding: [0; 2],
+            packet_size: 16.0,
             plasticity_rate: [0.0; HIDDEN],
             trace_retention: 0.9,
             learned_weight_retention: 0.99,
@@ -372,7 +378,8 @@ mod tests {
     fn topology_mutation_rate_is_independent_of_parameter_mutation_controls() {
         let traits = |parameter_rate, parameter_step, topology_rate| CognitiveTraits {
             active_mask: 0b11,
-            padding: [0; 3],
+            padding: [0; 2],
+            packet_size: 16.0,
             plasticity_rate: [0.0; HIDDEN],
             trace_retention: 0.9,
             learned_weight_retention: 0.99,

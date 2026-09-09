@@ -20,6 +20,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
       let a=agents[i];
       if(a.alive!=0u) {
         totals.values[0]+=1u;
+        if(a.alive==PACKET){totals.values[8]+=1u;totals.values[9]+=u32(round(a.energy*1000.0));continue;}
+        totals.values[10]+=u32(round(a.packet_size*1000.0));
         totals.values[11]+=u32(a.food>=1.5);
         totals.values[12]+=u32(a.energy<20.0);
         totals.values[13]+=u32(length(a.velocity)>0.001);

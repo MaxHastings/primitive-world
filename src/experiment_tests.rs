@@ -2,7 +2,7 @@ use super::{body, fixed, gpu, put, read, scene, step};
 use crate::simulation::*;
 
 #[test]
-fn paused_food_brush_changes_food_inside_the_visible_circle() {
+fn paused_paint_brush_changes_food_inside_the_visible_circle() {
     let (d, q) = gpu();
     let mut sim = scene(&d, &q);
     let rect = egui::Rect::from_min_size(egui::pos2(0.0, 56.0), egui::vec2(920.0, 734.0));

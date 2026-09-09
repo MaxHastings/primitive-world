@@ -32,7 +32,6 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= GRID || id.y >= GRID) { return; }
   let index = id.y * GRID + id.x;
   let old_value = resources[index];
-  let previous_geography = ground[index].habitat;
   let environment_tick=params.lifecycle.w;
   if (params.mutation.z!=0.0) {
     let phase=f32(environment_tick%8192u)/8192.0;
@@ -51,13 +50,16 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
   let event_id = environment_tick / EVENT_LENGTH;
   let event_phase = f32(environment_tick % EVENT_LENGTH) / f32(EVENT_LENGTH);
+  let event_blend = event_phase * event_phase * (3.0 - 2.0 * event_phase);
   let grid_size=vec2<f32>(f32(GRID));
   let rain_start=center_for(event_id ^ 0x1f123bb5u);let rain_end=center_for((event_id + 1u) ^ 0x1f123bb5u);
   let drought_start=center_for(event_id ^ 0x9e3779b9u);let drought_end=center_for((event_id + 1u) ^ 0x9e3779b9u);
-  let rain_center = wrap_world(rain_start+torus_delta(rain_start,rain_end,grid_size)*event_phase,grid_size);
-  let drought_center = wrap_world(drought_start+torus_delta(drought_start,drought_end,grid_size)*event_phase,grid_size);
-  let rain_active = select(0.0, 1.0, unit(event_id ^ 0x62a9d9edu) > 0.34);
-  let drought_active = select(0.0, 1.0, unit(event_id ^ 0x7f4a7c15u) > 0.72);
+  let rain_center = wrap_world(rain_start+torus_delta(rain_start,rain_end,grid_size)*event_blend,grid_size);
+  let drought_center = wrap_world(drought_start+torus_delta(drought_start,drought_end,grid_size)*event_blend,grid_size);
+  let rain_active = mix(select(0.0, 1.0, unit(event_id ^ 0x62a9d9edu) > 0.34),
+    select(0.0, 1.0, unit((event_id + 1u) ^ 0x62a9d9edu) > 0.34), event_blend);
+  let drought_active = mix(select(0.0, 1.0, unit(event_id ^ 0x7f4a7c15u) > 0.72),
+    select(0.0, 1.0, unit((event_id + 1u) ^ 0x7f4a7c15u) > 0.72), event_blend);
   let rain = rain_active * patch_strength(position, rain_center, 70.0);
   let drought = drought_active * patch_strength(position, drought_center, 105.0);
 
@@ -82,7 +84,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
   var soil = fertility[index];
   soil = clamp(
-    soil + rain * 0.004 + (0.55 - soil) * 0.00008 - depletion * 0.004,
+    soil + params.environment.x * (rain * 0.004 + (0.55 - soil) * 0.00008 - depletion * 0.004),
     0.02,
     1.0,
   );
@@ -94,24 +96,33 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     1.0,
   );
   let heterogeneity = clamp(params.resource_and_noise.z, 0.0, 1.0);
-  let jitter = unit(canonical_index ^ event_id);
+  let jitter = mix(unit(canonical_index ^ event_id), unit(canonical_index ^ (event_id + 1u)), event_blend);
   let spatial_signal = mix(0.5, 0.55 * spatial_wave + 0.45 * jitter, heterogeneity);
   // Persistent geography separates fertile patches from barren travel space.
   // Productivity is normalized at world creation to concentrate growth, rather
   // than simply deleting most of the world's potential food supply.
-  let geography = ground[index].habitat;
-  let growth = params.time_and_costs.y * (0.2 + 0.8 * spatial_signal) * (0.25 + 0.75 * habitat) * ground[index].productivity;
+  // The temporary coverage floor reaches zero by world tick 100,000.
+  let opening_cover = params.time_and_costs.x;
+  // Temporary ground cover makes travel space useful for feeding too. It
+  // fades with world age without changing the underlying map.
+  let geography = max(ground[index].habitat, opening_cover);
+  let productivity = max(ground[index].productivity, opening_cover);
+  let growth = params.time_and_costs.y * (0.2 + 0.8 * spatial_signal) * (0.25 + 0.75 * habitat) * productivity;
   let capacity = habitat * MAX_RESOURCE * geography;
-  let accumulation=ground[index].remainder + growth*14.0;
-  let increment=u32(accumulation);
-  ground[index].remainder=fract(accumulation);
-  // Keep independently supplied food in an already-barren cell, but remove
-  // vegetation stranded when a live patch disappears. Dropped/manual food is
-  // tracked separately in ground[].dropped and is unaffected by this cleanup.
-  var next=select(old_value,min(u32(capacity),old_value+increment),geography>0.0);
-  if (params.mutation.z!=0.0 && previous_geography>0.0 && geography==0.0) {
-    next=0u;
-  }
+  // Capacity is a target, not an instantaneous deletion threshold. Vegetation
+  // recedes over environmental time, including when a patch vanishes. Carry
+  // fractional losses so slow ecology does not round up to one unit per tick.
+  let old_food = f32(old_value);
+  let delta = select(min(growth * 14.0, max(capacity - old_food, 0.0)),
+    -(old_food - capacity) * 0.01 * params.environment.x, old_food > capacity);
+  let accumulation = ground[index].remainder + delta;
+  let whole = floor(accumulation);
+  // Tiny negative deltas can round their fractional part to 1 in float32.
+  ground[index].remainder = min(accumulation - whole, 0.99999994);
+  var next = old_value;
+  if (whole < 0.0) { next -= min(old_value, u32(-whole)); }
+  else { next += u32(whole); }
+  // Dropped/manual food lives in ground[].dropped and is unaffected.
   if (next>=old_value) { ground[index].produced += next-old_value; }
   else { ground[index].weather_loss += old_value-next; }
   resources[index]=next;
