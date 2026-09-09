@@ -192,7 +192,7 @@ pub fn draw(ctx: &egui::Context, state: &mut AppState) -> Action {
                 egui::Order::Foreground,
                 egui::Id::new("food_brush_preview"),
             ));
-            // Nested translucent disks preview the same dense-core falloff as paint.
+            // Keep the overlapping disks faint so agents and food stay visible beneath the preview.
             for layer in (1..=12).rev() {
                 let fraction = layer as f32 / 12.0;
                 painter.circle_filled(
@@ -203,8 +203,9 @@ pub fn draw(ctx: &egui::Context, state: &mut AppState) -> Action {
                         245,
                         161,
                         ((2.0 + 8.0 * (1.0 - fraction).powi(2))
-                            * state.ui.food_brush.density.sqrt())
-                        .min(40.0) as u8,
+                            * state.ui.food_brush.density.sqrt()
+                            * 0.25)
+                            .min(10.0) as u8,
                     ),
                 );
             }
@@ -212,11 +213,15 @@ pub fn draw(ctx: &egui::Context, state: &mut AppState) -> Action {
                 point,
                 radius,
                 egui::Stroke::new(
-                    1.5,
-                    egui::Color32::from_rgba_unmultiplied(170, 255, 192, 210),
+                    1.0,
+                    egui::Color32::from_rgba_unmultiplied(170, 255, 192, 110),
                 ),
             );
-            painter.circle_filled(point, 2.0, egui::Color32::from_rgb(215, 255, 226));
+            painter.circle_filled(
+                point,
+                1.5,
+                egui::Color32::from_rgba_unmultiplied(215, 255, 226, 150),
+            );
         }
         return action;
     }
