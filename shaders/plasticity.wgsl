@@ -23,6 +23,11 @@ fn update_fast(slot:u32,index:u32,pre:f32,post:f32,rate:f32,retention:f32,change
 
 @group(0) @binding(8) var<storage,read> live_slots:array<u32>;
 var<workgroup> changes:array<f32,32>;
+// Every active unit uses the same presynaptic traces and output activations.
+// Cache them once per body; connection updates retain their original order.
+var<workgroup> input_traces:array<f32,INPUT_COUNT>;
+var<workgroup> hidden_traces:array<f32,HIDDEN_COUNT>;
+var<workgroup> output_activity:array<f32,OUTPUT_COUNT>;
 @compute @workgroup_size(32)
 fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index) h:u32){
  let i=live_slots[4u+group.x];
@@ -35,21 +40,21 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
   if(unit_active(mask,h)&&finite(before[i].hidden[h])){change+=abs(before[i].hidden[h]);}
  }else{
   let retention=after[i].trace_retention;
-  for(var k=h;k<INPUT_COUNT;k+=32u){let at=trace_base+k;let old=traces[at];let value=clamp(retention*old+(1.0-retention)*decisions[i].inputs[k],-1.0,1.0);change+=abs(value-old);traces[at]=value;}
-  if(unit_active(mask,h)){let at=trace_base+INPUT_COUNT+h;let old=traces[at];let value=clamp(retention*old+(1.0-retention)*decisions[i].hidden[h],-1.0,1.0);change+=abs(value-old);traces[at]=value;}
-  if(h<OUTPUT_COUNT){let at=trace_base+INPUT_COUNT+HIDDEN_COUNT+h;let old=traces[at];let value=clamp(retention*old+(1.0-retention)*tanh(decisions[i].outputs[h]),-1.0,1.0);change+=abs(value-old);traces[at]=value;}
+  for(var k=h;k<INPUT_COUNT;k+=32u){let at=trace_base+k;let old=traces[at];let value=clamp(retention*old+(1.0-retention)*decisions[i].inputs[k],-1.0,1.0);change+=abs(value-old);traces[at]=value;input_traces[k]=value;}
+  if(unit_active(mask,h)){let at=trace_base+INPUT_COUNT+h;let old=traces[at];let value=clamp(retention*old+(1.0-retention)*decisions[i].hidden[h],-1.0,1.0);change+=abs(value-old);traces[at]=value;hidden_traces[h]=value;}
+  if(h<OUTPUT_COUNT){let at=trace_base+INPUT_COUNT+HIDDEN_COUNT+h;let old=traces[at];let activation=tanh(decisions[i].outputs[h]);output_activity[h]=activation;let value=clamp(retention*old+(1.0-retention)*activation,-1.0,1.0);change+=abs(value-old);traces[at]=value;}
  }
- storageBarrier();
+ workgroupBarrier();
  if(decisions[i].invalid==0u && unit_active(mask,h)){
   let rate=after[i].plasticity_rate[h];let retention=after[i].learned_weight_retention;
   let candidate=decisions[i].candidate[h];
-  for(var k=0u;k<INPUT_COUNT;k++){update_fast(i,fast_input(h,k),traces[trace_base+k],candidate,rate,retention,&change);}
+  for(var k=0u;k<INPUT_COUNT;k++){update_fast(i,fast_input(h,k),input_traces[k],candidate,rate,retention,&change);}
   for(var k=0u;k<HIDDEN_COUNT;k++){if(unit_active(mask,k)){
-   let pre=traces[trace_base+INPUT_COUNT+k];
+   let pre=hidden_traces[k];
    update_fast(i,fast_recurrent(h,k),pre,candidate,rate,retention,&change);
    update_fast(i,fast_gate(h,k),pre,decisions[i].update_gates[h],rate,retention,&change);
   }}
-  for(var o=0u;o<OUTPUT_COUNT;o++){update_fast(i,fast_output(o,h),traces[trace_base+INPUT_COUNT+h],tanh(decisions[i].outputs[o]),rate,retention,&change);}
+  for(var o=0u;o<OUTPUT_COUNT;o++){update_fast(i,fast_output(o,h),hidden_traces[h],output_activity[o],rate,retention,&change);}
   change+=abs(decisions[i].hidden[h]-before[i].hidden[h]);
  }
  changes[h]=change;workgroupBarrier();

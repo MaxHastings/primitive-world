@@ -6,9 +6,9 @@ Each lane evaluates a unit or output, sharing intermediate activities through
 barriers. All biological ticks and active connections are evaluated at every speed.
 
 Inherited genomes and lifetime learned deltas each use two GPU banks. At 16,384
-slots they occupy 163.25 MiB and 160 MiB respectively; paired body buffers use
-9.25 MiB, perception 6.25 MiB, decisions 12.5 MiB, and activity traces 9 MiB.
-The 4,096-record hereditary pool adds 40.8125 MiB of GPU genome storage plus traits.
+slots they occupy 155.875 MiB and 153 MiB respectively; paired body buffers use
+9.25 MiB, perception 6.25 MiB, decisions 11.75 MiB, and activity traces 8.5625 MiB.
+The 4,096-record hereditary pool adds 38.96875 MiB of GPU genome storage plus traits.
 These are allocations, not total process-memory measurements. Sparse descendant
 sampling reads only selected genomes; learned-magnitude observation reduces on
 GPU before reading compact totals.
@@ -19,6 +19,42 @@ timer pacing can still reach the selected rate. 1x requests
 Requested speed does not override hardware throughput. Rendering, other GPU
 applications, body count, dense neighbors, and reproduction all affect speed.
 Full saves can pause playback while complete state is read and written.
+
+## v35 optimization probe
+
+The current model rebuilds spatial indexing after motion for contact correctness,
+uses generic body-relative area samples, and proportionally shares gathering.
+Population and expressed brain capacity also change over time; comparing requested
+speed alone does not isolate an execution regression.
+
+Execution optimizations preserve the physical model: distribute sensory input
+assembly/validation across the existing decision workgroup, cache shared learning
+traces and output activations once per body, and skip empty food cells plus exact
+zero/full-share integer division cases. No tick, sample,
+learning update, cost, or contact opportunity is removed. Persistence is unchanged.
+
+A local release probe on the RTX 4070 SUPER measured the following batch-32 rates:
+
+| Starting bodies | Before (ticks/s) | After (ticks/s) |
+| --- | ---: | ---: |
+| 32 | 690 | 807 |
+| 1,000 | 532 | 612 |
+| 4,096 | 286 | 341 |
+
+The viewer was running concurrently. These are preliminary shared-load measurements,
+not isolated benchmark claims or directly comparable to the historical table.
+Single-tick GPU timestamps identify decisions/plasticity as major costs at higher
+population; gathering decreased from roughly 32 to 12 microseconds in the sampled
+4,096-body tick, but individual timings are noisy. A clean benchmark requires
+pausing competing simulation work deliberately and repeating paired measurements.
+
+For interactive use, 16x requests 960 ticks/s and 32x requests 1,920. Lowering
+presentation FPS (for example `--view-fps 30`, particularly in wallpaper mode on a
+high-refresh display) can free rendering budget without changing biology. It will
+not overcome a compute-bound controller/learning workload. Larger execution
+changes should focus on neural memory access and dispatch overhead, with parity
+and accounting tests; do not reduce learning frequency or sensory coverage as a
+performance shortcut.
 
 ## Historical v26 measurements on September 8, 2026
 

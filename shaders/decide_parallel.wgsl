@@ -32,10 +32,12 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
  x[7]=select(0.0,(a.food-bitcast<f32>(a.physical_previous[1]))/8.0,a.lived_ticks!=0u);
  let moved=world_to_body(a.moved,a.heading);x[8]=moved.x/1.2;x[9]=moved.y/1.2;
  x[10]=p.nearby_count/16.0;
- for(var k=0u;k<16u;k++){let n=11u+k*6u;let sample=p.regions[k];x[n]=sample.food;x[n+1u]=sample.bodies/16.0;x[n+2u]=sample.velocity.x/1.2;x[n+3u]=sample.velocity.y/1.2;x[n+4u]=sample.signal;x[n+5u]=sample.pressure;}
- for(var k=0u;k<INPUT_COUNT;k++){if(!finite(x[k])){atomicStore(&fault,1u);x[k]=0.0;}x[k]=clamp(x[k],-8.0,8.0);}
-
  }
+ // Each sample has independent channels. Assemble them cooperatively instead
+ // of serializing all 107 input writes and checks through lane zero.
+ if(h<16u){let n=11u+h*6u;let sample=perceptions[i].regions[h];x[n]=sample.food;x[n+1u]=sample.bodies/16.0;x[n+2u]=sample.velocity.x/1.2;x[n+3u]=sample.velocity.y/1.2;x[n+4u]=sample.signal;x[n+5u]=sample.pressure;}
+ workgroupBarrier();
+ for(var k=h;k<INPUT_COUNT;k+=32u){if(!finite(x[k])){atomicStore(&fault,1u);x[k]=0.0;}x[k]=clamp(x[k],-8.0,8.0);}
  workgroupBarrier();
  if(unit_active(mask,h)){
   var sum=gene(i,NODE_BIAS+h);
