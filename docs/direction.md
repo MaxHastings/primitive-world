@@ -175,3 +175,17 @@ Primitive World is successful as an experiment when surprising behavior can emer
 We are not trying to make evolution succeed.
 
 We are trying to create a sufficiently expressive world in which evolution is free to decide what success becomes.
+
+
+## Freeze policy
+
+A model is complete when its primitives, hereditary continuity, reachable life
+cycles, invariants, persistence and unattended operation are verified and its
+remaining assumptions are explicit. Interesting behavior is not a completion
+criterion. Record implementation and operational evidence in the finish-line
+checklist; do not turn an unperformed desktop or multi-day test into a pass.
+
+After freezing, reopen core biology only for demonstrated unreachable search,
+correctness defects, unintended bias, engine artifacts affecting biology, or a
+primitive that fundamentally prevents composition. Boring, unfamiliar, inefficient
+or unintelligent-looking runs are not grounds for redesign. Let the experiment run.

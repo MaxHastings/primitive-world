@@ -7,21 +7,21 @@
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id:vec3<u32>){
  let i=id.x;if(i>=INVALID){return;}let a=agents[i];if(a.alive==0u){return;}let p=perceptions[i];let d=decisions[i];
- var any_signal=false;var control_target=INVALID;
- for(var k=0u;k<8u;k++){
-  let b=p.bodies[k];
-  if(b.slot<INVALID){control_target=select(control_target,b.slot,control_target>=INVALID);}
-  // At most one signal record per receiver per dispatch. Eight records per
-  // body could wrap the ring inside one parallel pass and race on its slots.
-  if(!any_signal && b.slot<INVALID && b.signal_present>0.5){
+ var any_signal=false;
+ for(var k=0u;k<16u;k++){
+  // Diagnostics observe the same anonymous aggregate field cognition sees.
+  if(!any_signal && abs(p.regions[k].signal)>0.0){
    any_signal=true;
-   let sequence=atomicAdd(&stats[8],1u);
-   // other_lineage carries the receiver's selected action for this diagnostic event.
-   events[sequence%65536u]=InteractionEvent(params.tick,i,b.slot,SIGNAL_OBSERVED,b.signal,sequence,a.lineage_id,d.selected_action,a.position,vec2<f32>(0.0),d.selected_action,0u);
+   let sequence=counter_add(8,1u);
+   events[sequence%65536u]=InteractionEvent(params.tick,i,INVALID,SIGNAL_OBSERVED,p.regions[k].signal,sequence,a.lineage_id,d.selected_action,a.position,vec2<f32>(0.0),d.selected_action,0u);
   }
  }
- if(!any_signal && control_target<INVALID && (hash_u32(a.lineage_id^params.tick)&63u)==0u){
-  let sequence=atomicAdd(&stats[8],1u);
-  events[sequence%65536u]=InteractionEvent(params.tick,i,control_target,SIGNAL_CONTROL,0.0,sequence,a.lineage_id,d.selected_action,a.position,vec2<f32>(0.0),d.selected_action,0u);
- }
+}
+
+// Accounting horizons are explicit engine limits, never ecological extinction.
+// Food low-word counter 0 has the explicitly maintained high word at 14.
+fn counter_add(index:u32,value:u32)->u32 {
+ let prior=atomicAdd(&stats[index],value);
+ if(index!=0u && prior>0xffffffffu-value){atomicStore(&stats[36],1u);}
+ return prior;
 }

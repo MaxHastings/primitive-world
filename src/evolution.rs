@@ -192,7 +192,6 @@ impl Simulation {
         self.progress.engine_saturated = true;
     }
 
-    #[cfg(test)]
     pub(crate) fn reservoir_snapshot(
         &self,
         device: &wgpu::Device,
@@ -219,5 +218,76 @@ impl Simulation {
             bytemuck::cast_slice::<u8, CognitiveTraits>(&trait_bytes).to_vec(),
             *bytemuck::from_bytes::<u32>(&rng_bytes),
         ))
+    }
+}
+
+/// Snapshot diagnostics have no path into reproduction, mutation or pool draws.
+impl Simulation {
+    pub fn search_snapshot(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        previous: &mut Option<Vec<u64>>,
+    ) -> Result<serde_json::Value, String> {
+        use std::{
+            collections::{BTreeMap, HashSet},
+            hash::{Hash, Hasher},
+        };
+        let (genomes, traits, _) = self.reservoir_snapshot(device, queue)?;
+        let rows: Vec<&[u8]> = genomes
+            .chunks_exact(GENOME_SIZE)
+            .map(bytemuck::cast_slice)
+            .collect();
+        let unique_genomes = rows.iter().copied().collect::<HashSet<_>>().len();
+        let fingerprints: Vec<u64> = rows
+            .iter()
+            .zip(&traits)
+            .map(|(row, t)| {
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                row.hash(&mut h);
+                bytemuck::bytes_of(t).hash(&mut h);
+                h.finish()
+            })
+            .collect();
+        let changed_slots = previous.as_ref().map(|before| {
+            before
+                .iter()
+                .zip(&fingerprints)
+                .filter(|(a, b)| a != b)
+                .count()
+        });
+        *previous = Some(fingerprints);
+        let histogram = |trait_value: fn(&CognitiveTraits) -> f32| {
+            let mut bins = [0u32; 8];
+            for t in &traits {
+                let bin = ((trait_value(t).log2() + 2.0) * 2.0)
+                    .floor()
+                    .clamp(0.0, 7.0) as usize;
+                bins[bin] += 1;
+            }
+            bins
+        };
+        let mut capacities = [0u32; 17];
+        for t in &traits {
+            capacities[t.active_mask.count_ones() as usize] += 1;
+        }
+        let mut lineages = BTreeMap::<u32, u32>::new();
+        for body in self
+            .agent_snapshot(device, queue)?
+            .iter()
+            .filter(|a| a.alive != 0)
+        {
+            *lineages.entry(body.founder_family).or_default() += 1;
+        }
+        Ok(
+            serde_json::json!({"pool_size":traits.len(),"distinct_pool_genomes":unique_genomes,
+            "pool_parameter_rate_histogram":histogram(|t|t.parameter_mutation_rate),
+            "pool_parameter_step_histogram":histogram(|t|t.parameter_mutation_step),
+            "pool_topology_rate_histogram":histogram(|t|t.topology_mutation_rate),
+            "histogram_log2_edges":[-2.0,-1.5,-1.0,-0.5,0.0,0.5,1.0,1.5,2.0],
+            "pool_active_capacity_histogram":capacities,"live_founder_family_representation":lineages,
+            "pool_slots_with_changed_record_since_sample":changed_slots,
+            "scope":"Exact genome diversity; changed-record slots use 64-bit fingerprints and underestimate intervening replacements. Live founder families describe this world's founders, not cross-world ancestor identities. Birth and exact-copy counters are in metrics."}),
+        )
     }
 }

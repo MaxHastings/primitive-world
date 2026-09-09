@@ -43,8 +43,9 @@ For a regular window instead, run `cargo run --release` or double-click
 
 ## What is happening in the world?
 
-Each tick is simulated on the GPU. Food grows and shifts across a bounded world;
-agents wrap to the opposite edge when they cross it, sense only their local neighborhood, update private memory, choose an
+Each tick is simulated on the GPU. Food grows and shifts across a toroidal world:
+crossing an edge continues at its opposite edge for movement, local sensing,
+contact, ecology, interventions, and picking. Agents sense only their local neighborhood, update private memory, choose an
 action, and pay its physical cost. Food, energy, aging, movement, contact, and
 reproduction are ordinary world rules—not rewards for a hidden policy.
 
@@ -67,24 +68,28 @@ information, memory, and the ecology.
 
 ## Inside an agent
 
-Every body has the same 16-unit potential gated-recurrent substrate: **108 input
-slots (101 active local measurements) → 1–16 active recurrent units → 20 outputs**
-(**2,612 inherited controller values**). A heritable active mask decides capacity;
-inactive units are inert.
-Recurrent state, traces, and learned connection deltas are private to one life
-and reset at birth. Inherited local plasticity can alter only active connections
-through local activity, and each actual update pays energy.
+Every body has 107 local physical inputs, 1-16 active gated recurrent units,
+and 14 outputs (2,494 inherited parameters). Inactive units are inert; expressed
+units and actual memory writes pay energy. Lifetime recurrent state, traces and
+learned connection deltas reset at birth.
 
-Inputs include energy, nearby food and bodies, changes in their own energy and inventory, coarse
-near/far food regions, and the nearest neighbor in each of eight directions.
-Outputs select an action, movement, amount, contact target and displacement, or
-the value of a signal. This is a compact controller with no global map, lineage
-score, scripted food-seeking, online optimizer, curriculum, or semantic communication
-channel. Read the exact [agent interface](docs/agents.md).
+Sixteen repeated body-relative area samples measure food, body occupancy,
+relative motion, aggregate signed signals and proximity. Outputs request turn,
+thrust, gathering, contact transfer/impulse, signaling, or paid reproduction with
+bounded body-relative offspring placement. There are no neighbor identities,
+compass targets, rewards, scripted food-seeking policies or privileged self-signal
+history. See the exact [agent interface](docs/agents.md).
 
-All modes use model `primitive-v30-raw-physical-reservoir`. Saves from other model
-layouts are incompatible; start a new world. Current saves retain inherited
-controllers and lifetime learning so the same experiment can resume.
+Body upkeep is stationary from tick zero. Random founders have demonstrated
+reproductive reachability; this is not a claim of intelligence or indefinite
+survival. Selection means ecological persistence through paid births and deaths.
+Across extinction, a bounded random hereditary pool supplies unchanged founder
+records without ranking; acquired lifetime learning is never inherited.
+
+All modes use `primitive-v35-body-frame-contact`, checkpoint format 55 and founder
+bank format 20. Other biological layouts are rejected. The current freeze status,
+validation evidence and remaining operational checks are recorded in the
+[finish-line checklist](docs/implementation-checklist.md).
 
 At 32x, playback requests 1,920 ticks/s; actual throughput depends on population,
 rendering, and GPU load. See [performance](docs/performance.md) for measurement limits.

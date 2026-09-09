@@ -21,7 +21,7 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
             s.agent.energy, s.agent.food, s.agent.age, s.agent.lived_ticks
         ));
         ui.label(format!(
-            "Position {:.1}, {:.1} · fixed compass sensors",
+            "Position {:.1}, {:.1} · body-relative sensors",
             s.agent.position[0], s.agent.position[1]
         ));
         ui.collapsing("Actual feedback (last body update)",|ui|{ui.label(format!("Collected {:.3} · ingested {:.3} · spent {:.3} · received {:.3} · displacement {:?}",s.agent.collected,s.agent.ingested,s.agent.spent,s.agent.received,s.agent.moved));});
@@ -36,15 +36,14 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
                 s.decision.movement[1]
             ));
             ui.small(format!(
-                "Gather effort {:.3} · amount {:.3} · signal {:.3} · target {}:{}",
+                "Gather effort {:.3} · amount {:.3} · signal {:.3} · placement {:?}",
                 s.decision.outputs[1].clamp(0.0, 1.0),
                 s.decision.amount,
                 s.decision.payload,
-                s.decision.target,
-                s.decision.target_generation
+                s.decision.placement
             ));
             ui.small(format!(
-                "Requested contact displacement: {:?} × 3 units",
+                "Requested body-relative contact impulse: {:?} × 3 impulse units",
                 s.decision.force
             ));
             ui.small(format!(
@@ -60,32 +59,9 @@ pub fn agent(ui: &mut egui::Ui, state: &mut AppState) {
                     ui.small(format!(
                         "{} {}: food {:.3} · bodies {:.0}",
                         if i < 8 { "Near" } else { "Far" },
-                        model::SECTOR_NAMES[i % 8],
+                        model::BEARING_NAMES[i % 8],
                         p.food,
                         p.bodies
-                    ));
-                }
-            });
-            ui.collapsing("Observed bodies", |ui| {
-                ui.small("Nearest in each sector; identifiers below are inspector-only.");
-                for (i, b) in s
-                    .perception
-                    .bodies
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, b)| b.slot < MAX_AGENTS)
-                {
-                    ui.small(format!(
-                        "{} · {}:{} offset {:?} · {}",
-                        model::SECTOR_NAMES[i],
-                        b.slot,
-                        b.generation,
-                        b.offset,
-                        if b.signal_present != 0.0 {
-                            format!("signal {:.3}", b.signal)
-                        } else {
-                            "silent".into()
-                        }
                     ));
                 }
             });
@@ -170,16 +146,14 @@ pub fn physics(ui: &mut egui::Ui, state: &mut AppState) {
         ui.label(format!("Founding bodies: {}", s.population));
         ui.label(format!("Food regeneration: {:.3}", s.resource_regeneration));
         ui.label(format!(
-            "Body upkeep: {:.3} → {:.3} over {} ticks · unit upkeep: {:.5} · write energy: {:.5} · movement cost: {:.3}",
-            crate::model::METABOLIC_START_COST,
+            "Body upkeep: {:.3} per tick; unit upkeep: {:.5}; write energy: {:.5}; movement cost: {:.3}",
             s.metabolic_cost,
-            s.metabolic_ramp_ticks,
             s.active_unit_upkeep,
             s.memory_write_energy,
             s.movement_energy_cost
         ));
         ui.small(format!("Social actions: {}", if s.social_actions_enabled { "available under ordinary world rules" } else { "disabled" }));
-        ui.small("Only metabolism has a world-start ramp; environmental dynamics have fixed strength from tick zero.");
+        ui.small("Body upkeep and environmental dynamics have fixed strength from tick zero.");
         ui.small("Active units and actual memory writes are paid; reproduction overhead remains physical construction.");
     });
 }

@@ -2,6 +2,7 @@
     [ValidateRange(0.0001, 168)][double]$Hours = 12,
     [ValidateRange(1, 1000000)][int]$ChunkTicks = 50000,
     [uint32]$Seed = 42,
+    [ValidateRange(60, 86400)][int]$ChunkTimeoutSeconds = 1800,
     [string]$ResumeDirectory,
     [string]$Executable
 )
@@ -18,6 +19,30 @@ function Write-Receipt($value, $path) {
     } else {
         [IO.File]::Move($temporary, $path)
     }
+}
+function Invoke-SoakProcess($program, $arguments, $outputLog) {
+    # Argument values are fixed switches/numbers or Windows paths, which cannot
+    # contain a double quote. Quote each value for Start-Process on PowerShell 5/7.
+    $quoted = @($arguments | ForEach-Object {
+        if ($_.Contains('"')) { throw 'Unexpected quote in process argument.' }
+        '"' + $_ + '"'
+    })
+    $process = Start-Process -FilePath $program -ArgumentList $quoted -WindowStyle Hidden -PassThru -RedirectStandardOutput $outputLog -RedirectStandardError ($outputLog + '.stderr')
+    $deadline = [DateTime]::UtcNow.AddSeconds($ChunkTimeoutSeconds)
+    $peakBytes = [long]0
+    while (-not $process.WaitForExit(1000)) {
+        $process.Refresh()
+        $peakBytes = [Math]::Max($peakBytes, $process.WorkingSet64)
+        if ([DateTime]::UtcNow -gt $deadline) {
+            $process.Kill()
+            throw "Process timeout after $ChunkTimeoutSeconds seconds; last validated receipt is preserved."
+        }
+    }
+    $process.WaitForExit()
+    $exitCode = $process.ExitCode
+    Write-Host ("Process exit {0}; sampled peak working set {1:N0} MiB" -f $exitCode, ($peakBytes / 1MB))
+    $process.Dispose()
+    if ($exitCode -ne 0) { throw "Process failed ($exitCode). Inspect $outputLog and its .stderr file; last validated receipt is preserved." }
 }
 try {
     if ($ResumeDirectory) {
@@ -57,6 +82,9 @@ try {
     Write-Host 'Ctrl+C stops this invocation; resume from the latest completed chunk. At most one unfinished chunk is lost.'
     $deadline = [DateTime]::UtcNow.AddHours($Hours)
     do {
+        # Incomplete attempts remain diagnosable, but cannot consume unbounded disk.
+        $runBytes = (Get-ChildItem -LiteralPath $runDirectory -File | Measure-Object -Property Length -Sum).Sum
+        if ($runBytes -gt 8GB) { throw 'Run directory exceeded the 8 GiB storage budget. Inspect incomplete attempts before resuming.' }
         # Unique names preserve incomplete attempts after a crash or interruption.
         $attempt = ('chunk-{0:D6}-{1}' -f ([int]$receipt.completed_chunks + 1), [guid]::NewGuid().ToString('N').Substring(0,8))
         $reportPath = Join-Path $runDirectory "$attempt.json"
@@ -67,13 +95,11 @@ try {
             if ([IO.Path]::GetFileName($receipt.latest_checkpoint) -ne $receipt.latest_checkpoint) { throw 'Invalid checkpoint name in receipt.' }
             $runArguments += @('--checkpoint',(Join-Path $runDirectory $receipt.latest_checkpoint))
         } else { $runArguments += @('--seed',"$($receipt.seed)") }
-        & $runExecutable @runArguments *> (Join-Path $runDirectory "$attempt.log")
-        if ($LASTEXITCODE -ne 0) { throw "Simulation failed. Inspect $attempt.log; the previous receipt remains resumable." }
+        Invoke-SoakProcess $runExecutable $runArguments (Join-Path $runDirectory "$attempt.log")
         $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
         if (-not (Test-Path -LiteralPath $checkpointPath -PathType Leaf)) { throw 'No completed checkpoint was produced.' }
         # Validate the exact save with its original binary before advancing the receipt.
-        & $runExecutable --headless --ticks 0 --checkpoint $checkpointPath --output (Join-Path $runDirectory "$attempt-validation.json") *> (Join-Path $runDirectory "$attempt-validation.log")
-        if ($LASTEXITCODE -ne 0) { throw 'Checkpoint validation failed; previous receipt remains resumable.' }
+        Invoke-SoakProcess $runExecutable @('--headless','--ticks','0','--checkpoint',$checkpointPath,'--output',(Join-Path $runDirectory "$attempt-validation.json")) (Join-Path $runDirectory "$attempt-validation.log")
         $expired = $receipt.previous_checkpoint
         $receipt.previous_checkpoint = $receipt.latest_checkpoint
         $receipt.latest_checkpoint = $checkpointName
@@ -88,6 +114,15 @@ try {
             $expiredPath = [IO.Path]::GetFullPath((Join-Path $runDirectory $expired))
             if ([IO.Path]::GetDirectoryName($expiredPath) -ne $runDirectory) { throw 'Retention path is outside the run directory.' }
             if (Test-Path -LiteralPath $expiredPath) { Remove-Item -LiteralPath $expiredPath }
+        }
+        # Reports and logs are observational: retain a bounded recent window.
+        $oldDiagnostics = Get-ChildItem -LiteralPath $runDirectory -File |
+            Where-Object { $_.Name -match '^chunk-[0-9]{6}-[0-9a-f]{8}(-validation)?[.](json|log)([.]stderr)?$' } |
+            Sort-Object LastWriteTimeUtc -Descending | Select-Object -Skip 256
+        foreach ($diagnostic in $oldDiagnostics) {
+            $diagnosticPath = [IO.Path]::GetFullPath($diagnostic.FullName)
+            if ([IO.Path]::GetDirectoryName($diagnosticPath) -ne $runDirectory) { throw 'Diagnostic retention path is outside the run directory.' }
+            Remove-Item -LiteralPath $diagnosticPath
         }
         Write-Host ("Completed {0} chunks; {1} ticks; world {2}; status {3}" -f $receipt.completed_chunks,$receipt.elapsed_ticks,$report.final_progress.world,$receipt.status)
         if ($receipt.status -eq 'engine_capacity') { break }

@@ -1,15 +1,18 @@
 # Release status
 
 Primitive World is an experimental artificial-life sandbox. Intelligent behavior
-and general adaptation are unverified capabilities.
+and general adaptation are unverified capabilities. Core migration validation is
+recorded in [the finish-line ledger](implementation-checklist.md); multi-day and
+interactive desktop validation remain open, so the overall model is not yet
+declared done.
 
 ## Build and data formats
 
 - Application version: 0.9.0.
-- Model: `primitive-v30-raw-physical-reservoir`.
-- Checkpoint format: 50, including lifetime state, hereditary pool, RNG streams and world history.
-- Founder-bank format: 18; game receipts: 4.
-- Genome allocation: 163.25 MiB for 16,384 bodies, plus world/render buffers.
+- Model: `primitive-v35-body-frame-contact`.
+- Checkpoint format: 55, including lifetime state, hereditary pool, RNG streams and world history.
+- Founder-bank format: 20; game receipts: 4.
+- Genome allocation: 155.875 MiB for 16,384 bodies, plus world/render buffers.
 
 These identities are separate from application version. Noncurrent files remain
 untouched and are rejected; no compatibility execution or conversion is provided.

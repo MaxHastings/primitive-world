@@ -22,7 +22,7 @@ fn center_for(seed: u32) -> vec2<f32> {
 }
 
 fn patch_strength(position: vec2<f32>, center: vec2<f32>, radius: f32) -> f32 {
-  let delta = position-center;
+  let delta = torus_delta(center,position,vec2<f32>(f32(GRID)));
   let distance_squared = dot(delta,delta);
   return exp(-distance_squared / (2.0 * radius * radius));
 }
@@ -51,21 +51,24 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
   let event_id = environment_tick / EVENT_LENGTH;
   let event_phase = f32(environment_tick % EVENT_LENGTH) / f32(EVENT_LENGTH);
-  let rain_center = mix(center_for(event_id ^ 0x1f123bb5u), center_for((event_id + 1u) ^ 0x1f123bb5u), event_phase);
-  let drought_center = mix(center_for(event_id ^ 0x9e3779b9u), center_for((event_id + 1u) ^ 0x9e3779b9u), event_phase);
+  let grid_size=vec2<f32>(f32(GRID));
+  let rain_start=center_for(event_id ^ 0x1f123bb5u);let rain_end=center_for((event_id + 1u) ^ 0x1f123bb5u);
+  let drought_start=center_for(event_id ^ 0x9e3779b9u);let drought_end=center_for((event_id + 1u) ^ 0x9e3779b9u);
+  let rain_center = wrap_world(rain_start+torus_delta(rain_start,rain_end,grid_size)*event_phase,grid_size);
+  let drought_center = wrap_world(drought_start+torus_delta(drought_start,drought_end,grid_size)*event_phase,grid_size);
   let rain_active = select(0.0, 1.0, unit(event_id ^ 0x62a9d9edu) > 0.34);
   let drought_active = select(0.0, 1.0, unit(event_id ^ 0x7f4a7c15u) > 0.72);
   let rain = rain_active * patch_strength(position, rain_center, 70.0);
   let drought = drought_active * patch_strength(position, drought_center, 105.0);
 
-  let spatial_wave = 0.5 + 0.5 * sin(position.x * 0.037) * cos(position.y * 0.029);
+  let spatial_wave = 0.5 + 0.5 * sin(position.x * 6.2831853 * 3.0 / f32(GRID)) * cos(position.y * 6.2831853 * 2.0 / f32(GRID));
   // Regional lean seasons operate from tick zero. Their spatial
   // mean remains constant: one region's lean period is another's abundance,
   // independently of agent behavior.
   let seasonality = params.environment.z;
   let seasonal_phase = mix(
     spatial_wave,
-    0.5 + 0.5 * sin((position.x + position.y) * 0.011 + f32(environment_tick) * 0.00017),
+    0.5 + 0.5 * sin((position.x + position.y) * 6.2831853 / f32(GRID) + f32(environment_tick) * 0.00017),
     seasonality,
   );
   // Regional seasons span the full cycle instead of putting nearly every

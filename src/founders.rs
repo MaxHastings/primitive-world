@@ -15,6 +15,7 @@ pub struct FounderBank {
     pub name: String,
     pub source_seed: u32,
     pub source_tick: u32,
+    pub assisted: bool,
     pub genomes: Vec<Vec<f32>>,
     pub traits: Vec<CognitiveTraits>,
 }
@@ -46,15 +47,23 @@ pub fn bundled() -> &'static FounderBank {
         let mut traits = Vec::new();
         for _ in 0..256 {
             genomes.push(crate::model::random_genome(&mut rng).to_vec());
-            let (plasticity_rate, trace_retention, learned_weight_retention, mutation_scale) =
-                crate::brain::random_plasticity(&mut rng);
+            let (
+                plasticity_rate,
+                trace_retention,
+                learned_weight_retention,
+                parameter_mutation_rate,
+                parameter_mutation_step,
+                topology_mutation_rate,
+            ) = crate::brain::random_plasticity(&mut rng);
             traits.push(CognitiveTraits {
                 active_mask: crate::brain::random_active_mask(&mut rng),
                 padding: [0; 3],
                 plasticity_rate,
                 trace_retention,
                 learned_weight_retention,
-                mutation_scale,
+                parameter_mutation_rate,
+                parameter_mutation_step,
+                topology_mutation_rate,
             });
         }
         FounderBank {
@@ -63,6 +72,7 @@ pub fn bundled() -> &'static FounderBank {
             name: "primitive-world-random-256".into(),
             source_seed: 0,
             source_tick: 0,
+            assisted: false,
             genomes,
             traits,
         }
@@ -129,6 +139,7 @@ impl Simulation {
             ),
             source_seed: self.seed,
             source_tick: self.tick,
+            assisted: self.assisted,
             genomes: selected
                 .iter()
                 .map(|(i, _)| genes[i * GENOME_SIZE..(i + 1) * GENOME_SIZE].to_vec())
@@ -141,7 +152,9 @@ impl Simulation {
                     plasticity_rate: a.plasticity_rate,
                     trace_retention: a.trace_retention,
                     learned_weight_retention: a.learned_weight_retention,
-                    mutation_scale: a.mutation_scale,
+                    parameter_mutation_rate: a.parameter_mutation_rate,
+                    parameter_mutation_step: a.parameter_mutation_step,
+                    topology_mutation_rate: a.topology_mutation_rate,
                 })
                 .collect(),
         };
@@ -163,9 +176,9 @@ mod tests {
     fn bank(model: &str) -> FounderBank {
         serde_json::from_value(serde_json::json!({
             "version": FOUNDER_BANK_VERSION, "model": model, "name": "test-pool",
-            "source_seed": 42, "source_tick": 128,
+            "source_seed": 42, "source_tick": 128, "assisted": false,
             "genomes": [crate::brain::blank().to_vec()],
-            "traits": [{"active_mask":1,"padding":[0,0,0],"plasticity_rate":vec![0.0; crate::model::HIDDEN],"trace_retention":0.9,"learned_weight_retention":0.99,"mutation_scale":1.0}]
+            "traits": [{"active_mask":1,"padding":[0,0,0],"plasticity_rate":vec![0.0; crate::model::HIDDEN],"trace_retention":0.9,"learned_weight_retention":0.99,"parameter_mutation_rate":1.0,"parameter_mutation_step":1.0,"topology_mutation_rate":1.0}]
         }))
         .unwrap()
     }

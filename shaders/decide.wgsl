@@ -15,21 +15,17 @@ fn fast_output(o:u32,h:u32)->u32{return HIDDEN_COUNT*INPUT_COUNT+2u*HIDDEN_COUNT
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id:vec3<u32>){
- let i=id.x;if(i>=params.agent_count){return;}let a=agents[i];let p=perceptions[i];var d:Decision;d.target_id=INVALID;
+ let i=id.x;if(i>=params.agent_count){return;}let a=agents[i];let p=perceptions[i];var d:Decision;
  if(a.alive==0u){decisions[i]=d;return;}d.evaluated=1u;
  var x:array<f32,INPUT_COUNT>;
- x[0]=a.energy/100.0;x[1]=a.food/8.0;x[2]=p.resource_here;x[3]=a.age/10000.0;x[4]=a.velocity.x/1.2;x[5]=a.velocity.y/1.2;
+ x[0]=a.energy/100.0;x[1]=a.food/8.0;x[2]=p.resource_here;x[3]=a.age/10000.0;let self_velocity=world_to_body(a.velocity,a.heading);x[4]=self_velocity.x/1.2;x[5]=self_velocity.y/1.2;
  // Raw body state and consequences only: no named outcome, action, or
  // cooldown inputs.
  x[6]=select(0.0,(a.energy-bitcast<f32>(a.physical_previous[0]))/100.0,a.lived_ticks!=0u);
  x[7]=select(0.0,(a.food-bitcast<f32>(a.physical_previous[1]))/8.0,a.lived_ticks!=0u);
- x[8]=a.moved.x/1.2;x[9]=a.moved.y/1.2;
- x[10]=a.signal_payload;
- x[11]=select(0.0,f32(params.tick-a.signal_tick)/1000.0,a.signal_tick!=0u);
- x[12]=p.nearby_count/16.0;
- for(var k=13u;k<20u;k++){x[k]=0.0;}
- for(var k=0u;k<16u;k++){x[20u+k*2u]=p.regions[k].food;x[21u+k*2u]=p.regions[k].bodies/16.0;}
- for(var k=0u;k<8u;k++){let b=p.bodies[k];let n=52u+k*7u;if(b.slot<INVALID){x[n]=b.offset.x/a.sensor_radius;x[n+1u]=b.offset.y/a.sensor_radius;x[n+2u]=b.velocity.x/1.2;x[n+3u]=b.velocity.y/1.2;x[n+4u]=b.signal;x[n+5u]=1.0;x[n+6u]=b.signal_present;}}
+ let moved=world_to_body(a.moved,a.heading);x[8]=moved.x/1.2;x[9]=moved.y/1.2;
+ x[10]=p.nearby_count/16.0;
+ for(var k=0u;k<16u;k++){let n=11u+k*6u;let sample=p.regions[k];x[n]=sample.food;x[n+1u]=sample.bodies/16.0;x[n+2u]=sample.velocity.x/1.2;x[n+3u]=sample.velocity.y/1.2;x[n+4u]=sample.signal;x[n+5u]=sample.pressure;}
  for(var k=0u;k<INPUT_COUNT;k++){if(!finite(x[k])){d.invalid=1u;x[k]=0.0;}x[k]=clamp(x[k],-8.0,8.0);d.inputs[k]=x[k];}
  for(var h=0u;h<HIDDEN_COUNT;h++){
   if(!unit_active(a.active_mask,h)){continue;}var sum=gene(i,NODE_BIAS+h);
@@ -47,10 +43,9 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  for(var k=0u;k<6u;k++){d.scores[k]=d.outputs[k];}
  var best=d.outputs[NONE];d.selected_action=NONE;
  for(var k=TRANSFER;k<6u;k++){if(k==TRANSFER && params.resource_and_noise.w<0.5){continue;}if(k==EMIT && (params.resource_and_noise.w<0.5 || params.physical.y<0.5)){continue;}if(k==APPLY_FORCE && (params.resource_and_noise.w<0.5 || params.physical.x<0.5)){continue;}if(d.outputs[k]>best){best=d.outputs[k];d.selected_action=k;}}
- let raw=vec2<f32>(d.outputs[6],d.outputs[7]);d.movement=unit_vector(raw)*tanh(length(raw)*params.physical.z);d.amount=1.0/(1.0+exp(-clamp(d.outputs[8],-20.0,20.0)));d.payload=tanh(d.outputs[9]);
- let force_raw=vec2<f32>(d.outputs[FORCE_OUTPUT],d.outputs[FORCE_OUTPUT+1u]);d.force=unit_vector(force_raw)*tanh(length(force_raw));best=-3.4e38;
- for(var k=0u;k<8u;k++){if(p.bodies[k].slot<INVALID && d.outputs[10u+k]>best){best=d.outputs[10u+k];d.target_id=p.bodies[k].slot;d.target_generation=p.bodies[k].generation;}}
- if(d.invalid!=0u){d.selected_action=NONE;d.movement=vec2<f32>(0);d.amount=0.0;d.payload=0.0;d.force=vec2<f32>(0);for(var h=0u;h<HIDDEN_COUNT;h++){d.hidden[h]=0.0;d.candidate[h]=0.0;d.update_gates[h]=0.0;}}
+ d.movement=vec2<f32>(tanh(d.outputs[7]*params.physical.z),tanh(d.outputs[6]));d.amount=1.0/(1.0+exp(-clamp(d.outputs[8],-20.0,20.0)));d.payload=tanh(d.outputs[9]);
+ let force_raw=vec2<f32>(d.outputs[FORCE_OUTPUT],d.outputs[FORCE_OUTPUT+1u]);d.force=unit_vector(force_raw)*tanh(length(force_raw));let placement_raw=vec2<f32>(d.outputs[PLACEMENT_OUTPUT],d.outputs[PLACEMENT_OUTPUT+1u]);d.placement=unit_vector(placement_raw)*tanh(length(placement_raw));
+ if(d.invalid!=0u){d.selected_action=NONE;d.movement=vec2<f32>(0);d.amount=0.0;d.payload=0.0;d.force=vec2<f32>(0);d.placement=vec2<f32>(0);for(var h=0u;h<HIDDEN_COUNT;h++){d.hidden[h]=0.0;d.candidate[h]=0.0;d.update_gates[h]=0.0;}}
  decisions[i]=d;
 }
 

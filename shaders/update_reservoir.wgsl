@@ -11,13 +11,13 @@
 @group(0) @binding(8) var<storage,read_write> reservoir0:array<f32>;
 @group(0) @binding(9) var<storage,read_write> reservoir1:array<f32>;
 
-struct CognitiveTraits { active_mask:u32,padding:array<u32,3>,plasticity_rate:array<f32,HIDDEN_COUNT>,trace_retention:f32,learned_weight_retention:f32,mutation_scale:f32, };
+struct CognitiveTraits { active_mask:u32,padding:array<u32,3>,plasticity_rate:array<f32,HIDDEN_COUNT>,trace_retention:f32,learned_weight_retention:f32,parameter_mutation_rate:f32,parameter_mutation_step:f32,topology_mutation_rate:f32, };
 @group(0) @binding(10) var<storage,read_write> reservoir_traits:array<CognitiveTraits>;
 @group(0) @binding(11) var<storage,read_write> reservoir_rng:atomic<u32>;
 
 fn copy_traits(a:Agent)->CognitiveTraits {
  var t:CognitiveTraits;t.active_mask=a.active_mask;t.padding=array<u32,3>(0u,0u,0u);t.plasticity_rate=a.plasticity_rate;
- t.trace_retention=a.trace_retention;t.learned_weight_retention=a.learned_weight_retention;t.mutation_scale=a.mutation_scale;return t;
+ t.trace_retention=a.trace_retention;t.learned_weight_retention=a.learned_weight_retention;t.parameter_mutation_rate=a.parameter_mutation_rate;t.parameter_mutation_step=a.parameter_mutation_step;t.topology_mutation_rate=a.topology_mutation_rate;return t;
 }
 @group(0) @binding(12) var<storage,read_write> claims:array<atomic<u32>>;
 

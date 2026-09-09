@@ -1,6 +1,6 @@
 # Long-run testing
 
-Start a **New Game** for model `primitive-v30-raw-physical-reservoir`; old and
+Start a **New Game** for model `primitive-v35-body-frame-contact`; old and
 intermediate saves are incompatible. Existing saves are preserved.
 
 ## Desktop experiment
@@ -31,9 +31,12 @@ stability require this real desktop test; headless checks cannot establish them.
 This builds a release executable and copies it into a unique ignored
 `reports/soak-*` directory. It runs in 50,000-tick chunks, validates each checkpoint
 by loading it, and atomically advances `session.json`. It retains the newest two
-validated checkpoints, plus reports/logs. Each checkpoint is roughly 430 MiB;
-allow several GiB of free space. Incomplete interrupted attempts are preserved
-for diagnosis and can use additional disk space.
+validated checkpoints and at most 256 diagnostic files. Each checkpoint is roughly 410 MiB;
+allow several GiB of free space. Incomplete interrupted attempts remain for diagnosis. An 8 GiB run-directory
+budget stops further chunks before unlimited failed-attempt accumulation; one
+chunk may exceed the checked budget. A child-process timeout defaults to 1,800
+seconds, adjustable with `-ChunkTimeoutSeconds`; failures preserve the last
+validated receipt. The runner reports sampled peak process working set.
 
 The displayed directory contains the exact executable and its SHA-256 digest.
 Resume using the same binary even after source changes:
@@ -59,31 +62,42 @@ The headless test uses the same physical rules and transitions as the viewer,
 but does not test rendering, tray behavior or Explorer hosting. Reports and
 checkpoints are local artifacts; do not commit them.
 
-## Reachability evidence and interpretation
+## Current reachability evidence
 
-The regression came from the **uncommitted** transition away from the committed
-`codex/masked-learning-16` bootstrap: full .06 upkeep and maximum environmental
-strength were applied immediately. The committed branch was not used as the
-rapid-extinction baseline.
+The stationary v35 model was tested on Windows with an RTX 4070 SUPER, NVIDIA
+591.86 and Vulkan, using 1,000 seed-specific random founders, default contrast 1,
+stationary body upkeep 0.015, no imported policy and no interventions. The final
+20,000-tick probes include proportional gathering and the body-frame/contact
+migration. Seeds were fixed at 7, 42 and 123; no further viability tuning followed.
 
-Development probes used 1,000 fresh random founders, seeds 7, 42 and 123, an
-RTX 4070 SUPER / NVIDIA 591.86 / Vulkan on Windows, and no interventions:
+| Seed | Living at 20,000 | Births | Invalid outputs |
+| --- | ---: | ---: | ---: |
+| 7 | 2,766 | 23,632 | 0 |
+| 42 | 1,694 | 10,330 | 0 |
+| 123 | 3,514 | 19,473 | 0 |
 
-| Candidate rules | Seed 7 | Seed 42 | Seed 123 |
-| --- | --- | --- | --- |
-| Unfinished rules, upkeep .06, contrast 1 | Extinct at detection tick 3,056 | Extinct at 2,128 | Extinct at 2,512 |
-| Upkeep .015 alone, contrast 1 | 1 alive at 12,000 | Extinct at 10,416 | Extinct at 10,800 |
-| Upkeep .015, composable gathering, contrast .5 | 2,991 alive / 7,549 births at 20,000 | 1,450 alive / 3,231 births at 20,000 | 1,448 alive / 3,523 births at 20,000 |
+All exceed the maximum founding lifespan of 11,000 ticks, so these are descendant
+populations. This demonstrates nonzero reachable reproductive life cycles and
+supports removing the metabolism ramp. It does not establish a general success
+probability, intelligence, adaptation, or indefinite persistence. Extinction is
+allowed. Do not retune toward more attractive trajectories.
 
-These are exploratory development probes, not controlled estimates of each
-change's independent causal effect or the exact final-default configuration.
-Contrast redistributes the existing mean habitat rather than increasing it. The
-final model uses its documented .01→.06 body-upkeep ramp while gathering remains
-a signed controller request that can run alongside reproduction and movement.
-No founder policy, reward, ranking or online rescue was added.
+Local raw artifacts are `reports/final-v35-seed{7,42,123}.json`; they include actual
+settings and hardware. The small checked-in evidence ledger is in
+[implementation-checklist.md](implementation-checklist.md). Reports and checkpoints
+remain ignored local artifacts.
 
-All three populations persisted past the maximum founder lifespan (11,000 ticks).
-That demonstrates reachable multigeneration life cycles for these seeds, not
-intelligence, general adaptation or indefinite persistence. Extinction remains
-valid. Look for a mix of viable and failing lineages and strategies rather than
-optimizing the experiment toward a particular visible behavior.
+## Interpreting long runs
+
+Rolling headless reports include read-only reservoir genome diversity, mutation
+control/capacity histograms, current-world founder-family representation, changed
+pool records between samples, exact-copy births and topology events. They retain
+at most 4,096 recent report samples per invocation. A replaced slot may contain an
+identical record, and multiple replacements can occur between samples; observed
+changed slots undercount turnover. Successful births count replacement attempts.
+
+Observe freezing, explosion or collapse without adding rewards, ranking, novelty
+bonuses or escape mutations. Engineering stops are censored outcomes. Finite
+snapshot/report histories and process working-set samples help diagnose operation,
+but a short headless run cannot prove multi-day desktop or sleep/wake stability.
+Do not mark those checks complete without evidence from the target desktop.

@@ -682,7 +682,6 @@ impl Lens {
 fn action_name(action: u32) -> &'static str {
     match action {
         model::SIGNAL_OBSERVED => "signal observed",
-        model::SIGNAL_CONTROL => "signal control",
         model::MEMORY_SAMPLE => "memory sample",
         _ => model::ACTION_NAMES
             .get(action as usize)

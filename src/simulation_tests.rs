@@ -323,6 +323,8 @@ fn environment_rotation_preserves_body_traits_and_is_not_a_controller_input() {
         for (a, b) in original.iter().zip(rotated) {
             let mut expected = *a;
             expected.position = crate::environment::rotate_point(a.position, WORLD_SIZE, turns);
+            expected.heading =
+                (a.heading + turns as f32 * std::f32::consts::FRAC_PI_2) % std::f32::consts::TAU;
             assert_eq!(bytemuck::bytes_of(&expected), bytemuck::bytes_of(&b));
         }
         let params = params_for(10, 50_010, &settings, 1201);
@@ -333,7 +335,7 @@ fn environment_rotation_preserves_body_traits_and_is_not_a_controller_input() {
             params.environment,
             [1.0, 1.0, 1.0, settings.memory_write_energy]
         );
-        near(params.time_and_costs[3], 0.06);
+        near(params.time_and_costs[3], 0.015);
     }
     for shader in [
         include_str!("../shaders/decide.wgsl"),
@@ -475,9 +477,6 @@ fn directional_bank_gpu_probe() {
     let s = scene(&d, &q);
     let perception = |direction: Option<usize>, food: f32| {
         let mut p = PerceptionGpu::default();
-        for b in &mut p.bodies {
-            b.slot = MAX_AGENTS;
-        }
         for (k, region) in p.regions.iter_mut().enumerate() {
             let sector = direction.map(|d| [6, 0, 2, 4][d]);
             region.food = if sector == Some(k % 8) { food } else { 0.0 };
@@ -595,9 +594,6 @@ fn random_founders_are_finite_without_a_mandatory_food_response() {
             a.food = 0.0;
             put(&s, &q, i, a, g.as_slice().try_into().unwrap());
             perceptions[i].resource_here = 0.2;
-            for b in &mut perceptions[i].bodies {
-                b.slot = MAX_AGENTS;
-            }
             for region in &mut perceptions[i].regions {
                 region.food = 0.2;
             }
@@ -646,78 +642,51 @@ fn journey_observation_does_not_modify_physical_state() {
     );
 }
 
-/// Sensor invariance, without prescribing what random or evolved brains choose.
-/// Paired gradients cancel unconditional drift; only the food field changes.
+/// Rotate the resource grid, bodies, velocities, and headings together.
 #[test]
-fn fixed_compass_sensors_ignore_reserved_body_padding() {
+fn body_frame_perception_and_controller_are_quarter_turn_equivariant() {
     let (d, q) = gpu();
-    let s = scene(&d, &q);
-    let bank = crate::founders::bundled();
-    let mut summary = Vec::new();
-    for angle in [
-        0.0,
-        std::f32::consts::FRAC_PI_2,
-        std::f32::consts::PI,
-        -std::f32::consts::FRAC_PI_2,
-    ] {
-        for (slot, genome) in bank.genomes.iter().enumerate() {
-            let mut a = body([1026.0, 1026.0]);
-            a.energy = 50.0;
-            a.food = 1.0;
-            a.body_padding = angle;
-            a.lineage_id = slot as u32 + 1;
-            put(&s, &q, slot, a, genome.as_slice().try_into().unwrap());
+    let mut reference: Option<DecisionGpu> = None;
+    for turn in 0..4 {
+        let s = scene(&d, &q);
+        let rotate = |mut p: [f32; 2]| {
+            for _ in 0..turn {
+                p = [2048.0 - p[1], p[0]];
+            }
+            p
+        };
+        let vector = |mut p: [f32; 2]| {
+            for _ in 0..turn {
+                p = [-p[1], p[0]];
+            }
+            p
+        };
+        let mut a = body(rotate([602.0, 902.0]));
+        a.heading = turn as f32 * std::f32::consts::FRAC_PI_2;
+        a.velocity = vector([0.3, -0.2]);
+        a.moved = vector([0.1, 0.4]);
+        let mut rng = 42;
+        let genes = crate::brain::random_genome(&mut rng);
+        put(&s, &q, 0, a, &genes);
+        let mut other = body(rotate([607.0, 905.0]));
+        other.lineage_id = 2;
+        other.velocity = vector([-0.4, 0.1]);
+        put(&s, &q, 1, other, &fixed(0, [0.0; 2]));
+        let position = rotate([610.0, 906.0]);
+        let index = (position[1] / 4.0) as u64 * 512 + (position[0] / 4.0) as u64;
+        q.write_buffer(&s.resource_buffer, index * 4, bytemuck::bytes_of(&1000u32));
+        let (_, actual) = sensing::sense(&s, &d, &q);
+        if let Some(expected) = reference {
+            for (a, b) in actual.inputs.iter().zip(expected.inputs) {
+                near(*a, b);
+            }
+            for (a, b) in actual.outputs.iter().zip(expected.outputs) {
+                near(*a, b);
+            }
+        } else {
+            reference = Some(actual);
         }
-        let mut paired = Vec::new();
-        for sign in [1.0f32, -1.0] {
-            let resources: Vec<u32> = (0..512 * 512)
-                .map(|i| {
-                    let x = ((i % 512) as f32 + 0.5) * 4.0;
-                    ((0.4 + sign * (x - 1026.0) * 0.01).clamp(0.0, 1.0) * 1000.0).round() as u32
-                })
-                .collect();
-            q.write_buffer(&s.resource_buffer, 0, bytemuck::cast_slice(&resources));
-            let mut e = d.create_command_encoder(&Default::default());
-            s.dispatch(&mut e, "perceive", s.current_buffer, 4, 1);
-            s.dispatch(&mut e, "decide", s.current_buffer, 4, 1);
-            q.submit(Some(e.finish()));
-            let decisions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, bank.genomes.len());
-            assert!(decisions.iter().all(|v| v.invalid == 0));
-            // Food probes remain world-aligned regardless of reserved padding.
-            let east_slot = [0usize, 1, 2, 3]
-                .into_iter()
-                .max_by(|&a, &b| {
-                    decisions[0].inputs[21 + 3 * a].total_cmp(&decisions[0].inputs[21 + 3 * b])
-                })
-                .unwrap();
-            assert!(decisions[0].inputs[21 + 3 * east_slot] > 0.16);
-            paired.push(decisions);
-        }
-        let deltas: Vec<[f32; 2]> = paired[0]
-            .iter()
-            .zip(&paired[1])
-            .map(|(east, west)| {
-                [
-                    (east.movement[0] - west.movement[0]) * 0.5,
-                    (east.movement[1] - west.movement[1]) * 0.5,
-                ]
-            })
-            .collect();
-        let mean = |axis: usize| deltas.iter().map(|v| v[axis]).sum::<f32>() / deltas.len() as f32;
-        let toward = deltas.iter().filter(|v| v[0] > 0.0).count();
-        println!(
-            "reserved_padding={angle:.6} paired_food_response=({:.6},{:.6}) toward_east={toward}/{}",
-            mean(0),
-            mean(1),
-            deltas.len()
-        );
-        summary.push((mean(0), toward));
     }
-    // Every tested padding value leaves the food response unchanged.
-    for response in &summary[1..] {
-        near(response.0, summary[0].0);
-    }
-    // Sensor geometry must be invariant; random brains need not seek food.
 }
 
 #[test]
@@ -758,29 +727,14 @@ fn dead_slot_reuse_resets_experience_and_advances_incarnation() {
 #[test]
 fn fresh_world_defaults_match_documented_physical_settings() {
     let settings = SimSettings::default();
-    assert_eq!(settings.metabolic_cost, 0.06);
-    assert_eq!(settings.metabolic_ramp_ticks, 50_000);
-    near(crate::simulation::metabolic_cost_at(0, &settings), 0.01);
-    near(
-        crate::simulation::metabolic_cost_at(25_000, &settings),
-        0.035,
-    );
-    near(
-        crate::simulation::metabolic_cost_at(50_000, &settings),
-        0.06,
-    );
-    near(
-        crate::simulation::metabolic_cost_at(100_000, &settings),
-        0.06,
-    );
-    let mut fixed = settings.clone();
-    fixed.metabolic_ramp_ticks = 0;
-    near(crate::simulation::metabolic_cost_at(0, &fixed), 0.06);
+    assert_eq!(settings.metabolic_cost, 0.015);
+    for tick in [0, 25000, 50000, 100000] {
+        near(
+            params_for(tick, tick, &settings, 42).time_and_costs[3],
+            0.015,
+        );
+    }
     assert!(settings.social_actions_enabled);
-    assert!(settings.social_actions_enabled);
-    // The shader spreads reproduction over ticks 0–2,500, transfer over
-    // 52,500–65,000, signal over 65,000–80,000, and force over
-    // 80,000–100,000.
     assert_eq!(settings.movement_energy_cost, 0.01);
     assert_eq!(settings.motor_response_gain, 4.0);
     assert_eq!(settings.resource_regeneration, 0.01);
@@ -816,9 +770,11 @@ fn controller_feedback_uses_raw_state_changes_not_accounting_labels() {
     near(decision.inputs[8], 0.1 / 1.2);
     near(decision.inputs[9], -0.2 / 1.2);
     assert_eq!(decision.inputs[10], 0.0);
-    assert_eq!(decision.inputs[11], 0.0);
-    assert_eq!(decision.inputs[12], 0.0);
-    assert!(decision.inputs[13..20].iter().all(|&value| value == 0.0));
+    assert!(
+        decision.inputs[SAMPLE_BASE..]
+            .iter()
+            .all(|&value| value == 0.0)
+    );
 }
 
 #[test]
@@ -830,14 +786,8 @@ fn settings_require_explicit_motor_response_and_reject_bad_gains() {
     legacy
         .as_object_mut()
         .unwrap()
-        .remove("metabolic_ramp_ticks");
-    assert_eq!(
-        serde_json::from_value::<SimSettings>(legacy)
-            .unwrap()
-            .metabolic_ramp_ticks,
-        0,
-        "flat-metabolism checkpoints must retain their original physics"
-    );
+        .insert("metabolic_ramp_ticks".into(), 50000.into());
+    assert!(serde_json::from_value::<SimSettings>(legacy).is_err());
     let settings = SimSettings::default();
     for gain in [0.0, -1.0, 33.0, f32::NAN, f32::INFINITY] {
         let settings = SimSettings {
@@ -855,14 +805,14 @@ fn motor_response_is_continuous_optional_reversible_and_bounded() {
     s.settings.motor_response_gain = 8.0;
     for effort in [0.0f32, 0.01, -0.01, 4.0] {
         let mut g = fixed(0, [0.0; 2]);
-        g[OUTPUT_BIAS + 6] = effort;
+        g[OUTPUT_BIAS + 7] = effort;
         put(&s, &q, 0, body([602.0, 902.0]), &g);
         step(&mut s, &d, &q, 1);
         let a = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 1)[0];
-        near(a.velocity[0], (effort * 8.0).tanh() * 1.2);
+        near(a.velocity[0], (effort * 8.0).tanh() * 1.2 * 0.15);
         near(a.velocity[1], 0.0);
         assert!(a.velocity[0].abs() <= 1.2001);
-        near(a.spent, 0.06 + a.velocity[0].abs() * 0.01);
+        near(a.spent, 0.06 + a.velocity[0].abs() / 0.15 * 0.01);
     }
 }
 
@@ -949,8 +899,6 @@ fn concurrent_collection_and_pair_resolution_do_not_double_spend() {
     let mut decisions = vec![DecisionGpu::default(); 8];
     for item in &mut decisions[..7] {
         item.selected_action = 2;
-        item.target = 7;
-        item.target_generation = 1;
         item.amount = 1.0;
     }
     q.write_buffer(&s.decision_buffer, 0, bytemuck::cast_slice(&decisions));
@@ -961,10 +909,13 @@ fn concurrent_collection_and_pair_resolution_do_not_double_spend() {
     q.submit(Some(e.finish()));
     let bodies = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 8);
     near(bodies.iter().map(|a| a.food).sum(), 7.0);
-    near(bodies[7].food, 1.0);
+    assert!(
+        bodies.iter().any(|a| a.food != 1.0 && a.food != 0.0)
+            || bodies.iter().any(|a| a.food == 2.0)
+    );
 }
 #[test]
-fn stale_targets_out_of_range_and_disabled_actions_cannot_claim() {
+fn out_of_range_and_disabled_actions_cannot_claim() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     s.settings.force_enabled = false;
@@ -976,6 +927,8 @@ fn stale_targets_out_of_range_and_disabled_actions_cannot_claim() {
     put(&s, &q, 1, b, &fixed(0, [0.0; 2]));
     let run = |s: &Simulation, decisions: &[DecisionGpu]| {
         q.write_buffer(&s.decision_buffer, 0, bytemuck::cast_slice(decisions));
+        let _ = sensing::sense(s, &d, &q);
+        q.write_buffer(&s.decision_buffer, 0, bytemuck::cast_slice(decisions));
         let mut e = d.create_command_encoder(&Default::default());
         for pass in ["interact_clear", "interact_propose", "interact_resolve"] {
             s.dispatch(&mut e, pass, 0, MAX_AGENTS / 64, 1);
@@ -983,15 +936,11 @@ fn stale_targets_out_of_range_and_disabled_actions_cannot_claim() {
         q.submit(Some(e.finish()));
         read::<AgentGpu>(&d, &q, &s.agent_buffers[0], 2)
     };
-    let mut intent = DecisionGpu {
+    let intent = DecisionGpu {
         selected_action: 2,
-        target: 1,
-        target_generation: 2,
         amount: 1.0,
         ..Default::default()
     };
-    near(run(&s, &[intent])[1].food, 0.0);
-    intent.target_generation = 1;
     b.position = [620.0, 902.0];
     put(&s, &q, 1, b, &fixed(0, [0.0; 2]));
     near(run(&s, &[intent])[1].food, 0.0);
@@ -1000,8 +949,6 @@ fn stale_targets_out_of_range_and_disabled_actions_cannot_claim() {
     // Disabled force from receiver must not defeat a valid transfer in arbitration.
     let force = DecisionGpu {
         selected_action: 3,
-        target: 0,
-        target_generation: 1,
         amount: 1.0,
         ..Default::default()
     };
@@ -1255,7 +1202,6 @@ fn scene(d: &wgpu::Device, q: &wgpu::Queue) -> Simulation {
     s.settings.population = 0;
     s.settings.social_actions_enabled = true;
     s.settings.metabolic_cost = 0.06;
-    s.settings.metabolic_ramp_ticks = 0;
     // These fixtures isolate physical actions; cognitive costs have dedicated tests.
     s.settings.active_unit_upkeep = 0.0;
     s.settings.memory_write_energy = 0.0;
@@ -1277,7 +1223,6 @@ fn body(pos: [f32; 2]) -> AgentGpu {
         max_age: 11000.0,
         alive: 1,
         generation: 1,
-        target: MAX_AGENTS,
         lineage_id: 1,
         ..Default::default()
     }
@@ -1285,8 +1230,8 @@ fn body(pos: [f32; 2]) -> AgentGpu {
 fn fixed(action: usize, motion: [f32; 2]) -> [f32; GENOME_SIZE] {
     let mut g = crate::brain::blank();
     g[OUTPUT_BIAS + action] = 2.0;
-    g[OUTPUT_BIAS + 6] = motion[0];
-    g[OUTPUT_BIAS + 7] = motion[1];
+    g[OUTPUT_BIAS + 6] = motion[1];
+    g[OUTPUT_BIAS + 7] = motion[0];
     g[OUTPUT_BIAS + 8] = 3.0;
     if action == 3 {
         g[OUTPUT_BIAS + FORCE_OUTPUT] = 1.0;
@@ -1312,14 +1257,14 @@ fn temp(name: &str) -> std::path::PathBuf {
 
 #[test]
 fn layout_and_cli_contract() {
-    assert_eq!(GENOME_SIZE, 2612);
+    assert_eq!(GENOME_SIZE, 2494);
     assert_eq!(GENOME_BANK_COUNT, 2);
     assert_eq!(std::mem::size_of::<AgentGpu>(), 296);
-    assert_eq!(std::mem::offset_of!(AgentGpu, moved), 104);
-    assert_eq!(std::mem::offset_of!(AgentGpu, lineage_id), 112);
+    assert_eq!(std::mem::offset_of!(AgentGpu, moved), 96);
+    assert_eq!(std::mem::offset_of!(AgentGpu, lineage_id), 104);
     assert_eq!(std::mem::size_of::<PerceptionGpu>(), 400);
-    assert_eq!(std::mem::size_of::<DecisionGpu>(), 800);
-    assert_eq!(std::mem::size_of::<SelectionOutput>(), 1520);
+    assert_eq!(std::mem::size_of::<DecisionGpu>(), 752);
+    assert_eq!(std::mem::size_of::<SelectionOutput>(), 1464);
     assert_eq!(std::mem::size_of::<SimParams>(), 144);
     assert!(MAX_AGENTS as usize * GENOME_BANK_STRIDE * 4 <= 256 * 1024 * 1024);
     for flag in [
@@ -1400,11 +1345,11 @@ fn recurrent_cpu_gpu_parity_and_observer_isolation() {
     assert_eq!(&s.read_genomes(&d, &q, 1).unwrap(), &g);
 }
 #[test]
-fn perception_is_local_and_compass_aligned() {
+fn perception_is_local_and_body_relative() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let mut a = body([602.0, 902.0]);
-    a.body_padding = std::f32::consts::FRAC_PI_2;
+    a.heading = std::f32::consts::FRAC_PI_2;
     put(&s, &q, 0, a, &fixed(0, [0.0; 2]));
     let mut food = vec![0u32; 512 * 512];
     food[225 * 512 + 151] = 700;
@@ -1414,9 +1359,17 @@ fn perception_is_local_and_compass_aligned() {
     put(&s, &q, 1, far, &fixed(0, [0.0; 2]));
     step(&mut s, &d, &q, 1);
     let p = read::<PerceptionGpu>(&d, &q, &s.perception_buffer, 1)[0];
-    assert!(p.regions[0].food > 0.0);
-    assert!(p.regions.iter().skip(1).all(|p| p.food == 0.0));
-    assert!(p.bodies.iter().all(|b| b.slot == MAX_AGENTS));
+    assert!(
+        p.regions[6].food > 0.0,
+        "world-east food is body-north at +90° heading"
+    );
+    assert!(
+        p.regions
+            .iter()
+            .enumerate()
+            .all(|(i, p)| i == 6 || p.food == 0.0)
+    );
+    assert_eq!(p.nearby_count, 0.0);
     let renderer =
         crate::renderer::Renderer::new(&d, wgpu::TextureFormat::Rgba8UnormSrgb, &s, 800, 600);
     drop(renderer);
@@ -1573,7 +1526,7 @@ fn reproduction_is_requested_can_coexist_with_motion_and_conserves() {
         p.energy
             + c.energy
             + s.settings.metabolic_cost
-            + p.velocity[0].abs() * s.settings.movement_energy_cost
+            + p.velocity[0].abs() / 0.15 * s.settings.movement_energy_cost
             + 10.0,
         90.0 + 8.0 * p.ingested,
     );
@@ -1626,15 +1579,66 @@ fn transfer_and_signal_are_local_and_payload_is_controller_owned() {
     assert_eq!(bodies[1].signal_tick, 0);
     step(&mut s, &d, &q, 1);
     let decisions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 2);
-    let observed = decisions[1].inputs[NEIGHBOR_BASE..]
-        .chunks_exact(NEIGHBOR_INPUTS)
-        .find(|v| v[5] == 1.0)
+
+    let observed = decisions[1].inputs[SAMPLE_BASE..]
+        .chunks_exact(SAMPLE_INPUTS)
+        .find(|v| v[1] > 0.0)
         .unwrap();
-    assert_eq!(observed[6], 1.0);
     near(observed[4], (-0.7f32).tanh());
 }
+
 #[test]
-fn force_is_paid_displacement_without_recipient_damage_or_food_loss() {
+fn transfer_and_force_are_contact_local_across_the_torus_seam() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let a = body([1.0, 1024.0]);
+    let mut b = body([2047.0, 1024.0]);
+    b.food = 0.0;
+    b.lineage_id = 2;
+    put(&s, &q, 0, a, &fixed(2, [0.0; 2]));
+    put(&s, &q, 1, b, &fixed(0, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    let after_transfer = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
+    assert!(after_transfer[1].received > 0.0);
+
+    let mut actor = after_transfer[0];
+    actor.energy = 80.0;
+    let target = after_transfer[1];
+    put(&s, &q, 0, actor, &fixed(3, [0.0; 2]));
+    put(&s, &q, 1, target, &fixed(0, [0.0; 2]));
+    step(&mut s, &d, &q, 1);
+    assert_eq!(s.metrics(&d, &q).unwrap().events[5], 1);
+}
+
+#[test]
+fn gathering_effort_and_signal_amplitude_pay_their_physical_costs() {
+    let (d, q) = gpu();
+    let mut gather = scene(&d, &q);
+    let mut body_without_food = body([602.0, 902.0]);
+    body_without_food.food = 0.0;
+    put(&gather, &q, 0, body_without_food, &fixed(1, [0.0; 2]));
+    step(&mut gather, &d, &q, 1);
+    let after_gather = gather.agent_snapshot(&d, &q).unwrap()[0];
+    near(after_gather.energy, body_without_food.energy - 0.06 - 0.005);
+    assert_eq!(after_gather.collected, 0.0);
+
+    let emitted_energy = |payload: f32| {
+        let mut s = scene(&d, &q);
+        let mut genes = fixed(4, [0.0; 2]);
+        genes[OUTPUT_BIAS + 9] = payload;
+        let mut sender = body([602.0, 902.0]);
+        sender.food = 0.0;
+        put(&s, &q, 0, sender, &genes);
+        step(&mut s, &d, &q, 1);
+        s.agent_snapshot(&d, &q).unwrap()[0].energy
+    };
+    near(
+        emitted_energy(0.0) - emitted_energy(4.0),
+        0.02 * 4.0f32.tanh(),
+    );
+}
+#[test]
+fn force_is_paid_symmetric_impulse_without_recipient_food_loss() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let mut a = body([602.0, 902.0]);
@@ -1659,7 +1663,9 @@ fn force_is_paid_displacement_without_recipient_damage_or_food_loss() {
         agents[1].energy + s.settings.metabolic_cost,
         b.energy + 8.0 * agents[1].ingested,
     );
-    assert!(agents[1].position[0] > b.position[0]);
+    assert!(agents[1].velocity[0] > 0.0);
+    near(agents[0].velocity[0] + agents[1].velocity[0], 0.0);
+    assert_eq!(agents[1].position, b.position);
     near(
         (m.energy + m.force_energy_spent) as f32,
         100.0 + 8.0 * (agents[0].ingested + agents[1].ingested) - 2.0 * s.settings.metabolic_cost,
@@ -1667,7 +1673,7 @@ fn force_is_paid_displacement_without_recipient_damage_or_food_loss() {
 }
 
 #[test]
-fn force_direction_effort_and_available_energy_bound_actual_displacement() {
+fn force_direction_effort_and_available_energy_bound_impulse() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     for (effort, energy) in [(0.0f32, 10.0), (0.1, 10.0), (-1.0, 10.0), (1.0, 0.1)] {
@@ -1683,17 +1689,18 @@ fn force_direction_effort_and_available_energy_bound_actual_displacement() {
         put(&s, &q, 1, target, &fixed(0, [0.0; 2]));
         step(&mut s, &d, &q, 1);
         let after = read::<AgentGpu>(&d, &q, &s.agent_buffers[s.current_buffer], 2);
-        let displacement = after[1].position[0] - target.position[0];
+        let displacement = after[1].velocity[0];
+        near(after[0].velocity[0] + after[1].velocity[0], 0.0);
         let budget = (energy - s.settings.metabolic_cost).max(0.0);
         near(
             displacement,
-            effort.signum() * (3.0 * effort.tanh().abs()).min(budget / 0.2),
+            effort.signum() * (3.0 * effort.tanh().abs()).min((budget / 0.1).sqrt()),
         );
         near(after[0].energy + after[0].spent, energy);
         near(after[1].energy + after[1].spent, target.energy);
         near(
             after[0].spent,
-            s.settings.metabolic_cost + displacement.abs() * 0.2,
+            s.settings.metabolic_cost + displacement.powi(2) * 0.1,
         );
         assert!(after.iter().all(|a| a.energy >= 0.0 && a.food == 0.0));
     }
@@ -1716,21 +1723,18 @@ fn zero_signal_is_present_local_and_does_not_claim_a_physical_pair() {
     assert_eq!(after[0].signal_tick, 1);
     assert_eq!(after[0].signal_payload, 0.0);
     assert!(
-        after[0].position[0] > sender.position[0],
+        after[0].velocity[0] > 0.0,
         "Emission must not shield a body from contact"
     );
     step(&mut s, &d, &q, 1);
     let decisions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 3);
-    let observed = decisions[1].inputs[NEIGHBOR_BASE..]
-        .chunks_exact(NEIGHBOR_INPUTS)
-        .find(|v| v[5] == 1.0)
+    let observed = decisions[1].inputs[SAMPLE_BASE..]
+        .chunks_exact(SAMPLE_INPUTS)
+        .find(|v| v[1] > 0.0)
         .unwrap();
-    assert_eq!(observed[6], 1.0, "Zero-valued signal presence");
     assert_eq!(observed[4], 0.0);
     assert!(
-        decisions[2].inputs[NEIGHBOR_BASE..]
-            .iter()
-            .all(|v| *v == 0.0),
+        decisions[2].inputs[SAMPLE_BASE..].iter().all(|v| *v == 0.0),
         "No remote signal leakage"
     );
 }
@@ -1766,7 +1770,7 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v30-raw-physical-reservoir");
+    assert_eq!(MODEL_ID, "primitive-v35-body-frame-contact");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
     assert_eq!(crate::founders::bundled().version, FOUNDER_BANK_VERSION);
 }
@@ -1995,7 +1999,7 @@ fn batching_checkpoint_and_selection_preserve_state() {
 fn headless_extinction_stops_without_waiting_for_the_report_or_tick_limit() {
     for (label, population, metabolism, limit, expected_tick, reason) in [
         ("empty", "0", "0.06", "200000", 0, "extinction"),
-        ("dies", "1", "100", "200000", 192, "extinction"),
+        ("dies", "1", "100", "200000", 32, "extinction"),
         ("alive", "1", "0.06", "7", 7, "tick_limit"),
     ] {
         let report = temp(&format!("early-stop-{label}.json"));
@@ -2212,4 +2216,163 @@ fn birth_variation_preserves_parent_cost_and_resets_child_memory() {
             .iter()
             .all(|v| *v == 0.0)
     );
+}
+
+#[test]
+fn proportional_gathering_and_contact_are_independent_of_storage_order() {
+    let (d, q) = gpu();
+    let mut reference = None;
+    for order in [[0usize, 1, 2], [2, 0, 1]] {
+        let mut s = scene(&d, &q);
+        let mut bodies = [
+            body([602.0, 902.0]),
+            body([604.0, 902.0]),
+            body([606.0, 902.0]),
+        ];
+        for (i, b) in bodies.iter_mut().enumerate() {
+            b.lineage_id = i as u32 + 101;
+            b.food = 0.0;
+        }
+        for (slot, &identity) in order.iter().enumerate() {
+            put(
+                &s,
+                &q,
+                slot,
+                bodies[identity],
+                &fixed(if identity == 0 { 3 } else { 0 }, [0.0; 2]),
+            );
+        }
+        step(&mut s, &d, &q, 1);
+        let after = s.agent_snapshot(&d, &q).unwrap();
+        let mapped: Vec<_> = (0..3)
+            .map(|identity| after[order.iter().position(|&v| v == identity).unwrap()])
+            .collect();
+        assert!(mapped[1].velocity[0] > 0.0);
+        assert_eq!(mapped[2].velocity, [0.0; 2]);
+        if let Some(ref old) = reference {
+            for (a, b) in mapped.iter().zip(old) {
+                assert_eq!(bytemuck::bytes_of(a), bytemuck::bytes_of(b));
+            }
+        } else {
+            reference = Some(mapped);
+        }
+    }
+    for reverse in [false, true] {
+        let mut s = scene(&d, &q);
+        q.write_buffer(
+            &s.resource_buffer,
+            (225 * 512 + 150) * 4,
+            bytemuck::bytes_of(&17u32),
+        );
+        for i in 0..8 {
+            let mut a = body([602.0, 902.0]);
+            a.food = 0.0;
+            a.lineage_id = if reverse { 8 - i as u32 } else { i as u32 + 1 };
+            put(&s, &q, i, a, &fixed(1, [0.0; 2]));
+        }
+        step(&mut s, &d, &q, 1);
+        for a in s
+            .agent_snapshot(&d, &q)
+            .unwrap()
+            .iter()
+            .filter(|a| a.alive != 0)
+        {
+            near(a.collected, 0.002);
+        }
+        assert_eq!(
+            read::<u32>(&d, &q, &s.resource_buffer, 512 * 512)[225 * 512 + 150],
+            1
+        );
+    }
+}
+
+#[test]
+fn contact_impulse_and_offspring_placement_follow_parent_heading() {
+    let (d, q) = gpu();
+    for heading in [0.0f32, std::f32::consts::FRAC_PI_2, 1.234] {
+        let mut s = scene(&d, &q);
+        // Six-unit contact must work even when occupancy cells are one unit wide.
+        s.settings.habitat_width = 256.0;
+        s.settings.habitat_height = 256.0;
+        let mut a = body([100.0, 100.0]);
+        a.heading = heading;
+        a.food = 0.0;
+        let mut b = body([105.0, 100.0]);
+        b.lineage_id = 2;
+        b.food = 0.0;
+        put(&s, &q, 0, a, &fixed(3, [0.0; 2]));
+        put(&s, &q, 1, b, &fixed(0, [0.0; 2]));
+        step(&mut s, &d, &q, 1);
+        let after = s.agent_snapshot(&d, &q).unwrap();
+        let impulse = 3.0 * 1.0f32.tanh();
+        near(after[1].velocity[0], heading.cos() * impulse);
+        near(after[1].velocity[1], heading.sin() * impulse);
+        for axis in 0..2 {
+            near(after[0].velocity[axis] + after[1].velocity[axis], 0.0);
+        }
+        let mut s = scene(&d, &q);
+        let mut a = body([2047.5, 902.0]);
+        a.heading = heading;
+        a.food = 0.0;
+        let mut genes = fixed(5, [0.0; 2]);
+        genes[OUTPUT_BIAS + PLACEMENT_OUTPUT] = 4.0;
+        put(&s, &q, 0, a, &genes);
+        step(&mut s, &d, &q, 1);
+        let after = s.agent_snapshot(&d, &q).unwrap();
+        let child = after
+            .iter()
+            .find(|a| a.alive != 0 && a.ancestry_depth == 1)
+            .unwrap();
+        let distance = 2.0 * 4.0f32.tanh();
+        near(
+            child.position[0],
+            (a.position[0] + distance * heading.cos()).rem_euclid(2048.0),
+        );
+        near(
+            child.position[1],
+            (a.position[1] + distance * heading.sin()).rem_euclid(2048.0),
+        );
+        assert_eq!(child.velocity, [0.0; 2]);
+        assert_eq!(child.hidden, [0.0; HIDDEN]);
+        assert_eq!(child.age, 0.0);
+    }
+}
+
+#[test]
+fn assisted_provenance_survives_restarts_history_eviction_and_checkpoint() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings.population = 1;
+    s.settings.metabolic_cost = 100.0;
+    s.reset(&q);
+    s.apply_resource_shock(&d, &q, [100.0, 100.0], 1.0, 1.0);
+    for _ in 0..66 {
+        step(&mut s, &d, &q, 1);
+        s.advance_world(&d, &q).unwrap();
+        assert!(s.assisted);
+    }
+    assert_eq!(s.progress.history.len(), 64);
+    assert!(s.progress.history.iter().all(|o| o.assisted));
+    let path = temp("assisted-continuity.checkpoint");
+    s.save_checkpoint(&d, &q, &path).unwrap();
+    s.reset(&q);
+    s.load_checkpoint(&q, &path).unwrap();
+    assert!(s.assisted);
+    step(&mut s, &d, &q, 1);
+    s.advance_world(&d, &q).unwrap();
+    assert!(s.assisted);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn accounting_counter_horizon_is_an_engine_stop_not_extinction() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    put(&s, &q, 0, body([602.0, 902.0]), &fixed(0, [0.0; 2]));
+    q.write_buffer(&s.death_stats_buffer, 24 * 4, bytemuck::bytes_of(&u32::MAX));
+    step(&mut s, &d, &q, 1);
+    assert!(s.refresh_engine_status(&d, &q).unwrap());
+    assert!(s.complete_world(&d, &q).is_err());
+    assert!(s.advance_world(&d, &q).is_err());
+    assert!(s.progress.history.is_empty());
 }

@@ -25,6 +25,7 @@ pub struct WorldMetrics {
     pub weather_loss: f64,
     pub events: [u32; 8],
     pub signals: u32,
+    pub exact_copy_births: u32,
     pub stocked_agents: u64,
     pub hungry_agents: u64,
     pub moving_agents: u64,
@@ -54,7 +55,7 @@ pub struct EvolutionSnapshot {
     pub parent_lineages_present: u64,
     pub maximum_ancestry_depth: u32,
     pub mean_ancestry_depth: f64,
-    /// Mean last-tick voluntary displacement for living agents.
+    /// Mean last-tick actual velocity for living agents.
     pub mean_velocity_x: f64,
     pub mean_velocity_y: f64,
     /// Direction counts use an intentionally tiny horizontal dead zone.
@@ -67,7 +68,7 @@ pub struct EvolutionSnapshot {
     /// Mean normalized local food-gradient direction seen under living bodies.
     pub mean_food_gradient_x: f64,
     pub mean_food_gradient_y: f64,
-    /// Mean alignment of voluntary velocity with the local food gradient.
+    /// Mean alignment of actual velocity with the local food gradient.
     /// Positive values move up-gradient; negative values move away.
     pub food_gradient_alignment: f64,
     pub food_gradient_samples: u64,
@@ -87,8 +88,8 @@ fn local_food_gradient(food: &[u32], position: [f32; 2], world_size: [f32; 2]) -
         .floor()
         .clamp(0.0, (grid - 1) as f32) as i32;
     let sample = |x: i32, y: i32| -> f64 {
-        let x = x.clamp(0, grid as i32 - 1) as usize;
-        let y = y.clamp(0, grid as i32 - 1) as usize;
+        let x = x.rem_euclid(grid as i32) as usize;
+        let y = y.rem_euclid(grid as i32) as usize;
         food[y * grid + x] as f64
     };
     [
@@ -321,6 +322,7 @@ impl Simulation {
             force_attempts: counters[12],
             force_energy_spent: counters[13] as f64 / 1000.0,
             forced_distance: counters[15] as f64 / 1000.0,
+            exact_copy_births: counters[37],
             topology_activations: counters[32],
             topology_retirals: counters[33],
             cognitive_write_energy: counters[34] as f64 / 1000.0,
@@ -525,7 +527,7 @@ impl Simulation {
                     a.max_speed,
                     a.sensor_radius,
                     a.max_age,
-                    a.body_padding,
+                    a.heading,
                     a.signal_payload,
                     a.collected,
                     a.ingested,
@@ -556,8 +558,12 @@ impl Simulation {
                 || !a.learned_weight_retention.is_finite()
                 || !(0.0..=0.9999).contains(&a.trace_retention)
                 || !(0.0..=0.9999).contains(&a.learned_weight_retention)
-                || !a.mutation_scale.is_finite()
-                || !(0.25..=4.0).contains(&a.mutation_scale)
+                || !a.parameter_mutation_rate.is_finite()
+                || !(0.25..=4.0).contains(&a.parameter_mutation_rate)
+                || !a.parameter_mutation_step.is_finite()
+                || !(0.25..=4.0).contains(&a.parameter_mutation_step)
+                || !a.topology_mutation_rate.is_finite()
+                || !(0.25..=4.0).contains(&a.topology_mutation_rate)
                 || a.plasticity_rate
                     .iter()
                     .any(|v| !v.is_finite() || v.abs() > 0.2)
@@ -619,11 +625,10 @@ impl Simulation {
                 || p.regions.iter().any(|s| {
                     !s.food.is_finite() || !s.bodies.is_finite() || s.food < 0.0 || s.bodies < 0.0
                 })
-                || p.bodies.iter().any(|b| {
-                    !matches!(b.signal_present, 0.0 | 1.0)
-                        || !b.signal.is_finite()
-                        || b.offset.iter().chain(&b.velocity).any(|v| !v.is_finite())
-                        || b.slot > MAX_AGENTS
+                || p.regions.iter().any(|b| {
+                    !b.signal.is_finite()
+                        || !b.pressure.is_finite()
+                        || b.velocity.iter().any(|v| !v.is_finite())
                 })
             {
                 return Err("Invalid checkpoint perception".into());
@@ -636,7 +641,6 @@ impl Simulation {
             if d.evaluated > 1
                 || d.selected_action > 5
                 || d.invalid > 1
-                || d.target > MAX_AGENTS
                 || d.update_gates
                     .iter()
                     .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
@@ -644,6 +648,7 @@ impl Simulation {
                     .iter()
                     .chain(&d.movement)
                     .chain(&d.force)
+                    .chain(&d.placement)
                     .chain(&d.scores)
                     .chain(&d.hidden)
                     .chain(&d.inputs)

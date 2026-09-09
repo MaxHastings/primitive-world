@@ -54,22 +54,21 @@ fn inherit_child(ci:u32,pi:u32,seed:u32) {
  var child=agents[ci];
  for(var k=0u;k<GENOME_SIZE;k++){set_gene(ci,k,gene(pi,k));}
  var rng=seed;let capacity=countOneBits(child.active_mask);
- if(capacity>1u){if(mutation_draw(&rng)<0.01){
+ if(capacity>1u){if(mutation_draw(&rng)<min(0.01*child.topology_mutation_rate,1.0)){
   let h=nth_set(child.active_mask,u32(mutation_draw(&rng)*f32(capacity)));
-  child.active_mask&=~(1u<<h);atomicAdd(&stats[33],1u);
+  child.active_mask&=~(1u<<h);counter_add(33,1u);
  }}
  let remaining=countOneBits(child.active_mask);
- if(remaining<HIDDEN_COUNT){if(mutation_draw(&rng)<0.01){
+ if(remaining<HIDDEN_COUNT){if(mutation_draw(&rng)<min(0.01*child.topology_mutation_rate,1.0)){
   let donor=nth_set(child.active_mask,u32(mutation_draw(&rng)*f32(remaining)));
   let new_unit=nth_clear(child.active_mask,u32(mutation_draw(&rng)*f32(HIDDEN_COUNT-remaining)));
   clone_unit(ci,donor,new_unit,child.active_mask,&rng);
-  child.active_mask|=1u<<new_unit;child.plasticity_rate[new_unit]=child.plasticity_rate[donor];atomicAdd(&stats[32],1u);
+  child.active_mask|=1u<<new_unit;child.plasticity_rate[new_unit]=child.plasticity_rate[donor];counter_add(32,1u);
  }}
  // A birth may be an exact copy. Mutation events include small scale drift;
  // no per-birth temperature redraw or compulsory mutation is applied.
- let scale=child.mutation_scale;
- let magnitude=max(0.03*scale,0.000001);
- let draws=u32(mutation_draw(&rng)<min(0.25*scale,1.0));
+ let magnitude=max(0.03*child.parameter_mutation_step,0.000001);
+ let draws=u32(mutation_draw(&rng)<min(0.25*child.parameter_mutation_rate,1.0));
  let expressed_count=countOneBits(child.active_mask);
  let count=expressed_count*(2u+INPUT_COUNT+2u*expressed_count+OUTPUT_COUNT)+OUTPUT_COUNT;
  for(var n=0u;n<draws;n++){
@@ -80,7 +79,17 @@ fn inherit_child(ci:u32,pi:u32,seed:u32) {
   child.plasticity_rate[h]=clamp(child.plasticity_rate[h]+(mutation_draw(&rng)*2.0-1.0)*magnitude,-0.2,0.2);
   child.trace_retention=clamp(child.trace_retention+(mutation_draw(&rng)*2.0-1.0)*magnitude,0.0,0.9999);
   child.learned_weight_retention=clamp(child.learned_weight_retention+(mutation_draw(&rng)*2.0-1.0)*magnitude,0.0,0.9999);
-  child.mutation_scale=clamp(child.mutation_scale*(0.97+0.06*mutation_draw(&rng)),0.25,4.0);}
+  child.parameter_mutation_rate=clamp(child.parameter_mutation_rate*(0.97+0.06*mutation_draw(&rng)),0.25,4.0);
+  child.parameter_mutation_step=clamp(child.parameter_mutation_step*(0.97+0.06*mutation_draw(&rng)),0.25,4.0);
+  child.topology_mutation_rate=clamp(child.topology_mutation_rate*(0.97+0.06*mutation_draw(&rng)),0.25,4.0);}
+ // Read-only accounting: exact inherited equality, including latent genes.
+ let parent=agents[pi];var exact=child.active_mask==parent.active_mask
+  && child.trace_retention==parent.trace_retention && child.learned_weight_retention==parent.learned_weight_retention
+  && child.parameter_mutation_rate==parent.parameter_mutation_rate && child.parameter_mutation_step==parent.parameter_mutation_step
+  && child.topology_mutation_rate==parent.topology_mutation_rate;
+ for(var h=0u;h<HIDDEN_COUNT;h++){exact=exact && child.plasticity_rate[h]==parent.plasticity_rate[h];}
+ for(var k=0u;k<GENOME_SIZE;k++){exact=exact && bitcast<u32>(gene(ci,k))==bitcast<u32>(gene(pi,k));}
+ counter_add(37,u32(exact));
  agents[ci]=child;
 }
 @compute @workgroup_size(64)
@@ -89,5 +98,13 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
  let parent_rank=(rank+hash_u32(params.tick)%birth_prefix[INVALID-1u])%birth_prefix[INVALID-1u];
  let pi=parents[parent_rank];let ci=free_indices[rank];let child=agents[ci];
  if(child.alive==0u || child.birth_tick!=params.tick || child.birth_parent_slot!=pi){return;}
- inherit_child(ci,pi,agents[pi].rng^ci^params.tick);
+ inherit_child(ci,pi,agents[pi].rng^params.tick);
+}
+
+// Accounting horizons are explicit engine limits, never ecological extinction.
+// Food low-word counter 0 has the explicitly maintained high word at 14.
+fn counter_add(index:u32,value:u32)->u32 {
+ let prior=atomicAdd(&stats[index],value);
+ if(index!=0u && prior>0xffffffffu-value){atomicStore(&stats[36],1u);}
+ return prior;
 }

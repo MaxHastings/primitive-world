@@ -107,10 +107,11 @@ pub fn observe_cached(
             name: format!("survivors-seed{}-tick{}", sim.seed, sim.tick),
             source_seed: sim.seed,
             source_tick: sim.tick,
+            assisted: sim.assisted,
             genomes,
             traits: chosen.iter().map(|&slot| {
                 let a = agents[slot];
-                crate::model::CognitiveTraits { active_mask: a.active_mask, padding: [0; 3], plasticity_rate: a.plasticity_rate, trace_retention: a.trace_retention, learned_weight_retention: a.learned_weight_retention, mutation_scale: a.mutation_scale }
+                crate::model::CognitiveTraits { active_mask: a.active_mask, padding: [0; 3], plasticity_rate: a.plasticity_rate, trace_retention: a.trace_retention, learned_weight_retention: a.learned_weight_retention, parameter_mutation_rate: a.parameter_mutation_rate, parameter_mutation_step: a.parameter_mutation_step, topology_mutation_rate: a.topology_mutation_rate }
             }).collect(),
         },
         source_population: agents.iter().filter(|a| a.alive != 0).count(),

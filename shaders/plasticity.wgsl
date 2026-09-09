@@ -54,9 +54,17 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
  }
  changes[h]=change;workgroupBarrier();
  if(h==0u){var total=0.0;for(var k=0u;k<32u;k++){total+=changes[k];}let cost=total*params.environment.w;var a=after[i];let paid=min(a.energy,cost);
-  atomicAdd(&stats[34],u32(round(paid*1000.0)));a.spent+=paid;a.energy=max(0.0,a.energy-cost);
-  if(a.energy<=0.0){a.alive=0u;atomicAdd(&stats[1],1u);}after[i]=a;
+  counter_add(34,u32(round(paid*1000.0)));a.spent+=paid;a.energy=max(0.0,a.energy-cost);
+  if(a.energy<=0.0){a.alive=0u;counter_add(1,1u);}after[i]=a;
  }
 }
 fn fast_value(slot:u32,index:u32)->f32 {let at=slot*FAST_BANK_STRIDE+index%FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){return fast0[at];}return fast1[at];}
 fn set_fast(slot:u32,index:u32,value:f32) {let at=slot*FAST_BANK_STRIDE+index%FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){fast0[at]=value;}else{fast1[at]=value;}}
+
+// Accounting horizons are explicit engine limits, never ecological extinction.
+// Food low-word counter 0 has the explicitly maintained high word at 14.
+fn counter_add(index:u32,value:u32)->u32 {
+ let prior=atomicAdd(&stats[index],value);
+ if(index!=0u && prior>0xffffffffu-value){atomicStore(&stats[36],1u);}
+ return prior;
+}

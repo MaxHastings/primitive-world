@@ -1,5 +1,55 @@
 # Changelog
 
+
+## Body-frame/contact generation (v35; checkpoint 55; founder bank 20)
+
+Complete the torus, independent mutation controls, generic body-relative samples,
+contact impulses and controlled offspring-placement migrations. Remove target
+slots, unused controller inputs, self-signal history and the metabolism ramp.
+Stationary upkeep 0.015 supports random-founder reproductive life cycles across
+three fixed seeds without interventions.
+
+Make gathering proportional under contention, preserve assistance across worlds
+and exports, fix Rust/WGSL body alignment and initial soil checkpoint bounds, and
+stop explicitly at accounting horizons. Add read-only search-health reporting,
+bounded headless history, soak retention/timeouts and physics/heredity regressions.
+Document retained lifecycle assumptions and distinguish verified core behavior
+from pending multi-day, wallpaper and sleep/wake validation.
+
+## Unreleased — v34 independent topology mutation
+
+- Add a third bounded inherited topology-mutation rate, independent of
+  parameter mutation frequency and step size, for structural activation and
+  retirement.
+- Bump the model to `primitive-v34-independent-topology-mutation`, founder-bank
+  format 19, and checkpoint format 54.
+
+## Unreleased — v33 separated parameter mutation
+
+- Split the inherited parameter-mutation multiplier into independent bounded
+  frequency and step-size traits, with matching CPU/GPU inheritance laws.
+- Bump the model to `primitive-v33-separated-mutation` and checkpoint format 53.
+
+## Unreleased — v32 unbiased actuation
+
+- Remove privileged controller inputs for an organism's previous signal and
+  elapsed signal time; transmission state remains world-private.
+- Make gathering effort directly control collection rate and charge a small
+  proportional effort cost. Signal emission now charges activation plus
+  amplitude cost.
+- Bump the model to `primitive-v32-unbiased-actuation` and checkpoint format 52.
+
+## Unreleased — v31 toroidal physics
+
+- Make local body sensing, food sensing, transfer, force, weather patches,
+  resource interventions, picking, and journey diagnostics use one wrapped
+  shortest-distance geometry. Sensor and occupancy broad-phase traversal now
+  crosses the world seam rather than clipping there.
+- Make periodic weather centers take their shortest toroidal path and make
+  procedural ecological waves periodic at the seam.
+- Bump the model to `primitive-v31-toroidal-physics` and checkpoint format to
+  51; prior checkpoints are preserved but rejected.
+
 ## Unreleased — v30 raw-physical consolidation
 
 - Restore the deliberately small v29→v30 behavioral change: output 1 is only

@@ -105,8 +105,9 @@ archives elsewhere yourself, and preserve checksums/source settings when sharing
 - Five-minute saves are usually too far apart to reconstruct individual lives.
 - Population relocation can reflect birth/death turnover rather than the same
   individuals crossing the map. Use identity-aware journey traces for that claim.
-- Several cumulative GPU counters are 32-bit and can wrap on long, dense runs.
-  Do not interpret a wrapped count as a decrease in activity or perfect accounting.
+- Accounting counters have explicit finite horizons. Overflow latches an engine
+  stop; do not interpret the censored boundary as ecological extinction. Food
+  ingestion uses a paired low/high counter.
 - GPU contention can vary population trajectories. Seeded does not promise
   bitwise replay across devices or schedules.
 - Changed physical settings or manual food interventions confound simple
@@ -117,4 +118,4 @@ capacity distribution and per-living-body sums of absolute recurrent and learned
 state. Cognitive upkeep and write-energy counters are quantized to thousandths.
 Memory samples use the effective inherited-plus-learned readout; their context
 contains carried food and underfoot resource, and actual_action records the
-selected action. None of these diagnostics feeds the controller or selector.
+selected action. None of these diagnostics feeds the controller or hereditary pool.

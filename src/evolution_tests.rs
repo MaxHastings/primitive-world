@@ -13,13 +13,20 @@ fn streamed_birth_mutation_matches_cpu_and_preserves_parent_parameters() {
         .unwrap();
     let mut expected = parent;
     let mut expected_traits = agents[0].cognitive_traits();
-    crate::brain::mutate_inherited(
-        &mut expected,
-        &mut expected_traits,
-        agents[0].rng ^ slot as u32,
-    );
+    crate::brain::mutate_inherited(&mut expected, &mut expected_traits, agents[0].rng);
     assert_eq!(agents[slot].active_mask, expected_traits.active_mask);
-    near(agents[slot].mutation_scale, expected_traits.mutation_scale);
+    near(
+        agents[slot].parameter_mutation_rate,
+        expected_traits.parameter_mutation_rate,
+    );
+    near(
+        agents[slot].parameter_mutation_step,
+        expected_traits.parameter_mutation_step,
+    );
+    near(
+        agents[slot].topology_mutation_rate,
+        expected_traits.topology_mutation_rate,
+    );
     let genes = s.read_genomes(&d, &q, slot + 1).unwrap();
     assert_eq!(&genes[..GENOME_SIZE], &parent);
     for (x, y) in genes[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE]
@@ -46,7 +53,9 @@ fn masked_inheritance_matches_gpu_across_capacities_and_topology_changes() {
         let g = crate::brain::random_genome(&mut rng);
         let mut a = body([100.0, 100.0]);
         a.active_mask = crate::brain::random_active_mask(&mut rng);
-        a.mutation_scale = if i % 2 == 0 { 0.25 } else { 4.0 };
+        a.parameter_mutation_rate = if i % 2 == 0 { 0.25 } else { 4.0 };
+        a.parameter_mutation_step = if i % 2 == 0 { 4.0 } else { 0.25 };
+        a.topology_mutation_rate = if i % 3 == 0 { 0.25 } else { 4.0 };
         a.plasticity_rate = [0.01; HIDDEN];
         a.trace_retention = 0.9;
         a.learned_weight_retention = 0.99;
@@ -110,7 +119,18 @@ fn masked_inheritance_matches_gpu_across_capacities_and_topology_changes() {
             actual_traits.learned_weight_retention,
             traits.learned_weight_retention,
         );
-        near(actual_traits.mutation_scale, traits.mutation_scale);
+        near(
+            actual_traits.parameter_mutation_rate,
+            traits.parameter_mutation_rate,
+        );
+        near(
+            actual_traits.parameter_mutation_step,
+            traits.parameter_mutation_step,
+        );
+        near(
+            actual_traits.topology_mutation_rate,
+            traits.topology_mutation_rate,
+        );
     }
     assert!(exact > 0 && mutated > 0);
 }
@@ -260,7 +280,7 @@ fn cooperative_decisions_match_serial_reference_with_masks_and_learning() {
     let actual = read::<DecisionGpu>(&d, &q, &s.decision_buffer, 40);
     for (a, b) in actual.iter().zip(reference) {
         assert_eq!(a.selected_action, b.selected_action);
-        assert_eq!(a.target, b.target);
+        assert_eq!(a.placement, b.placement);
         assert_eq!(a.invalid, b.invalid);
         for (x, y) in a
             .hidden
@@ -302,22 +322,22 @@ fn simultaneous_births_replace_whole_reservoir_records_deterministically() {
         v = v.wrapping_mul(0x27d4eb2d);
         v ^ (v >> 15)
     };
-    let mut winners = std::collections::BTreeMap::new();
+    let mut replacement_claims = std::collections::BTreeMap::new();
     for rank in 0..COUNT {
         assert_eq!(agents[COUNT + rank].ancestry_depth, 1);
-        winners.insert(
+        replacement_claims.insert(
             hash(before.2.wrapping_add(rank as u32)) as usize % HEREDITARY_RESERVOIR_SIZE as usize,
             COUNT + rank,
         );
     }
     assert!(
-        winners.len() < COUNT,
+        replacement_claims.len() < COUNT,
         "fixture exercises replacement collisions"
     );
     assert_eq!(after.2, before.2.wrapping_add(COUNT as u32));
     for slot in 0..HEREDITARY_RESERVOIR_SIZE as usize {
         let range = slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE;
-        if let Some(&child) = winners.get(&slot) {
+        if let Some(&child) = replacement_claims.get(&slot) {
             assert_eq!(
                 &after.0[range],
                 &genes[child * GENOME_SIZE..(child + 1) * GENOME_SIZE]
@@ -428,10 +448,7 @@ fn gathering_composes_with_reproduction_but_requires_a_neural_request() {
         let agents = s.agent_snapshot(&d, &q).unwrap();
         assert_eq!(agents[0].action, 5);
         assert_eq!(agents[1].ancestry_depth, 1);
-        near(
-            agents[0].collected,
-            (25.0 * (1.0 / (1.0 + (-3.0f32).exp())) * effort) as u32 as f32 / 1000.0,
-        );
+        near(agents[0].collected, (25.0 * effort) as u32 as f32 / 1000.0);
         assert_eq!(agents[0].collected > 0.0, effort > 0.0);
     }
 }

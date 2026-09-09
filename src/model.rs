@@ -1,13 +1,10 @@
-//! primitive-world: fixed-frame sensing, chosen gathering, automatic digestion.
+//! primitive-world: body-relative sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
 /// Persistence accepts only this model's controller and lifetime-state layout.
-pub const MODEL_ID: &str = "primitive-v30-raw-physical-reservoir";
-pub const FOUNDER_BANK_VERSION: u32 = 18;
-pub const CHECKPOINT_VERSION: u32 = 50;
-pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD050";
-/// Initial body upkeep while a fresh world establishes its first life cycles.
-pub const METABOLIC_START_COST: f32 = 0.01;
-pub const DEFAULT_METABOLIC_RAMP_TICKS: u32 = 50_000;
+pub const MODEL_ID: &str = "primitive-v35-body-frame-contact";
+pub const FOUNDER_BANK_VERSION: u32 = 20;
+pub const CHECKPOINT_VERSION: u32 = 55;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD055";
 /// Fixed rolling hereditary storage; independent of body-engine capacity.
 pub const HEREDITARY_RESERVOIR_SIZE: u32 = 4_096;
 /// Incremental maintenance paid for each expressed recurrent unit.
@@ -26,19 +23,29 @@ pub const OCCUPANCY_GRID: u32 = 256;
 pub const SPATIAL_CELL_COUNT: u32 = OCCUPANCY_GRID * OCCUPANCY_GRID;
 pub const WORLD_SIZE: f32 = 2048.0;
 /// Cumulative physical and cognitive accounting counters.
-pub const DEATH_STATS_COUNT: u32 = 37;
+pub const DEATH_STATS_COUNT: u32 = 38;
 pub const EVENT_RING_SIZE: u32 = 65_536;
 pub const SECTORS: usize = 8;
-pub const SECTOR_NAMES: [&str; SECTORS] = ["E", "SE", "S", "SW", "W", "NW", "N", "NE"];
+pub const BEARING_NAMES: [&str; SECTORS] = [
+    "forward",
+    "forward-right",
+    "right",
+    "rear-right",
+    "rear",
+    "rear-left",
+    "left",
+    "forward-left",
+];
 pub const REGIONS: usize = SECTORS * 2;
-pub const NEIGHBOR_BASE: usize = 52;
-pub const NEIGHBOR_INPUTS: usize = 7;
-pub const INPUTS: usize = NEIGHBOR_BASE + SECTORS * NEIGHBOR_INPUTS;
+pub const SAMPLE_BASE: usize = 11;
+pub const SAMPLE_INPUTS: usize = 6;
+pub const INPUTS: usize = SAMPLE_BASE + REGIONS * SAMPLE_INPUTS;
 /// The model has sixteen equivalent potential units.  The inherited active
 /// mask, not this engineering ceiling, determines an organism's capacity.
 pub const HIDDEN: usize = 16;
-pub const OUTPUTS: usize = 20;
-pub const FORCE_OUTPUT: usize = 18;
+pub const OUTPUTS: usize = 14;
+pub const FORCE_OUTPUT: usize = 10;
+pub const PLACEMENT_OUTPUT: usize = 12;
 pub const NODE_BIAS: usize = 0;
 pub const GATE_BIAS: usize = HIDDEN;
 pub const OUTPUT_BIAS: usize = 2 * HIDDEN;
@@ -65,9 +72,11 @@ pub struct CognitiveTraits {
     pub plasticity_rate: [f32; HIDDEN],
     pub trace_retention: f32,
     pub learned_weight_retention: f32,
-    /// Heritable, bounded multiplier for mutation magnitude/budget.  It is
-    /// evolutionary variation, not a runtime cognitive mechanism.
-    pub mutation_scale: f32,
+    /// Heritable, bounded multipliers for parameter-mutation frequency and
+    /// step size. They are evolutionary variation, not runtime cognition.
+    pub parameter_mutation_rate: f32,
+    pub parameter_mutation_step: f32,
+    pub topology_mutation_rate: f32,
 }
 impl CognitiveTraits {
     pub fn validate(&self) -> bool {
@@ -77,8 +86,12 @@ impl CognitiveTraits {
             && self.learned_weight_retention.is_finite()
             && (0.0..=0.9999).contains(&self.trace_retention)
             && (0.0..=0.9999).contains(&self.learned_weight_retention)
-            && self.mutation_scale.is_finite()
-            && (0.25..=4.0).contains(&self.mutation_scale)
+            && self.parameter_mutation_rate.is_finite()
+            && (0.25..=4.0).contains(&self.parameter_mutation_rate)
+            && self.parameter_mutation_step.is_finite()
+            && (0.25..=4.0).contains(&self.parameter_mutation_step)
+            && self.topology_mutation_rate.is_finite()
+            && (0.25..=4.0).contains(&self.topology_mutation_rate)
             && self
                 .plasticity_rate
                 .iter()
@@ -96,8 +109,6 @@ pub const ACTION_NAMES: [&str; 6] = [
 pub const EMIT: u32 = 4;
 /// Event-ring action code for a receiver decision made while a signal was visible.
 pub const SIGNAL_OBSERVED: u32 = 6;
-/// Event-ring action code for a matched nearby-body decision without a visible signal.
-pub const SIGNAL_CONTROL: u32 = 7;
 /// Event-ring action code for a sampled recurrent-memory diagnostic.
 pub const MEMORY_SAMPLE: u32 = 8;
 #[repr(C)]
@@ -111,9 +122,10 @@ pub struct AgentGpu {
     pub sensor_radius: f32,
     pub food: f32,
     pub action: u32,
-    pub target: u32,
     pub alive: u32,
-    pub body_padding: f32,
+    /// Physical orientation in world radians; it is never exposed as an
+    /// absolute controller input.
+    pub heading: f32,
     pub rng: u32,
     pub generation: u32,
     pub next_birth: u32,
@@ -127,9 +139,6 @@ pub struct AgentGpu {
     pub ingested: f32,
     pub spent: f32,
     pub received: f32,
-    /// Matches WGSL's required four-byte alignment gap before `moved: vec2`.
-    /// Keeping it explicit makes all following Rust/WGSL member offsets agree.
-    pub gpu_layout_padding: u32,
     pub moved: [f32; 2],
     pub lineage_id: u32,
     pub parent_lineage: u32,
@@ -153,9 +162,12 @@ pub struct AgentGpu {
     pub hidden: [f32; HIDDEN],
     /// Actual evaluated ticks, excluding the randomized initial biological age.
     pub lived_ticks: u32,
-    pub cognitive_padding: u32,
-    /// Heritable bounded multiplier for offspring variation.
-    pub mutation_scale: f32,
+    pub parameter_mutation_rate: f32,
+    pub parameter_mutation_step: f32,
+    pub topology_mutation_rate: f32,
+    /// Explicitly matches the WGSL tail alignment for the storage-buffer
+    /// array stride. It is not inherited state.
+    pub topology_padding: f32,
 }
 impl Default for AgentGpu {
     fn default() -> Self {
@@ -164,7 +176,9 @@ impl Default for AgentGpu {
         // zeroed and dead.
         Self {
             active_mask: ACTIVE_MASK_ALL,
-            mutation_scale: 1.0,
+            parameter_mutation_rate: 1.0,
+            parameter_mutation_step: 1.0,
+            topology_mutation_rate: 1.0,
             ..Self::zeroed()
         }
     }
@@ -178,7 +192,9 @@ impl AgentGpu {
             plasticity_rate: self.plasticity_rate,
             trace_retention: self.trace_retention,
             learned_weight_retention: self.learned_weight_retention,
-            mutation_scale: self.mutation_scale,
+            parameter_mutation_rate: self.parameter_mutation_rate,
+            parameter_mutation_step: self.parameter_mutation_step,
+            topology_mutation_rate: self.topology_mutation_rate,
         }
     }
 }
@@ -187,16 +203,9 @@ impl AgentGpu {
 pub struct RegionGpu {
     pub food: f32,
     pub bodies: f32,
-}
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
-pub struct BodyGpu {
-    pub offset: [f32; 2],
     pub velocity: [f32; 2],
-    pub signal_present: f32,
     pub signal: f32,
-    pub slot: u32,
-    pub generation: u32,
+    pub pressure: f32,
 }
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
@@ -205,7 +214,6 @@ pub struct PerceptionGpu {
     pub nearby_count: f32,
     pub padding: [f32; 2],
     pub regions: [RegionGpu; REGIONS],
-    pub bodies: [BodyGpu; SECTORS],
 }
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
@@ -216,11 +224,10 @@ pub struct DecisionGpu {
     pub movement: [f32; 2],
     pub amount: f32,
     pub payload: f32,
-    pub target: u32,
-    pub target_generation: u32,
     pub invalid: u32,
-    pub body_padding: u32,
+    pub decision_padding: u32,
     pub force: [f32; 2],
+    pub placement: [f32; 2],
     /// Candidate and output activities are retained only for the immediately
     /// following local-plasticity pass; they are not inherited state.
     pub candidate: [f32; HIDDEN],
@@ -228,12 +235,7 @@ pub struct DecisionGpu {
     pub update_gates: [f32; HIDDEN],
     pub outputs: [f32; OUTPUTS],
     pub memory_write_cost: f32,
-    // WGSL aligns vec3<u32> to sixteen bytes, so this explicit four-word
-    // region preserves the CPU/GPU storage contract before inputs.
-    pub decision_padding: [u32; 4],
     pub inputs: [f32; INPUTS],
-    /// Explicitly matches WGSL's sixteen-byte `Decision` array stride.
-    pub decision_end_padding: u32,
 }
 impl Default for DecisionGpu {
     fn default() -> Self {
@@ -276,9 +278,6 @@ pub struct InterventionParams {
 pub struct SelectionOutput {
     pub agent: AgentGpu,
     pub perception: PerceptionGpu,
-    /// WGSL aligns `Decision` to sixteen bytes after the eight-byte-aligned
-    /// perception record.
-    pub decision_alignment_padding: [u32; 2],
     pub decision: DecisionGpu,
     pub selected: u32,
     pub padding: u32,
@@ -305,12 +304,8 @@ pub struct SimSettings {
     pub population: u32,
     pub resource_regeneration: f32,
     pub movement_energy_cost: f32,
-    /// Metabolism reached after the deterministic world-start ramp.
+    /// Stationary body upkeep, independent of world age or outcomes.
     pub metabolic_cost: f32,
-    /// Missing in flat-metabolism format-42 checkpoints; zero preserves their
-    /// original physics instead of silently turning them into a hybrid ramp.
-    #[serde(default)]
-    pub metabolic_ramp_ticks: u32,
     pub active_unit_upkeep: f32,
     pub memory_write_energy: f32,
     /// Actuator sensitivity, not minimum effort or maximum body speed.
@@ -331,7 +326,6 @@ pub struct SimSettings {
     pub evolving_landscape: bool,
     pub founder_genomes: Vec<Vec<f32>>,
     /// Topology and plasticity are inherited alongside every founder genome.
-    #[serde(default)]
     pub founder_traits: Vec<CognitiveTraits>,
     pub founder_name: String,
 }
@@ -345,8 +339,7 @@ impl Default for SimSettings {
             population: 1000,
             resource_regeneration: 0.01,
             movement_energy_cost: 0.01,
-            metabolic_cost: 0.06,
-            metabolic_ramp_ticks: DEFAULT_METABOLIC_RAMP_TICKS,
+            metabolic_cost: 0.015,
             active_unit_upkeep: DEFAULT_ACTIVE_UNIT_UPKEEP,
             memory_write_energy: DEFAULT_MEMORY_WRITE_ENERGY,
             motor_response_gain: 4.0,
@@ -412,9 +405,8 @@ impl SimSettings {
             return Err("Invalid primitive-world physical settings".into());
         }
         crate::founders::validate_genomes(&self.founder_genomes)?;
-        if !self.founder_traits.is_empty()
-            && (self.founder_traits.len() != self.founder_genomes.len()
-                || self.founder_traits.iter().any(|t| !t.validate()))
+        if self.founder_traits.len() != self.founder_genomes.len()
+            || self.founder_traits.iter().any(|t| !t.validate())
         {
             return Err("Invalid founder cognitive traits".into());
         }

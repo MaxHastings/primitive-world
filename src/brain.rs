@@ -42,7 +42,7 @@ pub fn random_active_mask(rng: &mut u32) -> u32 {
         .fold(0u32, |mask, &h| mask | (1u32 << h))
 }
 
-pub fn random_plasticity(rng: &mut u32) -> ([f32; HIDDEN], f32, f32, f32) {
+pub fn random_plasticity(rng: &mut u32) -> ([f32; HIDDEN], f32, f32, f32, f32, f32) {
     let rates = std::array::from_fn(|_| (draw(rng) * 2.0 - 1.0) * 0.01);
     // Traces and learned state begin reasonably persistent but evolution owns
     // their exact time scale.
@@ -50,12 +50,16 @@ pub fn random_plasticity(rng: &mut u32) -> ([f32; HIDDEN], f32, f32, f32) {
     let learned_weight_retention = 0.9 + draw(rng) * 0.099;
     // Log-uniform founders give evolution both conservative and exploratory
     // lineages without treating either as the privileged default.
-    let mutation_scale = 0.25 * 16.0f32.powf(draw(rng));
+    let parameter_mutation_rate = 0.25 * 16.0f32.powf(draw(rng));
+    let parameter_mutation_step = 0.25 * 16.0f32.powf(draw(rng));
+    let topology_mutation_rate = 0.25 * 16.0f32.powf(draw(rng));
     (
         rates,
         trace_retention,
         learned_weight_retention,
-        mutation_scale,
+        parameter_mutation_rate,
+        parameter_mutation_step,
+        topology_mutation_rate,
     )
 }
 pub fn validate(g: &[f32]) -> Result<(), String> {
@@ -126,7 +130,7 @@ fn clone_activated_unit(
 #[cfg(test)]
 fn mutate_traits(genome: &mut [f32], traits: &mut CognitiveTraits, rng: &mut u32) {
     let capacity = traits.active_mask.count_ones();
-    if capacity > 1 && draw(rng) < 0.01 {
+    if capacity > 1 && draw(rng) < (0.01 * traits.topology_mutation_rate).min(1.0) {
         let nth = (draw(rng) * capacity as f32) as u32;
         let mut seen = 0;
         for h in 0..HIDDEN {
@@ -140,7 +144,7 @@ fn mutate_traits(genome: &mut [f32], traits: &mut CognitiveTraits, rng: &mut u32
         }
     }
     let capacity = traits.active_mask.count_ones();
-    if capacity < HIDDEN as u32 && draw(rng) < 0.01 {
+    if capacity < HIDDEN as u32 && draw(rng) < (0.01 * traits.topology_mutation_rate).min(1.0) {
         let donor_nth = (draw(rng) * capacity as f32) as u32;
         let empty_nth = (draw(rng) * (HIDDEN as u32 - capacity) as f32) as u32;
         let (mut donor, mut target, mut seen_on, mut seen_off) = (0usize, 0usize, 0u32, 0u32);
@@ -163,19 +167,21 @@ fn mutate_traits(genome: &mut [f32], traits: &mut CognitiveTraits, rng: &mut u32
     }
 }
 #[cfg(test)]
-fn mutate_expressed(
-    g: &mut [f32],
-    mask: u32,
-    plasticity: &mut [f32; HIDDEN],
-    trace_retention: &mut f32,
-    learned_weight_retention: &mut f32,
-    mutation_scale: &mut f32,
-    rng: &mut u32,
-) {
+fn mutate_expressed(g: &mut [f32], traits: &mut CognitiveTraits, rng: &mut u32) {
+    let mask = traits.active_mask;
+    let CognitiveTraits {
+        plasticity_rate: plasticity,
+        trace_retention,
+        learned_weight_retention,
+        parameter_mutation_rate,
+        parameter_mutation_step,
+        topology_mutation_rate,
+        ..
+    } = traits;
     assert!(mask != 0 && g.len() == GENOME_SIZE);
-    let scale = *mutation_scale;
-    let magnitude = (BASE_MUTATION_MAGNITUDE * scale).max(0.000_001);
-    let draws = usize::from(draw(rng) < (BASE_MUTATION_PROBABILITY * scale).min(1.0));
+    let magnitude = (BASE_MUTATION_MAGNITUDE * *parameter_mutation_step).max(0.000_001);
+    let draws =
+        usize::from(draw(rng) < (BASE_MUTATION_PROBABILITY * *parameter_mutation_rate).min(1.0));
     let mut expressed = Vec::with_capacity(GENOME_SIZE);
     for h in 0..HIDDEN {
         if active(mask, h) {
@@ -210,7 +216,12 @@ fn mutate_expressed(
             (*trace_retention + (draw(rng) * 2.0 - 1.0) * magnitude).clamp(0.0, 0.9999);
         *learned_weight_retention =
             (*learned_weight_retention + (draw(rng) * 2.0 - 1.0) * magnitude).clamp(0.0, 0.9999);
-        *mutation_scale = (*mutation_scale * (0.97 + 0.06 * draw(rng))).clamp(0.25, 4.0);
+        *parameter_mutation_rate =
+            (*parameter_mutation_rate * (0.97 + 0.06 * draw(rng))).clamp(0.25, 4.0);
+        *parameter_mutation_step =
+            (*parameter_mutation_step * (0.97 + 0.06 * draw(rng))).clamp(0.25, 4.0);
+        *topology_mutation_rate =
+            (*topology_mutation_rate * (0.97 + 0.06 * draw(rng))).clamp(0.25, 4.0);
     }
 }
 
@@ -218,15 +229,7 @@ fn mutate_expressed(
 pub fn mutate_inherited(g: &mut [f32], traits: &mut CognitiveTraits, seed: u32) {
     let mut rng = seed;
     mutate_traits(g, traits, &mut rng);
-    mutate_expressed(
-        g,
-        traits.active_mask,
-        &mut traits.plasticity_rate,
-        &mut traits.trace_retention,
-        &mut traits.learned_weight_retention,
-        &mut traits.mutation_scale,
-        &mut rng,
-    );
+    mutate_expressed(g, traits, &mut rng);
 }
 
 #[cfg(test)]
@@ -284,6 +287,39 @@ pub fn evaluate(
 mod tests {
     use super::*;
     #[test]
+    fn equivalent_unit_permutations_preserve_controller_behavior() {
+        let original = random_genome(&mut 719);
+        let mut permuted = original;
+        let inputs = std::array::from_fn(|i| ((i as f32) * 0.31).sin());
+        let previous = std::array::from_fn(|i| ((i as f32) * 0.43).cos());
+        let p = |i: usize| HIDDEN - 1 - i;
+        for h in 0..HIDDEN {
+            for base in [NODE_BIAS, GATE_BIAS] {
+                permuted[base + p(h)] = original[base + h];
+            }
+            for k in 0..INPUTS {
+                permuted[INPUT_BASE + p(h) * INPUTS + k] = original[INPUT_BASE + h * INPUTS + k];
+            }
+            for k in 0..HIDDEN {
+                for base in [RECURRENT_BASE, GATE_BASE] {
+                    permuted[base + p(h) * HIDDEN + p(k)] = original[base + h * HIDDEN + k];
+                }
+            }
+            for o in 0..OUTPUTS {
+                permuted[OUTPUT_BASE + o * HIDDEN + p(h)] = original[OUTPUT_BASE + o * HIDDEN + h];
+            }
+        }
+        let (a, x) = evaluate(&original, &inputs, &previous);
+        let (b, y) = evaluate(&permuted, &inputs, &std::array::from_fn(|i| previous[p(i)]));
+        for h in 0..HIDDEN {
+            assert!((a[h] - b[p(h)]).abs() < 0.00001);
+        }
+        for o in 0..OUTPUTS {
+            assert!((x[o] - y[o]).abs() < 0.00001);
+        }
+    }
+
+    #[test]
     fn inheritance_mutation_is_bounded_reproducible_and_can_be_exact() {
         let parent = random_genome(&mut 17);
         let mut child = parent;
@@ -314,23 +350,52 @@ mod tests {
         let mut rng = 91;
         let mut genome = random_genome(&mut rng);
         let before = genome;
-        let mut rates = [0.0; HIDDEN];
-        let mut trace = 0.9;
-        let mut retention = 0.99;
-        let mut mutation_scale = 1.0;
-        mutate_expressed(
-            &mut genome,
-            1,
-            &mut rates,
-            &mut trace,
-            &mut retention,
-            &mut mutation_scale,
-            &mut 7,
-        );
+        let mut traits = CognitiveTraits {
+            active_mask: 1,
+            padding: [0; 3],
+            plasticity_rate: [0.0; HIDDEN],
+            trace_retention: 0.9,
+            learned_weight_retention: 0.99,
+            parameter_mutation_rate: 1.0,
+            parameter_mutation_step: 1.0,
+            topology_mutation_rate: 1.0,
+        };
+        mutate_expressed(&mut genome, &mut traits, &mut 7);
         for h in 1..HIDDEN {
             assert_eq!(genome[NODE_BIAS + h], before[NODE_BIAS + h]);
             assert_eq!(genome[GATE_BIAS + h], before[GATE_BIAS + h]);
-            assert_eq!(rates[h], 0.0);
+            assert_eq!(traits.plasticity_rate[h], 0.0);
         }
+    }
+
+    #[test]
+    fn topology_mutation_rate_is_independent_of_parameter_mutation_controls() {
+        let traits = |parameter_rate, parameter_step, topology_rate| CognitiveTraits {
+            active_mask: 0b11,
+            padding: [0; 3],
+            plasticity_rate: [0.0; HIDDEN],
+            trace_retention: 0.9,
+            learned_weight_retention: 0.99,
+            parameter_mutation_rate: parameter_rate,
+            parameter_mutation_step: parameter_step,
+            topology_mutation_rate: topology_rate,
+        };
+        let mut rare_changes = 0;
+        let mut frequent_changes = 0;
+        for seed in 0..4_096 {
+            let mut rare = traits(0.25, 0.25, 0.25);
+            let mut frequent = traits(0.25, 0.25, 4.0);
+            let mut parameter_variant = traits(4.0, 4.0, 4.0);
+            let mut rare_genome = blank();
+            let mut frequent_genome = blank();
+            let mut parameter_genome = blank();
+            mutate_inherited(&mut rare_genome, &mut rare, seed);
+            mutate_inherited(&mut frequent_genome, &mut frequent, seed);
+            mutate_inherited(&mut parameter_genome, &mut parameter_variant, seed);
+            rare_changes += usize::from(rare.active_mask != 0b11);
+            frequent_changes += usize::from(frequent.active_mask != 0b11);
+            assert_eq!(frequent.active_mask, parameter_variant.active_mask);
+        }
+        assert!(frequent_changes > rare_changes * 5);
     }
 }

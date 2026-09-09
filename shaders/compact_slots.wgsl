@@ -13,8 +13,8 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
   free_indices[prefix[i]-1u]=i;
   // Clear an expired trace once, rather than writing large empty records every tick.
   if(decisions[i].evaluated!=0u){
-   var d:Decision;d.target_id=INVALID;decisions[i]=d;
-   var p:Perception;for(var k=0u;k<8u;k++){p.bodies[k].slot=INVALID;}perceptions[i]=p;
+   var d:Decision;decisions[i]=d;
+   var p:Perception;perceptions[i]=p;
   }
  }else{live_slots[4u+i-prefix[i]]=i;}
 }

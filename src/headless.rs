@@ -15,7 +15,7 @@ Use --headless --single-world for diagnostics that stop at extinction.
   --load-game RECEIPT.json opens a saved experiment in the viewer.
 Playback: --view-fps 10|30|60|120|144|240 (default 30; wallpaper defaults to monitor refresh) --compute-budget 10..100 (default 100)\n  1x targets 60 ticks/second; MAX is uncapped. Budget controls work/idle time, not hardware power.\nOptions: --wallpaper --habitat-contrast X (0..1) --environment-rotation N (0..3)
          --population N --regeneration X --no-force --no-signals --static-landscape
-         --metabolic-cost X (post-ramp upkeep) --movement-cost X --motor-gain X
+         --metabolic-cost X (stationary upkeep) --movement-cost X --motor-gain X
          --checkpoint PATH --save-checkpoint PATH --export-founders PATH
 Headless observers:
          --families (fresh worlds, 1..200000 ticks; diagnostic only)
@@ -445,7 +445,6 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     && event.sequence < total
                     && (event.action == crate::model::EMIT
                         || event.action == crate::model::SIGNAL_OBSERVED
-                        || event.action == crate::model::SIGNAL_CONTROL
                         || event.action == crate::model::MEMORY_SAMPLE)
             }) {
                 if communication_event_count > 0 {
@@ -494,6 +493,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 "tick {}: {} living, {} births, {} invalid outputs",
                 m.tick, m.living, m.events[3], m.invalid_outputs
             );
+            if history.len() == 4096 {
+                history.remove(0);
+            }
             history.push(m);
             if m.living == 0 {
                 break;
@@ -537,14 +539,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
             "model": MODEL_ID,
             "initial_tick": initial_tick,
             "final_tick": sim.tick,
-            "event_kinds": {"emit": crate::model::EMIT, "signal_observed": crate::model::SIGNAL_OBSERVED, "signal_control": crate::model::SIGNAL_CONTROL, "memory_sample": crate::model::MEMORY_SAMPLE},
+            "event_kinds": {"emit": crate::model::EMIT, "signal_observed": crate::model::SIGNAL_OBSERVED, "memory_sample": crate::model::MEMORY_SAMPLE},
             "event_count": communication_event_count,
             "overwritten_ring_events": communication_dropped_events,
             "limits": [
-                "Signals are local scalar emissions visible to the nearest body in each sector for one tick.",
-                "A signal_observed event records the receiver action on that tick for the first visible signal in compass-sector order, at most once per receiver per tick.",
+                "Signals are aggregate signed local activity, averaged over bodies in each body-relative sample for one tick.",
+                "A signal_observed event records the receiver action for the first nonzero aggregate sample, at most once per receiver per tick; cancellation and zero payload are not observable presence.",
                 "For signal_observed events, other_lineage stores the receiver action code because the event ring is shared with physical interactions.",
-                "For signal_control events, other_lineage stores the nearby-body action selected when no signal was visible; controls are sampled deterministically at roughly 1 in 64 eligible decisions.",
                 "For memory_sample events, amount is the selected action score contribution from the carried-forward recurrent state, other stores the action selected with that contribution removed, and position stores old/new hidden-state norms; samples are roughly 1 in 512 decisions.",
                 "This is behavioral correlation, not proof that the signal caused the response or carries a shared semantic code."
             ]
@@ -564,7 +565,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
   "initial_tick":initial_tick,"requested_ticks":ticks,"elapsed_ticks":sim.tick-initial_tick,"adapter":format!("{info:?}"),
   "termination_reason":if sim.progress.engine_saturated {"engine_capacity"} else if extinct {"extinction"} else if sim.tick >= MAX_WORLD_TICKS {"tick_capacity"} else {"tick_limit"},
   "extinction_detection_max_delay_ticks":31,
-  "initial_settings":settings,"final_settings":sim.settings,"history":history,"evolution":evolution,
+  "initial_settings":settings,"final_settings":sim.settings,"history_limit":4096,"history":history,"evolution":evolution,
   "travel_observer":travel.report(sample),
   "family_report":family_report,
   "survivor_observer":survivors.as_ref().map(|s| serde_json::json!({"source_tick":s.bank.source_tick,"source_population":s.source_population,"sampled_bodies":s.bodies.len(),"period":survivor_sample,"selection":s.selection})),
@@ -618,6 +619,8 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
             .map(String::as_str)
             .unwrap_or("evolution-report.json"),
     )?;
+    let mut search_previous = None;
+    let initial_search = sim.search_snapshot(&d, &q, &mut search_previous)?;
     let initial = sim.progress.clone();
     let settings = sim.settings.clone();
     let mut restart_seconds = 0.0;
@@ -656,7 +659,10 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
         }
         simulation_seconds += batch_at.elapsed().as_secs_f64();
         if living == 0 || elapsed == ticks || elapsed % sample == 0 {
-            history.push(serde_json::json!({"elapsed_ticks":elapsed,"progress":sim.progress,"metrics":sim.metrics(&d,&q)?,"evolution":sim.evolution_snapshot(&d,&q)?}));
+            if history.len() == 4096 {
+                history.remove(0);
+            }
+            history.push(serde_json::json!({"elapsed_ticks":elapsed,"progress":sim.progress,"metrics":sim.metrics(&d,&q)?,"evolution":sim.evolution_snapshot(&d,&q)?,"search":sim.search_snapshot(&d,&q,&mut search_previous)?}));
         }
     }
     if let Some(path) = a.get("--save-checkpoint") {
@@ -671,7 +677,7 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
     };
     let value = serde_json::json!({"schema":6,"model":MODEL_ID,"build_version":env!("CARGO_PKG_VERSION"),"adapter":format!("{info:?}"),"requested_ticks":ticks,"elapsed_ticks":elapsed,
         "wall_seconds":start.elapsed().as_secs_f64(),"restart_seconds":restart_seconds,"simulation_and_sync_seconds":simulation_seconds,"settings":settings,"initial_progress":initial,"final_progress":sim.progress,
-        "history":history,"termination_reason":termination_reason,"extinction_detection_max_delay_ticks":31,
+        "initial_search":initial_search,"history_limit":4096,"history":history,"termination_reason":termination_reason,"extinction_detection_max_delay_ticks":31,
         "scope":"Fresh founders are uniform samples of one rolling hereditary reservoir. Completed-world observations do not affect heredity."});
     report
         .write_all(&serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?)
