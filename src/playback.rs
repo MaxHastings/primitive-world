@@ -1,5 +1,6 @@
 //! Wall-clock pacing and asynchronous batch completion. Presentation never chooses
 //! how many biological ticks occur. One bounded batch owns its observation epoch.
+use crate::simulation::observability;
 use crate::*;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
@@ -8,10 +9,11 @@ pub const BASE_TPS: u32 = 60;
 pub const TELEMETRY_SIZE: u64 = (1 + model::DEATH_STATS_COUNT as u64) * 4;
 pub const TIMING_OFFSET: u64 = TELEMETRY_SIZE.next_multiple_of(8);
 pub const INSPECTION_OFFSET: u64 = TIMING_OFFSET + 16;
-pub const READBACK_SIZE: u64 = INSPECTION_OFFSET
+pub const METRICS_OFFSET: u64 = INSPECTION_OFFSET
     + (std::mem::size_of::<model::AgentGpu>()
         + std::mem::size_of::<model::PerceptionGpu>()
         + std::mem::size_of::<model::DecisionGpu>()) as u64;
+pub const READBACK_SIZE: u64 = METRICS_OFFSET + observability::METRICS_SUMMARY_SIZE;
 
 pub struct Scheduler {
     last: Instant,
@@ -36,7 +38,12 @@ impl Scheduler {
         self.next_allowed = now;
     }
     fn goal(&self, speed: usize) -> u32 {
-        let responsive = (0.008 / self.seconds_per_tick).floor().clamp(1.0, 32.0) as u32;
+        // MAX amortizes submission/readback over a longer batch while retaining
+        // the 32-tick bound on extinction detection and user-action latency.
+        let target_seconds = if speed == 8 { 0.032 } else { 0.008 };
+        let responsive = (target_seconds / self.seconds_per_tick)
+            .floor()
+            .clamp(1.0, 32.0) as u32;
         if speed == 8 {
             responsive
         } else {
@@ -94,6 +101,7 @@ pub struct PendingBatch {
     started: Instant,
     ticks: u32,
     inspected: Option<SelectionOutput>,
+    metrics: bool,
 }
 
 impl AppState {
@@ -183,6 +191,11 @@ impl AppState {
         }
         self.simulation
             .encode_telemetry(&mut e, &self.batch_readback);
+        let metrics = now.duration_since(self.last_metrics) >= Duration::from_secs(1);
+        if metrics {
+            self.simulation
+                .encode_metrics(&mut e, &self.batch_readback, METRICS_OFFSET);
+        }
         let inspected = if self.inspection.following
             && now.duration_since(self.last_inspection) >= Duration::from_millis(100)
         {
@@ -217,7 +230,13 @@ impl AppState {
         self.queue.submit(Some(e.finish()));
         let (tx, rx) = mpsc::channel();
         self.batch_readback
-            .slice(..)
+            .slice(
+                ..if metrics {
+                    READBACK_SIZE
+                } else {
+                    METRICS_OFFSET
+                },
+            )
             .map_async(wgpu::MapMode::Read, move |result| {
                 let _ = tx.send(result);
             });
@@ -226,6 +245,7 @@ impl AppState {
             started: now,
             ticks,
             inspected,
+            metrics,
         });
     }
 
@@ -253,7 +273,16 @@ impl AppState {
             }
         }
         let pending = self.pending_batch.take().unwrap();
-        let mapped = self.batch_readback.slice(..).get_mapped_range();
+        let mapped = self
+            .batch_readback
+            .slice(
+                ..if pending.metrics {
+                    READBACK_SIZE
+                } else {
+                    METRICS_OFFSET
+                },
+            )
+            .get_mapped_range();
         let u32_at =
             |offset: usize| bytemuck::pod_read_unaligned::<u32>(&mapped[offset..offset + 4]);
         self.living_agents = u32_at(0);
@@ -299,6 +328,18 @@ impl AppState {
             self.inspection
                 .refresh(Ok(same.then_some(current)), self.simulation.tick);
         }
+        if pending.metrics {
+            if let Ok(metrics) = self.simulation.decode_metrics(
+                &mapped[METRICS_OFFSET as usize..],
+                &mapped[4..TELEMETRY_SIZE as usize],
+            ) {
+                if self.history.len() >= 400 {
+                    self.history.pop_front();
+                }
+                self.history.push_back(metrics);
+            }
+            self.last_metrics = Instant::now();
+        }
         drop(mapped);
         self.batch_readback.unmap();
         self.update_selection_highlight();
@@ -314,15 +355,6 @@ impl AppState {
 
         if let Some(experiment) = &mut self.experiment {
             experiment.total_ticks = experiment.total_ticks.saturating_add(pending.ticks as u64);
-        }
-        if now.duration_since(self.last_metrics) >= Duration::from_secs(1) {
-            self.last_metrics = now;
-            if let Ok(metrics) = self.simulation.metrics(&self.device, &self.queue) {
-                if self.history.len() >= 400 {
-                    self.history.pop_front();
-                }
-                self.history.push_back(metrics);
-            }
         }
         self.service_completed_world();
     }
@@ -377,5 +409,35 @@ impl AppState {
             };
             self.last_autosave = Instant::now();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn max_batches_amortize_readback_but_remain_bounded() {
+        let now = Instant::now();
+        let mut scheduler = Scheduler::new(now);
+        scheduler.seconds_per_tick = 0.002;
+        assert_eq!(scheduler.take(now, 8), 16);
+        assert_eq!(scheduler.goal(5), 4);
+        scheduler.seconds_per_tick = 0.0001;
+        assert_eq!(scheduler.take(now, 8), 32);
+        scheduler.seconds_per_tick = 0.1;
+        assert_eq!(scheduler.take(now, 8), 1);
+    }
+
+    #[test]
+    fn max_batches_respect_compute_budget_and_speed_changes() {
+        let now = Instant::now();
+        let mut scheduler = Scheduler::new(now);
+        assert_eq!(scheduler.take(now, 8), 32);
+        scheduler.completed(now, Duration::from_millis(32), 32, 0.5);
+        assert_eq!(scheduler.take(now + Duration::from_millis(16), 8), 0);
+        assert!(scheduler.take(now + Duration::from_millis(32), 8) > 0);
+        assert_eq!(scheduler.take(now + Duration::from_millis(32), 0), 0);
+        assert_eq!(scheduler.take(now + Duration::from_millis(49), 0), 1);
     }
 }

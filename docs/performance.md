@@ -14,11 +14,65 @@ sampling reads only selected genomes; learned-magnitude observation reduces on
 GPU before reading compact totals.
 
 The viewer adaptively batches up to 32 ticks so GPU readback stays bounded while
-timer pacing can still reach the selected rate. 1x requests
+timer pacing can still reach the selected rate. MAX targets 32 milliseconds of
+work per batch; paced speeds retain an 8-millisecond target. Once-per-second
+world statistics share the asynchronous batch readback instead of blocking the
+playback loop on additional GPU reads. 1x requests
 60 ticks/s; 32x requests 1,920 ticks/s; MAX is uncapped.
 Requested speed does not override hardware throughput. Rendering, other GPU
 applications, body count, dense neighbors, and reproduction all affect speed.
 Full saves can pause playback while complete state is read and written.
+
+## Neural input memory access
+
+Decision and learning workgroups stage sensory-connection weights through shared
+memory using contiguous global loads and stores. Per-unit accumulation order,
+learning frequency, active masks, costs, and checkpoint layout are unchanged.
+The reference memory-access path remains available to parity tests and manual
+paired benchmarks through a compile-time shader constant.
+
+A local release probe on September 9, 2026 used an RTX 4070 SUPER, NVIDIA 591.86,
+Vulkan, Windows, seed 42, default random founders, 32 warmup ticks, and 256 measured
+ticks in batches of 32. Three paired runs alternated layout order. Median rates:
+
+| Starting bodies | Reference inputs (ticks/s) | Contiguous inputs (ticks/s) | Change |
+| --- | ---: | ---: | ---: |
+| 1,000 | 595 | 658 | +11% |
+| 4,096 | 299 | 400 | +34% |
+
+The user's viewer remained running; these are shared-load probes, not isolated
+hardware limits. Population evolves during each run. The separate fixed-capacity
+probe sets all starting bodies to 8 or 16 active units and suppresses reproduction;
+it measures execution sensitivity, not a validated alternate evolutionary model.
+No capacity ceiling was changed. Individual GPU timestamps can include scheduling
+interruptions from other GPU work, so aggregate paired throughput is stronger
+evidence than a single pass timing.
+
+Reproduce with:
+
+```sh
+cargo test --release profile_neural_input_layout_and_capacity -- --ignored --nocapture --test-threads=1
+cargo test --release profile_playback_optimizations -- --ignored --nocapture --test-threads=1
+```
+
+The playback probe compares reference neural inputs with an 8-millisecond batch
+target against contiguous neural inputs with a 32-millisecond target. It models
+one-millisecond completion polling without rendering. With 512 measured ticks
+per run, three alternating pairs gave these median rates:
+
+| Starting bodies | Reference + 8 ms (ticks/s) | Contiguous + 32 ms (ticks/s) | Change |
+| --- | ---: | ---: | ---: |
+| 32 | 667 | 727 | +9% |
+| 1,000 | 516 | 623 | +21% |
+| 4,096 | 263 | 389 | +48% |
+
+This probe excludes periodic statistics and rendering, so it measures the combined
+neural-memory and batching changes, not every source of viewer overhead. These
+percentages must not be added to the separate memory-access results above.
+
+Tests compare full body,
+decision, learned-weight, trace, food, and counter buffers byte-for-byte after 32
+ticks, and verify batched statistics against synchronous statistics.
 
 ## v35 optimization probe
 

@@ -318,7 +318,7 @@ impl Simulation {
             "event ring",
             EVENT_RING_SIZE as u64 * std::mem::size_of::<observability::InteractionEvent>() as u64,
         );
-        let summary_buffer = buffer(device, "summaries", 4096 * 64);
+        let summary_buffer = buffer(device, "summaries", observability::METRICS_SUMMARY_SIZE);
         let params_buffer = uniform(
             device,
             "parameters",

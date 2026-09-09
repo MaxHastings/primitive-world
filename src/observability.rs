@@ -1,6 +1,7 @@
 use super::*;
 use std::collections::HashSet;
 use std::io::{Read, Write};
+pub(crate) const METRICS_SUMMARY_SIZE: u64 = 4096 * 64;
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CheckpointMetadata {
@@ -278,14 +279,38 @@ impl Simulation {
         self.dispatch(&mut encoder, "summary", self.current_buffer, 64, 1);
         queue.submit(Some(encoder.finish()));
         let bytes = read_buffer(device, queue, &self.summary_buffer)?;
+        let events = read_buffer(device, queue, &self.death_stats_buffer)?;
+        self.decode_metrics(&bytes, &events)
+    }
+
+    pub(crate) fn encode_metrics(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        output: &wgpu::Buffer,
+        offset: u64,
+    ) {
+        self.dispatch(encoder, "summary", self.current_buffer, 64, 1);
+        encoder.copy_buffer_to_buffer(
+            &self.summary_buffer,
+            0,
+            output,
+            offset,
+            METRICS_SUMMARY_SIZE,
+        );
+    }
+
+    pub(crate) fn decode_metrics(
+        &self,
+        bytes: &[u8],
+        events: &[u8],
+    ) -> Result<WorldMetrics, String> {
         let mut total = [0u64; 16];
-        for chunk in bytemuck::cast_slice::<u8, u32>(&bytes).chunks_exact(16) {
+        for chunk in bytemuck::cast_slice::<u8, u32>(bytes).chunks_exact(16) {
             for i in 0..16 {
                 total[i] += chunk[i] as u64;
             }
         }
-        let events = read_buffer(device, queue, &self.death_stats_buffer)?;
-        let counters: &[u32] = bytemuck::cast_slice(&events);
+        let counters: &[u32] = bytemuck::cast_slice(events);
         Ok(WorldMetrics {
             food_ingested: (u64::from(counters[0]) + (u64::from(counters[14]) << 32)) as f64
                 / 1000.0,
@@ -298,10 +323,10 @@ impl Simulation {
             dropped_food: total[5] as f64 / 1000.0,
             regenerated: total[6] as f64 / 1000.0,
             weather_loss: total[7] as f64 / 1000.0,
-            events: bytemuck::cast_slice::<u8, u32>(&events)[..8]
+            events: counters[..8]
                 .try_into()
                 .map_err(|_| "invalid event buffer")?,
-            signals: bytemuck::cast_slice::<u8, u32>(&events)[9],
+            signals: counters[9],
             stocked_agents: total[11],
             hungry_agents: total[12],
             moving_agents: total[13],

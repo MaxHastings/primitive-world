@@ -14,6 +14,9 @@ fn fast_gate(h:u32,k:u32)->u32{return HIDDEN_COUNT*INPUT_COUNT+HIDDEN_COUNT*HIDD
 fn fast_output(o:u32,h:u32)->u32{return HIDDEN_COUNT*INPUT_COUNT+2u*HIDDEN_COUNT*HIDDEN_COUNT+o*HIDDEN_COUNT+h;}
 
 @group(0) @binding(8) var<storage,read> live_slots:array<u32>;
+// Cooperative contiguous loads retain the original per-unit accumulation order.
+const COALESCED_INPUTS:bool=true;
+var<workgroup> input_weights:array<f32,HIDDEN_COUNT*INPUT_COUNT>;
 var<workgroup> x:array<f32,INPUT_COUNT>;
 var<workgroup> candidates:array<f32,HIDDEN_COUNT>;
 var<workgroup> states:array<f32,HIDDEN_COUNT>;
@@ -39,9 +42,15 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
  workgroupBarrier();
  for(var k=h;k<INPUT_COUNT;k+=32u){if(!finite(x[k])){atomicStore(&fault,1u);x[k]=0.0;}x[k]=clamp(x[k],-8.0,8.0);}
  workgroupBarrier();
+ if(COALESCED_INPUTS){
+  for(var at=h;at<HIDDEN_COUNT*INPUT_COUNT;at+=32u){
+   if(unit_active(mask,at/INPUT_COUNT)){input_weights[at]=effective(gene(i,INPUT_BASE+at),i,at);}
+  }
+  workgroupBarrier();
+ }
  if(unit_active(mask,h)){
   var sum=gene(i,NODE_BIAS+h);
-  for(var k=0u;k<INPUT_COUNT;k++){sum+=effective(gene(i,INPUT_BASE+h*INPUT_COUNT+k),i,fast_input(h,k))*x[k];}
+  for(var k=0u;k<INPUT_COUNT;k++){var weight=0.0;if(COALESCED_INPUTS){weight=input_weights[h*INPUT_COUNT+k];}else{weight=effective(gene(i,INPUT_BASE+h*INPUT_COUNT+k),i,fast_input(h,k));}sum+=weight*x[k];}
   for(var k=0u;k<HIDDEN_COUNT;k++){if(unit_active(mask,k)){sum+=effective(gene(i,RECURRENT_BASE+h*HIDDEN_COUNT+k),i,fast_recurrent(h,k))*agents[i].hidden[k];}}
   if(!finite(sum)){atomicStore(&fault,1u);sum=0.0;}candidates[h]=tanh(sum);
  }

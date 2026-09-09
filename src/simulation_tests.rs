@@ -2376,3 +2376,6 @@ fn accounting_counter_horizon_is_an_engine_stop_not_extinction() {
     assert!(s.advance_world(&d, &q).is_err());
     assert!(s.progress.history.is_empty());
 }
+
+#[path = "performance_tests.rs"]
+mod performance;

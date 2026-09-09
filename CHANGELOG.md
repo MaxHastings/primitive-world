@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — simulation throughput
+
+- Stage neural sensory weights and learned deltas through shared GPU memory with
+  contiguous access while preserving arithmetic order and the 16-unit model.
+- Target 32 milliseconds per MAX batch, retaining the 32-tick cap and existing
+  pacing at other speeds.
+- Include periodic world statistics in asynchronous playback readback.
+- Add paired throughput probes and state/statistics parity coverage. Checkpoint
+  and founder-bank formats are unchanged.
+
 
 ## Body-frame/contact generation (v35; checkpoint 55; founder bank 20)
 
