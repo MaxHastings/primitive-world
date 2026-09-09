@@ -67,3 +67,86 @@ fn mismatched_experiment_receipt_does_not_replace_live_world() {
     assert_eq!(sim.tick, saved_tick);
     std::fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn painted_food_has_a_dense_core_wraps_and_preserves_experiment_state() {
+    let (d, q) = gpu();
+    let mut sim = scene(&d, &q);
+    let body_before = read::<AgentGpu>(
+        &d,
+        &q,
+        &sim.agent_buffers[sim.current_buffer],
+        MAX_AGENTS as usize,
+    );
+    let progress_before = serde_json::to_value(&sim.progress).unwrap();
+    let seed = sim.seed;
+    let ground_before = read::<[u32; 8]>(
+        &d,
+        &q,
+        &sim.ground_buffer,
+        (RESOURCE_GRID * RESOURCE_GRID) as usize,
+    );
+    // Exactly on cell center; paint across both toroidal edges.
+    sim.paint_food(&d, &q, [2.0, 2.0], 40.0, 2.0);
+    let ground = read::<[u32; 8]>(
+        &d,
+        &q,
+        &sim.ground_buffer,
+        (RESOURCE_GRID * RESOURCE_GRID) as usize,
+    );
+    let dropped = |x: usize, y: usize| ground[y * 512 + x][0] - ground_before[y * 512 + x][0];
+    assert_eq!(dropped(0, 0), 2000);
+    assert!(dropped(2, 0) > dropped(5, 0));
+    assert!(dropped(5, 0) > dropped(9, 0));
+    assert_eq!(dropped(10, 0), 0);
+    assert_eq!(dropped(1, 0), dropped(511, 0));
+    assert_eq!(dropped(0, 1), dropped(0, 511));
+    for (before, after) in ground_before.iter().zip(&ground) {
+        assert_eq!(before[1..], after[1..]);
+    }
+    assert_eq!(sim.seed, seed);
+    assert_eq!(sim.tick, 0);
+    assert_eq!(
+        serde_json::to_value(&sim.progress).unwrap(),
+        progress_before
+    );
+    assert_eq!(
+        bytemuck::cast_slice::<_, u8>(&body_before),
+        bytemuck::cast_slice::<_, u8>(&read::<AgentGpu>(
+            &d,
+            &q,
+            &sim.agent_buffers[sim.current_buffer],
+            MAX_AGENTS as usize
+        ))
+    );
+    assert!(sim.assisted);
+    sim.paint_food(&d, &q, [2.0, 2.0], 40.0, 8.0);
+    let denser = read::<[u32; 8]>(
+        &d,
+        &q,
+        &sim.ground_buffer,
+        (RESOURCE_GRID * RESOURCE_GRID) as usize,
+    );
+    assert_eq!(
+        denser[0][0] - ground[0][0],
+        8000,
+        "Density scales supply independently of radius"
+    );
+    let ground = denser;
+    let path = super::temp("painted-experiment.checkpoint");
+    sim.save_checkpoint(&d, &q, &path).unwrap();
+    sim.load_checkpoint(&q, &path).unwrap();
+    assert_eq!(
+        read::<[u32; 8]>(
+            &d,
+            &q,
+            &sim.ground_buffer,
+            (RESOURCE_GRID * RESOURCE_GRID) as usize
+        ),
+        ground
+    );
+    step(&mut sim, &d, &q, 1);
+    assert_eq!(sim.tick, 1);
+    assert!(sim.assisted);
+    std::fs::remove_file(path).unwrap();
+}

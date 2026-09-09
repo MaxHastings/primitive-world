@@ -28,6 +28,8 @@ pub struct UiState {
     pub library_scan: experiments::LibraryScan,
     pub world_rect: egui::Rect,
     pub wallpaper_controls: WallpaperControls,
+    pub food_brush: controls::FoodBrush,
+    pub brush_cursor: Option<egui::Pos2>,
     #[cfg(not(windows))]
     pub import_path: String,
 }
@@ -39,12 +41,22 @@ pub enum WallpaperMenu {
     Details,
 }
 
+#[derive(Clone, Copy)]
+pub enum BrushAdjustment {
+    Size,
+    Density,
+}
+
 pub struct WallpaperControls {
     pub hud_rect: egui::Rect,
     pub popup_rect: egui::Rect,
     pub lens_button: egui::Rect,
     pub speed_button: egui::Rect,
     pub details_button: egui::Rect,
+    pub paint_button: egui::Rect,
+    pub brush_size_rect: egui::Rect,
+    pub brush_sizing: Option<BrushAdjustment>,
+    pub brush_density_rect: egui::Rect,
     pub lens_options: [egui::Rect; 10],
     pub speed_buttons: [egui::Rect; 6],
     pub menu: Option<WallpaperMenu>,
@@ -68,6 +80,10 @@ impl Default for WallpaperControls {
             lens_button: egui::Rect::NOTHING,
             speed_button: egui::Rect::NOTHING,
             details_button: egui::Rect::NOTHING,
+            paint_button: egui::Rect::NOTHING,
+            brush_size_rect: egui::Rect::NOTHING,
+            brush_sizing: None,
+            brush_density_rect: egui::Rect::NOTHING,
             lens_options: [egui::Rect::NOTHING; 10],
             speed_buttons: [egui::Rect::NOTHING; 6],
             menu: None,
@@ -93,6 +109,8 @@ impl UiState {
             library_scan: experiments::LibraryScan::default(),
             world_rect: egui::Rect::NOTHING,
             wallpaper_controls: WallpaperControls::default(),
+            food_brush: controls::FoodBrush::default(),
+            brush_cursor: None,
             #[cfg(not(windows))]
             import_path: String::new(),
         }
@@ -154,6 +172,52 @@ pub fn draw(ctx: &egui::Context, state: &mut AppState) -> Action {
     let mut action = Action::None;
     if state.wallpaper {
         draw_wallpaper(ctx, state, &mut action);
+        // Explorer supplies pointer positions through the native hook in wallpaper mode.
+        #[cfg(not(windows))]
+        {
+            state.ui.brush_cursor = ctx.pointer_hover_pos();
+        }
+        let controls = &state.ui.wallpaper_controls;
+        if state.ui.food_brush.enabled
+            && controls.menu.is_none()
+            && let Some(point) = state.ui.brush_cursor
+            && state.ui.world_rect.contains(point)
+            && !controls.hud_rect.contains(point)
+        {
+            let radius = state.ui.food_brush.radius
+                * state.ui.world_rect.height()
+                * state.renderer.camera.zoom
+                / state.simulation.settings.habitat_height;
+            let painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::new("food_brush_preview"),
+            ));
+            // Nested translucent disks preview the same dense-core falloff as paint.
+            for layer in (1..=12).rev() {
+                let fraction = layer as f32 / 12.0;
+                painter.circle_filled(
+                    point,
+                    radius * fraction,
+                    egui::Color32::from_rgba_unmultiplied(
+                        130,
+                        245,
+                        161,
+                        ((2.0 + 8.0 * (1.0 - fraction).powi(2))
+                            * state.ui.food_brush.density.sqrt())
+                        .min(40.0) as u8,
+                    ),
+                );
+            }
+            painter.circle_stroke(
+                point,
+                radius,
+                egui::Stroke::new(
+                    1.5,
+                    egui::Color32::from_rgba_unmultiplied(170, 255, 192, 210),
+                ),
+            );
+            painter.circle_filled(point, 2.0, egui::Color32::from_rgb(215, 255, 226));
+        }
         return action;
     }
     match state.ui.screen {
@@ -165,6 +229,32 @@ pub fn draw(ctx: &egui::Context, state: &mut AppState) -> Action {
     action
 }
 
+fn brush_slider(ui: &mut egui::Ui, value: &mut f32, min: f32, max: f32) -> egui::Rect {
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(140.0, 24.0), egui::Sense::click_and_drag());
+    let track = rect.shrink2(egui::vec2(8.0, 0.0));
+    if (response.clicked() || response.dragged())
+        && let Some(point) = response.interact_pointer_pos()
+    {
+        *value = min + ((point.x - track.left()) / track.width()).clamp(0.0, 1.0) * (max - min);
+    }
+    let knob = egui::pos2(
+        track.left() + (*value - min) / (max - min) * track.width(),
+        track.center().y,
+    );
+    ui.painter().line_segment(
+        [track.left_center(), track.right_center()],
+        egui::Stroke::new(4.0, egui::Color32::from_gray(65)),
+    );
+    ui.painter().line_segment(
+        [track.left_center(), knob],
+        egui::Stroke::new(4.0, egui::Color32::from_rgb(92, 190, 117)),
+    );
+    ui.painter()
+        .circle_filled(knob, 6.0, egui::Color32::from_rgb(163, 236, 178));
+    rect
+}
+
 fn draw_wallpaper(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
     state.ui.wallpaper_controls.speed_buttons = [egui::Rect::NOTHING; 6];
     state.ui.wallpaper_controls.lens_options = [egui::Rect::NOTHING; 10];
@@ -172,11 +262,25 @@ fn draw_wallpaper(ctx: &egui::Context, state: &mut AppState, action: &mut Action
         .frame(egui::Frame::NONE)
         .show(ctx, |ui| {
             state.ui.world_rect = ui.max_rect();
-            let world = ui.allocate_rect(state.ui.world_rect, egui::Sense::click());
+            let world = ui.allocate_rect(state.ui.world_rect, egui::Sense::click_and_drag());
             if world.clicked()
                 && let Some(point) = world.interact_pointer_pos()
             {
                 *action = Action::FoodClick(point);
+            }
+            if world.dragged_by(egui::PointerButton::Primary)
+                && let Some(point) = world.interact_pointer_pos()
+            {
+                *action = Action::FoodDrag(point);
+            }
+            if world.drag_stopped_by(egui::PointerButton::Primary) {
+                *action = Action::FoodEnd;
+            }
+            if world.hovered() {
+                let scroll = ui.input(|i| i.raw_scroll_delta.y);
+                if scroll != 0.0 {
+                    *action = Action::BrushSize(scroll / 50.0);
+                }
             }
         });
 
@@ -209,12 +313,59 @@ fn draw_wallpaper(ctx: &egui::Context, state: &mut AppState, action: &mut Action
                         if speed.clicked() {
                             state.ui.wallpaper_controls.toggle(WallpaperMenu::Speed);
                         }
+                        let paint = ui.add(
+                            egui::Button::new("     Paint").selected(state.ui.food_brush.enabled),
+                        );
+                        state.ui.wallpaper_controls.paint_button = paint.rect;
+                        let origin = paint.rect.left_center() + egui::vec2(10.0, 0.0);
+                        let ink = if state.ui.food_brush.enabled {
+                            egui::Color32::from_rgb(140, 244, 161)
+                        } else {
+                            ui.visuals().text_color()
+                        };
+                        ui.painter().line_segment(
+                            [
+                                origin + egui::vec2(-1.0, 2.0),
+                                origin + egui::vec2(6.0, -6.0),
+                            ],
+                            egui::Stroke::new(3.0, ink),
+                        );
+                        ui.painter().add(egui::Shape::convex_polygon(
+                            vec![
+                                origin + egui::vec2(-2.0, 1.0),
+                                origin + egui::vec2(1.0, 4.0),
+                                origin + egui::vec2(-6.0, 7.0),
+                            ],
+                            ink,
+                            egui::Stroke::NONE,
+                        ));
+                        if paint.clicked() {
+                            state.ui.food_brush.toggle();
+                        }
+                        paint.on_hover_text(
+                            "Toggle food painting. Drag on empty desktop; wheel adjusts size.",
+                        );
                         let details = ui.button("Details");
                         state.ui.wallpaper_controls.details_button = details.rect;
                         if details.clicked() {
                             state.ui.wallpaper_controls.toggle(WallpaperMenu::Details);
                         }
                     });
+                    state.ui.wallpaper_controls.brush_size_rect = egui::Rect::NOTHING;
+                    state.ui.wallpaper_controls.brush_density_rect = egui::Rect::NOTHING;
+                    if state.ui.food_brush.enabled {
+                        ui.horizontal(|ui| {
+                            ui.small("Size");
+                            state.ui.wallpaper_controls.brush_size_rect =
+                                brush_slider(ui, &mut state.ui.food_brush.radius, 8.0, 240.0);
+                            ui.small(format!("{:.0}", state.ui.food_brush.radius));
+                            ui.small("Density");
+                            state.ui.wallpaper_controls.brush_density_rect =
+                                brush_slider(ui, &mut state.ui.food_brush.density, 0.1, 4.0);
+                            ui.small(format!("{:.1}x", state.ui.food_brush.density));
+                        });
+                        ui.small("Drag to paint / wheel to resize");
+                    }
                     if !state.ui.has_world {
                         ui.colored_label(egui::Color32::LIGHT_RED, "World did not start");
                         ui.small(&state.file_status);

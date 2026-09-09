@@ -2347,7 +2347,7 @@ fn assisted_provenance_survives_restarts_history_eviction_and_checkpoint() {
     s.settings.population = 1;
     s.settings.metabolic_cost = 100.0;
     s.reset(&q);
-    s.apply_resource_shock(&d, &q, [100.0, 100.0], 1.0, 1.0);
+    s.paint_food(&d, &q, [100.0, 100.0], 24.0, 2.0);
     for _ in 0..66 {
         step(&mut s, &d, &q, 1);
         s.advance_world(&d, &q).unwrap();

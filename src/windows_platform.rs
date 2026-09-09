@@ -45,8 +45,9 @@ use windows_sys::Win32::{
             SendMessageTimeoutW, SetForegroundWindow, SetLayeredWindowAttributes, SetParent,
             SetWindowLongPtrW, SetWindowPos, SetWindowsHookExW, ShowWindow, TPM_NONOTIFY,
             TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, UnhookWindowsHookEx, WH_MOUSE_LL,
-            WM_CLOSE, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_NULL, WM_RBUTTONUP, WM_USER,
-            WNDCLASSEXW, WS_CHILD, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_POPUP, WindowFromPoint,
+            WM_CLOSE, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+            WM_NULL, WM_RBUTTONUP, WM_USER, WNDCLASSEXW, WS_CHILD, WS_EX_LAYERED, WS_EX_TOOLWINDOW,
+            WS_POPUP, WindowFromPoint,
         },
     },
 };
@@ -68,9 +69,49 @@ const TRAY_OPEN_SAVES: u32 = 6;
 static TRAY_PAUSED: AtomicBool = AtomicBool::new(false);
 static TRAY_ACTION: AtomicU32 = AtomicU32::new(0);
 static WALLPAPER_WINDOW: AtomicIsize = AtomicIsize::new(0);
+static PAINT_ENABLED: AtomicBool = AtomicBool::new(false);
+
+pub fn set_paint_enabled(enabled: bool) {
+    PAINT_ENABLED.store(enabled, Ordering::Release);
+}
+
+#[derive(Default)]
+struct PointerCapture {
+    pressed: bool,
+}
+impl PointerCapture {
+    fn event(&mut self, kind: DesktopPointerKind, allowed: bool) -> bool {
+        match kind {
+            DesktopPointerKind::Down => {
+                self.pressed = allowed;
+                allowed
+            }
+            DesktopPointerKind::Up => {
+                let captured = self.pressed;
+                self.pressed = false;
+                captured
+            }
+            DesktopPointerKind::Move => self.pressed,
+            DesktopPointerKind::Wheel(_) => allowed,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum DesktopPointerKind {
+    Down,
+    Move,
+    Hover,
+    Leave,
+    Up,
+    Wheel(f32),
+}
 
 #[derive(Clone, Copy)]
 struct DesktopClick {
+    kind: DesktopPointerKind,
+    captured: bool,
     x: i32,
     y: i32,
     time: Instant,
@@ -79,6 +120,9 @@ struct DesktopClick {
 thread_local! {
     // WH_MOUSE_LL runs on the installing thread. Never wait for Explorer here.
     static CLICK_SENDER: RefCell<Option<SyncSender<DesktopClick>>> = const { RefCell::new(None) };
+    static POINTER_CAPTURE: RefCell<PointerCapture> = const { RefCell::new(PointerCapture { pressed: false }) };
+    static POINTER_DOWN: RefCell<bool> = const { RefCell::new(false) };
+    static LAST_POINTER_MOVE: RefCell<Option<Instant>> = const { RefCell::new(None) };
 }
 
 pub struct SingleInstance {
@@ -210,9 +254,27 @@ impl Tray {
                     if unsafe { IsWindow(wallpaper) } != 0
                         && unsafe { ScreenToClient(wallpaper, &mut point) } != 0
                     {
-                        Some(TrayAction::DesktopClick {
-                            x: point.x,
-                            y: point.y,
+                        Some(match click.kind {
+                            DesktopPointerKind::Down => TrayAction::DesktopClick {
+                                x: point.x,
+                                y: point.y,
+                                can_paint: click.captured,
+                            },
+                            DesktopPointerKind::Move => TrayAction::DesktopDrag {
+                                x: point.x,
+                                y: point.y,
+                            },
+                            DesktopPointerKind::Up => TrayAction::DesktopRelease,
+                            DesktopPointerKind::Leave => TrayAction::DesktopLeave,
+                            DesktopPointerKind::Hover => TrayAction::DesktopHover {
+                                x: point.x,
+                                y: point.y,
+                            },
+                            DesktopPointerKind::Wheel(notches) => TrayAction::DesktopWheel {
+                                x: point.x,
+                                y: point.y,
+                                notches,
+                            },
                         })
                     } else {
                         None
@@ -284,27 +346,114 @@ pub enum TrayAction {
     SetStartup(bool),
     Save,
     OpenSaves,
-    DesktopClick { x: i32, y: i32 },
+    DesktopClick { x: i32, y: i32, can_paint: bool },
+    DesktopDrag { x: i32, y: i32 },
+    DesktopRelease,
+    DesktopLeave,
+    DesktopHover { x: i32, y: i32 },
+    DesktopWheel { x: i32, y: i32, notches: f32 },
 }
 
 unsafe extern "system" fn desktop_mouse_hook(code: i32, wparam: usize, lparam: LPARAM) -> isize {
-    if code == HC_ACTION as i32 && wparam as u32 == WM_LBUTTONDOWN {
-        // SAFETY: Windows supplies this structure for HC_ACTION.
-        let screen = unsafe { (*(lparam as *const MSLLHOOKSTRUCT)).pt };
-        CLICK_SENDER.with(|slot| {
-            if let Ok(sender) = slot.try_borrow()
-                && let Some(sender) = sender.as_ref()
-            {
-                let _ = sender.try_send(DesktopClick {
-                    x: screen.x,
-                    y: screen.y,
-                    time: Instant::now(),
+    if code == HC_ACTION as i32 {
+        let event = unsafe { &*(lparam as *const MSLLHOOKSTRUCT) };
+        let kind = match wparam as u32 {
+            WM_LBUTTONDOWN => {
+                POINTER_DOWN.with(|down| *down.borrow_mut() = true);
+                Some(DesktopPointerKind::Down)
+            }
+            WM_LBUTTONUP => {
+                POINTER_DOWN.with(|down| *down.borrow_mut() = false);
+                Some(DesktopPointerKind::Up)
+            }
+            WM_MOUSEMOVE => Some(if POINTER_DOWN.with(|down| *down.borrow()) {
+                DesktopPointerKind::Move
+            } else {
+                DesktopPointerKind::Hover
+            }),
+            WM_MOUSEWHEEL => Some(DesktopPointerKind::Wheel(
+                ((event.mouseData >> 16) as u16 as i16) as f32 / 120.0,
+            )),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            // Capture desktop gestures in paint mode, without waiting for
+            // Explorer accessibility. The worker still excludes icons from
+            // painting; turn Paint off to select/drag desktop icons normally.
+            let allowed = PAINT_ENABLED.load(Ordering::Acquire) && desktop_surface_at(event.pt);
+            let captured =
+                POINTER_CAPTURE.with(|capture| capture.borrow_mut().event(kind, allowed));
+            let sample = if matches!(kind, DesktopPointerKind::Move | DesktopPointerKind::Hover) {
+                LAST_POINTER_MOVE.with(|last| {
+                    let mut last = last.borrow_mut();
+                    if last.is_some_and(|time| time.elapsed() < Duration::from_millis(16)) {
+                        false
+                    } else {
+                        *last = Some(Instant::now());
+                        true
+                    }
+                })
+            } else {
+                true
+            };
+            let mut delivered = !sample;
+            if sample {
+                CLICK_SENDER.with(|slot| {
+                    if let Ok(sender) = slot.try_borrow()
+                        && let Some(sender) = sender.as_ref()
+                    {
+                        delivered = sender
+                            .try_send(DesktopClick {
+                                kind,
+                                captured,
+                                x: event.pt.x,
+                                y: event.pt.y,
+                                time: Instant::now(),
+                            })
+                            .is_ok();
+                    }
                 });
             }
-        });
+            // Fail open if the initial press could not be queued. Once captured,
+            // always swallow the matching release, even outside the desktop or
+            // after the toggle is disabled, so Explorer never sees half a drag.
+            if matches!(kind, DesktopPointerKind::Down) && !delivered {
+                POINTER_CAPTURE.with(|capture| capture.borrow_mut().pressed = false);
+            } else if captured
+                && !matches!(kind, DesktopPointerKind::Move | DesktopPointerKind::Hover)
+            {
+                // Swallow buttons/wheel, not movement: the native cursor must
+                // keep moving. Explorer never received the initiating press.
+                return 1;
+            }
+        }
     }
-    // Observational only: Explorer and all other applications still receive the click.
     unsafe { CallNextHookEx(null_mut(), code, wparam, lparam) }
+}
+
+// User32 window metadata only: no messages or cross-process accessibility calls.
+fn desktop_surface_at(screen: windows_sys::Win32::Foundation::POINT) -> bool {
+    let target = unsafe { WindowFromPoint(screen) };
+    if target.is_null()
+        || window_class(target) != "SysListView32"
+        || window_class(unsafe { GetParent(target) }) != "SHELLDLL_DefView"
+    {
+        return false;
+    }
+    let wallpaper = WALLPAPER_WINDOW.load(Ordering::Acquire) as HWND;
+    let mut client = screen;
+    let mut bounds = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
+    (unsafe { ScreenToClient(wallpaper, &mut client) }) != 0
+        && unsafe { GetClientRect(wallpaper, &mut bounds) } != 0
+        && client.x >= 0
+        && client.y >= 0
+        && client.x < bounds.right
+        && client.y < bounds.bottom
 }
 
 fn desktop_background_was_clicked(screen: windows_sys::Win32::Foundation::POINT) -> bool {
@@ -348,8 +497,8 @@ fn desktop_background_was_clicked(screen: windows_sys::Win32::Foundation::POINT)
 }
 
 fn start_click_worker() -> Result<(SyncSender<DesktopClick>, Receiver<DesktopClick>), String> {
-    let (sender, requests) = mpsc::sync_channel::<DesktopClick>(16);
-    let (results, receiver) = mpsc::sync_channel(16);
+    let (sender, requests) = mpsc::sync_channel::<DesktopClick>(256);
+    let (results, receiver) = mpsc::sync_channel(256);
     std::thread::Builder::new()
         .name("desktop-hit-test".into())
         .spawn(move || {
@@ -361,14 +510,53 @@ fn start_click_worker() -> Result<(SyncSender<DesktopClick>, Receiver<DesktopCli
                 eprintln!("Desktop accessibility initialization failed; desktop clicks disabled");
                 return;
             }
-            while let Ok(click) = requests.recv() {
-                if click.time.elapsed() < Duration::from_millis(500)
-                    && desktop_background_was_clicked(windows_sys::Win32::Foundation::POINT {
-                        x: click.x,
-                        y: click.y,
-                    })
-                {
+            let mut dragging = false;
+            while let Ok(mut click) = requests.recv() {
+                // No delayed strokes after a stalled Explorer accessibility call.
+                if click.time.elapsed() >= Duration::from_millis(500) {
+                    dragging = false;
+                    click.kind = DesktopPointerKind::Up;
                     let _ = results.try_send(click);
+                    continue;
+                }
+                match click.kind {
+                    DesktopPointerKind::Up => {
+                        // Include the final pointer position even if the last move
+                        // fell inside the hook's 16 ms sampling interval.
+                        if dragging
+                            && desktop_background_was_clicked(
+                                windows_sys::Win32::Foundation::POINT {
+                                    x: click.x,
+                                    y: click.y,
+                                },
+                            )
+                        {
+                            let mut last = click;
+                            last.kind = DesktopPointerKind::Move;
+                            let _ = results.try_send(last);
+                        }
+                        dragging = false;
+                    }
+                    DesktopPointerKind::Leave => dragging = false,
+                    DesktopPointerKind::Move if !dragging => continue,
+                    _ => {
+                        let screen = windows_sys::Win32::Foundation::POINT {
+                            x: click.x,
+                            y: click.y,
+                        };
+                        let background =
+                            desktop_surface_at(screen) && desktop_background_was_clicked(screen);
+                        if matches!(click.kind, DesktopPointerKind::Down) {
+                            dragging = background;
+                        }
+                        if !background {
+                            dragging = false;
+                            click.kind = DesktopPointerKind::Leave;
+                        }
+                    }
+                }
+                if results.try_send(click).is_err() {
+                    dragging = false;
                 }
             }
             unsafe { CoUninitialize() };
@@ -1029,5 +1217,25 @@ mod startup_tests {
         delete_startup_at(&path, "Test").unwrap();
         assert_eq!(startup_command_at(&path, "Test").unwrap(), None);
         delete_startup_at(&path, "Test").unwrap();
+    }
+}
+
+#[cfg(test)]
+mod brush_capture_tests {
+    use super::*;
+    #[test]
+    fn desktop_capture_pairs_press_release_and_restores_normal_input() {
+        let mut capture = PointerCapture::default();
+        assert!(!capture.event(DesktopPointerKind::Down, false));
+        assert!(!capture.event(DesktopPointerKind::Move, true));
+        assert!(!capture.event(DesktopPointerKind::Up, true));
+        assert!(capture.event(DesktopPointerKind::Down, true));
+        // Turning off or crossing a window never leaks a partial gesture.
+        assert!(capture.event(DesktopPointerKind::Move, false));
+        assert!(capture.event(DesktopPointerKind::Up, false));
+        assert!(!capture.event(DesktopPointerKind::Move, true));
+        assert!(!capture.event(DesktopPointerKind::Down, false));
+        assert!(!capture.event(DesktopPointerKind::Wheel(1.0), false));
+        assert!(capture.event(DesktopPointerKind::Wheel(1.0), true));
     }
 }

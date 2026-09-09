@@ -51,8 +51,29 @@ the current view or speed to open its menu; Details shows world ticks, populatio
 history, survival records, and performance. Click outside an open menu to dismiss
 it without adding food. Manual food additions are saved as part of the experiment.
 
-Blank desktop clicks add food and the HUD's speed and view controls are routed
-through Explorer without intercepting icon or taskbar clicks. Use the tray menu
+The top-right paintbrush button toggles food painting (off when the app starts).
+When enabled, a translucent brush ghost previews the radius and dense center on
+empty desktop space. Click for a dab or hold the left button and drag for a smooth
+stroke. The size slider and mouse wheel adjust the same radius from 8 to 240
+world units. A separate Density slider adjusts strength from 0.1x to 4x; the
+preview brightens with density. Food is dense in the center and fades smoothly to
+zero at the edge.
+Holding the cursor still does not repeatedly add food; moving creates evenly
+spaced dabs independent of pointer event frequency. Release to finish the stroke.
+Crossing an icon, another window, or the HUD cancels painting; start a new stroke
+on empty desktop space. The slider and HUD controls never paint food.
+
+Painting continues the same long-running experiment: agents, inherited genomes,
+world history and accumulated progress remain intact. Added food is saved and
+harvestable. The existing intervention marker records user involvement; it does
+not invalidate saves, disable reproduction, or prevent subsequent worlds.
+No save-format or model version changes are required for these controls.
+
+While Paint is enabled, desktop left-button gestures and wheel input are captured
+so Explorer cannot draw its selection rectangle. Icons are not painted or moved;
+turn Paint off to select and drag desktop icons normally. Other application
+windows and the taskbar keep their normal input. A captured drag's release is
+consumed even if the pointer leaves the desktop, avoiding a partial OS gesture. Use the tray menu
 for pause and quit. If Explorer destroys the wallpaper host, the viewer attempts
 to save and exits; double-click the executable to resume it again. Multiple-monitor
 layouts require verification on the target desktop; hosting uses one window, not

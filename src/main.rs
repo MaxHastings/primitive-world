@@ -395,6 +395,21 @@ impl AppState {
     }
 
     fn handle_food_click(&mut self, point: egui::Pos2) {
+        self.ui.food_brush.end();
+        self.paint_food(point);
+    }
+
+    fn paint_food(&mut self, point: egui::Pos2) {
+        let controls = &self.ui.wallpaper_controls;
+        if !self.ui.has_world
+            || !self.ui.food_brush.enabled
+            || !self.ui.world_rect.contains(point)
+            || controls.menu.is_some()
+            || controls.hud_rect.contains(point)
+        {
+            self.ui.food_brush.end();
+            return;
+        }
         let world = controls::world_position(
             self.ui.world_rect,
             self.renderer.camera.center,
@@ -405,20 +420,49 @@ impl AppState {
                 self.simulation.settings.habitat_height,
             ],
         );
-        self.simulation
-            .apply_resource_shock(&self.device, &self.queue, world, 24.0, 0.45);
+        let stamps = self.ui.food_brush.stamps(egui::pos2(world[0], world[1]));
+        if stamps.is_empty() {
+            return;
+        }
+        for stamp in stamps {
+            self.simulation.paint_food(
+                &self.device,
+                &self.queue,
+                [stamp.x, stamp.y],
+                self.ui.food_brush.radius,
+                2.0 * self.ui.food_brush.density,
+            );
+        }
         self.assisted = true;
         self.world_revision = self.world_revision.saturating_add(1);
         self.file_status = format!("Food patch added at {:.0}, {:.0}", world[0], world[1]);
     }
 
     #[cfg(windows)]
-    fn handle_wallpaper_desktop_click(&mut self, x: i32, y: i32) {
+    fn handle_wallpaper_desktop_click(&mut self, x: i32, y: i32, can_paint: bool) {
+        self.ui.food_brush.end();
         let point = egui::pos2(
             x as f32 / self.egui_context.pixels_per_point(),
             y as f32 / self.egui_context.pixels_per_point(),
         );
         let controls = &mut self.ui.wallpaper_controls;
+        controls.brush_sizing = None;
+        if controls.paint_button.contains(point) {
+            self.ui.food_brush.toggle();
+            return;
+        }
+        if self.ui.food_brush.enabled && controls.brush_size_rect.contains(point) {
+            controls.brush_sizing = Some(ui::BrushAdjustment::Size);
+            self.ui.food_brush.slider(point.x, controls.brush_size_rect);
+            return;
+        }
+        if self.ui.food_brush.enabled && controls.brush_density_rect.contains(point) {
+            controls.brush_sizing = Some(ui::BrushAdjustment::Density);
+            self.ui
+                .food_brush
+                .density_slider(point.x, controls.brush_density_rect);
+            return;
+        }
         for (rect, menu) in [
             (controls.lens_button, ui::WallpaperMenu::View),
             (controls.speed_button, ui::WallpaperMenu::Speed),
@@ -462,7 +506,7 @@ impl AppState {
         if controls.hud_rect.contains(point) {
             return;
         }
-        if self.ui.world_rect.contains(point) {
+        if can_paint && self.ui.world_rect.contains(point) {
             self.handle_food_click(point);
         }
     }
@@ -849,13 +893,59 @@ impl ApplicationHandler for App {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         if let Some(state) = &mut self.state {
             #[cfg(windows)]
-            if let Some(tray) = &state.tray
-                && let Some(action) = tray.take_action()
-            {
+            for _ in 0..64 {
+                let Some(action) = state.tray.as_ref().and_then(|tray| tray.take_action()) else {
+                    break;
+                };
                 match action {
                     windows_platform::TrayAction::TogglePause => state.paused = !state.paused,
-                    windows_platform::TrayAction::DesktopClick { x, y } => {
-                        state.handle_wallpaper_desktop_click(x, y)
+                    windows_platform::TrayAction::DesktopClick { x, y, can_paint } => {
+                        state.handle_wallpaper_desktop_click(x, y, can_paint)
+                    }
+                    windows_platform::TrayAction::DesktopDrag { x, y } => {
+                        let scale = state.egui_context.pixels_per_point();
+                        let point = egui::pos2(x as f32 / scale, y as f32 / scale);
+                        state.ui.brush_cursor = Some(point);
+                        if let Some(adjustment) = state.ui.wallpaper_controls.brush_sizing {
+                            match adjustment {
+                                ui::BrushAdjustment::Size => state
+                                    .ui
+                                    .food_brush
+                                    .slider(point.x, state.ui.wallpaper_controls.brush_size_rect),
+                                ui::BrushAdjustment::Density => state.ui.food_brush.density_slider(
+                                    point.x,
+                                    state.ui.wallpaper_controls.brush_density_rect,
+                                ),
+                            }
+                        } else if state.ui.food_brush.active() {
+                            state.paint_food(point);
+                        }
+                    }
+                    windows_platform::TrayAction::DesktopHover { x, y } => {
+                        let scale = state.egui_context.pixels_per_point();
+                        state.ui.brush_cursor =
+                            Some(egui::pos2(x as f32 / scale, y as f32 / scale));
+                    }
+                    windows_platform::TrayAction::DesktopRelease => {
+                        state.ui.food_brush.end();
+                        state.ui.wallpaper_controls.brush_sizing = None;
+                    }
+                    windows_platform::TrayAction::DesktopLeave => {
+                        state.ui.food_brush.end();
+                        state.ui.wallpaper_controls.brush_sizing = None;
+                        state.ui.brush_cursor = None;
+                    }
+                    windows_platform::TrayAction::DesktopWheel { x, y, notches } => {
+                        let scale = state.egui_context.pixels_per_point();
+                        let point = egui::pos2(x as f32 / scale, y as f32 / scale);
+                        let controls = &state.ui.wallpaper_controls;
+                        if state.ui.food_brush.enabled
+                            && state.ui.world_rect.contains(point)
+                            && !controls.hud_rect.contains(point)
+                            && controls.menu.is_none()
+                        {
+                            state.ui.food_brush.resize(notches);
+                        }
                     }
                     windows_platform::TrayAction::SetStartup(enabled) => {
                         let result = if enabled {
@@ -895,6 +985,7 @@ impl ApplicationHandler for App {
             #[cfg(windows)]
             if let Some(tray) = &mut state.tray {
                 tray.set_paused(state.paused);
+                windows_platform::set_paint_enabled(state.ui.food_brush.enabled);
             }
             let now = Instant::now();
             #[cfg(windows)]

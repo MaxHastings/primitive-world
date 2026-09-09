@@ -802,6 +802,18 @@ impl Simulation {
             ]]
         );
         add!(
+            "paint",
+            "../shaders/intervene.wgsl",
+            "paint",
+            "wuwu",
+            vec![vec![
+                &resource_buffer,
+                &intervention_params_buffer,
+                &ground_buffer,
+                &params_buffer,
+            ]]
+        );
+        add!(
             "kill",
             "../shaders/kill.wgsl",
             "main",
@@ -1336,6 +1348,36 @@ impl Simulation {
         );
         let mut e = device.create_command_encoder(&Default::default());
         self.dispatch(&mut e, "shock", 0, 64, 64);
+        e.copy_buffer_to_buffer(
+            &self.resource_buffer,
+            0,
+            &self.resource_display_buffer,
+            0,
+            self.resource_buffer.size(),
+        );
+        queue.submit(Some(e.finish()));
+    }
+    pub fn paint_food(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        center: [f32; 2],
+        radius: f32,
+        delta: f32,
+    ) {
+        self.assisted = true;
+        queue.write_buffer(&self.death_stats_buffer, 30 * 4, bytemuck::bytes_of(&1u32));
+        queue.write_buffer(
+            &self.intervention_params_buffer,
+            0,
+            bytemuck::bytes_of(&InterventionParams {
+                center,
+                radius,
+                delta,
+            }),
+        );
+        let mut e = device.create_command_encoder(&Default::default());
+        self.dispatch(&mut e, "paint", 0, 64, 64);
         e.copy_buffer_to_buffer(
             &self.resource_buffer,
             0,

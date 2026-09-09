@@ -32,3 +32,20 @@ fn apply(@builtin(global_invocation_id) id: vec3<u32>) {
     atomicStore(&ground[index].dropped, dropped - removed);
   }
 }
+
+// The interactive brush has a dense core and a smooth, compact falloff.
+// Keep the diagnostic resource-shock entry point above uniform and unchanged.
+@compute @workgroup_size(8, 8, 1)
+fn paint(@builtin(global_invocation_id) id: vec3<u32>) {
+  if (id.x >= GRID || id.y >= GRID) { return; }
+  let world = (vec2<f32>(id.xy) + vec2<f32>(0.5)) / f32(GRID) * params.world_size.xy;
+  let distance = length(torus_delta(intervention.center, world, params.world_size.xy));
+  let r = distance / max(intervention.radius, 0.001);
+  if (r >= 1.0) { return; }
+  let falloff = pow(1.0 - r * r, 3.0);
+  let amount = u32(round(max(0.0, intervention.delta) * falloff * SCALE));
+  let index = id.y * GRID + id.x;
+  // Saturation protects the dropped-food counter during repeated painting.
+  let old = atomicLoad(&ground[index].dropped);
+  atomicStore(&ground[index].dropped, old + min(amount, 0xffffffffu - old));
+}
