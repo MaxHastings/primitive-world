@@ -1,6 +1,6 @@
 # Long-run testing
 
-Start a **New Game** for model `primitive-v30-raw-physical-reservoir`; old and
+Start a **New Game** for model `primitive-v32-raw-physical-reservoir`; old and
 intermediate saves are incompatible. Existing saves are preserved.
 
 ## Desktop experiment

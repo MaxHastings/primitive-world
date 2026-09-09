@@ -1315,6 +1315,8 @@ fn layout_and_cli_contract() {
     assert_eq!(GENOME_SIZE, 2612);
     assert_eq!(GENOME_BANK_COUNT, 2);
     assert_eq!(std::mem::size_of::<AgentGpu>(), 296);
+    assert_eq!(std::mem::offset_of!(AgentGpu, moved), 104);
+    assert_eq!(std::mem::offset_of!(AgentGpu, lineage_id), 112);
     assert_eq!(std::mem::size_of::<PerceptionGpu>(), 400);
     assert_eq!(std::mem::size_of::<DecisionGpu>(), 800);
     assert_eq!(std::mem::size_of::<SelectionOutput>(), 1520);
@@ -1764,7 +1766,7 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v30-raw-physical-reservoir");
+    assert_eq!(MODEL_ID, "primitive-v32-raw-physical-reservoir");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
     assert_eq!(crate::founders::bundled().version, FOUNDER_BANK_VERSION);
 }

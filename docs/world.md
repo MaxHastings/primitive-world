@@ -135,8 +135,8 @@ baseline. Agent ages and survival duration also begin at zero.
 
 ## Persistence, observation, and limits
 
-Checkpoints use format 43; founder banks use format 18. The
-primitive-v30-raw-physical-reservoir model rejects older layouts without rewriting them.
+Checkpoints use format 45; founder banks use format 18. The
+primitive-v32-raw-physical-reservoir model rejects older layouts without rewriting them.
 Checkpoints preserve settings, bodies, genomes, food, soil, event counters,
 controller traces, the hereditary pool, world history and independent hereditary RNG streams. Derived indexing/terrain is rebuilt after load. Loading
 validates before mutating the world. Save/export refuses existing destinations.

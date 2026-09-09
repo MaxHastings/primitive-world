@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — v32 GPU body-layout repair
+
+- Restore the CPU/GPU `Agent` layout after the v30 raw-feedback cleanup removed
+  a field: the explicit WGSL `vec2` alignment word preserves both the 296-byte
+  runtime-array stride and all member offsets after that boundary.
+- Advance to model `primitive-v32-raw-physical-reservoir` and checkpoint format
+  45. v30 and preliminary v31 checkpoints are preserved but rejected because
+  their body records had incompatible CPU/GPU layouts.
+
 ## Unreleased — raw physical feedback
 
 - Replace controller-visible collection, digestion, spending, received-transfer,

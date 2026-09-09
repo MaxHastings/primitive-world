@@ -44,7 +44,7 @@ observations. History length and values cannot affect hereditary draws. Completi
 is idempotent and requires natural extinction. A pause, save or requested work
 budget never completes a living world.
 
-Checkpoint format 43 preserves live physics, lifetime learning, both pool banks,
+Checkpoint format 44 preserves live physics, lifetime learning, both pool banks,
 traits, replacement state, founder RNG and history. Validation precedes live
 writes. Prior-world durations are independent of the new world's age. Previous
 models are rejected without changing their files.

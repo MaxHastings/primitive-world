@@ -13,8 +13,9 @@ These are allocations, not total process-memory measurements. Sparse descendant
 sampling reads only selected genomes; learned-magnitude observation reduces on
 GPU before reading compact totals.
 
-The viewer submits at most 32 ticks per batch and targets short batches to stay
-responsive. 1x requests 60 ticks/s; 32x requests 1,920 ticks/s; MAX is uncapped.
+The viewer adaptively batches up to 32 ticks so GPU readback stays bounded while
+timer pacing can still reach the selected rate. 1x requests
+60 ticks/s; 32x requests 1,920 ticks/s; MAX is uncapped.
 Requested speed does not override hardware throughput. Rendering, other GPU
 applications, body count, dense neighbors, and reproduction all affect speed.
 Full saves can pause playback while complete state is read and written.

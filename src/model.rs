@@ -1,10 +1,10 @@
 //! primitive-world: fixed-frame sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
 /// Persistence accepts only this model's controller and lifetime-state layout.
-pub const MODEL_ID: &str = "primitive-v30-raw-physical-reservoir";
+pub const MODEL_ID: &str = "primitive-v32-raw-physical-reservoir";
 pub const FOUNDER_BANK_VERSION: u32 = 18;
-pub const CHECKPOINT_VERSION: u32 = 43;
-pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD043";
+pub const CHECKPOINT_VERSION: u32 = 45;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD045";
 /// Initial body upkeep while a fresh world establishes its first life cycles.
 pub const METABOLIC_START_COST: f32 = 0.01;
 pub const DEFAULT_METABOLIC_RAMP_TICKS: u32 = 50_000;
@@ -127,6 +127,9 @@ pub struct AgentGpu {
     pub ingested: f32,
     pub spent: f32,
     pub received: f32,
+    /// Matches WGSL's required four-byte alignment gap before `moved: vec2`.
+    /// Keeping it explicit makes all following Rust/WGSL member offsets agree.
+    pub gpu_layout_padding: u32,
     pub moved: [f32; 2],
     pub lineage_id: u32,
     pub parent_lineage: u32,
