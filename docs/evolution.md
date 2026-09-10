@@ -39,10 +39,9 @@ Natural extinction starts a newly seeded world. Fresh bodies sample unchanged
 pool records uniformly with replacement, using a separate saved RNG. Their
 position, age, reserves and lifetime state are freshly initialized. There are no
 ranked founders, accepted candidates, mutation proposals or immigrant quotas.
-Body upkeep is stationary at 0.05 energy/tick. New worlds receive a fixed
-ground-cover allowance: food starts across the whole map, then its habitat and
-productivity floor fades smoothly to zero by tick 100,000. It depends only on
-world age and does not multiply the capacity or growth of existing rich patches.
+Body upkeep is stationary at 0.05 energy/tick. New worlds use their seeded
+habitat without opening food coverage. Juvenile dependence and reproduction
+physics are permanent; ongoing climate does not observe population success.
 
 ## Observation and persistence
 
@@ -51,7 +50,7 @@ observations. History length and values cannot affect hereditary draws. Completi
 is idempotent and requires natural extinction. A pause, save or requested work
 budget never completes a living world.
 
-Checkpoint format 57 preserves live physics, lifetime learning, both pool banks,
+Checkpoint format 58 preserves live physics, lifetime learning, both pool banks,
 traits, replacement state, founder RNG and history. Validation precedes live
 writes. Prior-world durations are independent of the new world's age. Previous
 models are rejected without changing their files.

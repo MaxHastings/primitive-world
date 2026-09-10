@@ -1,6 +1,6 @@
 # Long-run testing
 
-Start a **New Game** for model `primitive-v39-shorter-lifespans`; old and
+Start a **New Game** for model `primitive-v42-climate-care`; old and
 intermediate saves are incompatible. Existing saves are preserved.
 
 ## Desktop experiment

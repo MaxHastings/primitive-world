@@ -1,3 +1,6 @@
+Current timing: the recovery model uses one-million-tick terrain keyframes.
+The generator and spatial-quality findings below describe the preserved baseline.
+
 # Correlated habitat generation
 
 Only persistent geography generation changes. Biology, sensing, actions, costs,
@@ -17,7 +20,7 @@ interpolation makes noise C2 continuous, including across the torus boundaries;
 a quintic zero shoulder below 0.43 creates genuinely barren space. There are no
 patch centers, authored routes, endpoint searches, or connectivity guarantees in
 the resulting field. Each seed/epoch determines one canonical map; the existing
-quarter-turn permutation and 8192-tick keyframe interpolation remain unchanged.
+quarter-turn permutation and one-million-tick keyframe interpolation remain unchanged.
 
 Each new map is scaled to the old generator's mean for that exact seed/epoch.
 The frozen legacy generator is retained to calculate only this scalar budget;

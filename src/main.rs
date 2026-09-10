@@ -1,12 +1,14 @@
 #![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
 
 mod brain;
+mod climate;
 mod controls;
 mod environment;
 mod evolution;
 mod experiments;
 mod family_observer;
 mod founders;
+mod frame_capture;
 mod headless;
 mod inspection;
 mod journey_observer;
@@ -45,6 +47,7 @@ struct App {
 }
 
 struct AppState {
+    capture_path: Option<std::path::PathBuf>,
     wallpaper: bool,
     wallpaper_size: Option<[f32; 2]>,
     assisted: bool,
@@ -150,7 +153,12 @@ impl AppState {
             .find(wgpu::TextureFormat::is_srgb)
             .unwrap_or(capabilities.formats[0]);
         let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | if std::env::var_os("PRIMITIVE_CAPTURE_FRAME").is_some() {
+                    wgpu::TextureUsages::COPY_SRC
+                } else {
+                    wgpu::TextureUsages::empty()
+                },
             format,
             width: size.width.max(1),
             height: size.height.max(1),
@@ -245,6 +253,7 @@ impl AppState {
             mapped_at_creation: false,
         });
         let mut state = Self {
+            capture_path: std::env::var_os("PRIMITIVE_CAPTURE_FRAME").map(Into::into),
             wallpaper,
             wallpaper_size,
             assisted: false,
@@ -384,14 +393,6 @@ impl AppState {
         self.ui.tab = ui::Tab::Agent;
     }
 
-    pub(crate) fn set_ramps(&mut self, enabled: [bool; 3]) {
-        if self.simulation.settings.ramps() != enabled {
-            self.complete_batch(true);
-            self.simulation.set_ramps(enabled);
-            self.world_revision = self.world_revision.saturating_add(1);
-        }
-    }
-
     pub(crate) fn set_metabolism(&mut self, value: f32) {
         if self.simulation.settings.metabolic_cost != value {
             self.simulation.settings.metabolic_cost = value;
@@ -456,16 +457,6 @@ impl AppState {
         controls.brush_sizing = None;
         if controls.paint_button.contains(point) {
             self.ui.paint_brush.toggle();
-            return;
-        }
-        if let Some(index) = controls
-            .ramp_rects
-            .iter()
-            .position(|rect| rect.contains(point))
-        {
-            let mut enabled = self.simulation.settings.ramps();
-            enabled[index] = !enabled[index];
-            self.set_ramps(enabled);
             return;
         }
         if controls.metabolism_rect.contains(point) {
@@ -669,7 +660,24 @@ impl AppState {
         for texture_id in &full_output.textures_delta.free {
             self.egui_renderer.free_texture(texture_id);
         }
+        let capture = if self.frame_count == 2 && self.capture_path.is_some() {
+            Some(frame_capture::encode(
+                &self.device,
+                &mut encoder,
+                &output.texture,
+            ))
+        } else {
+            None
+        };
         self.queue.submit(Some(encoder.finish()));
+        if let Some((buffer, pitch)) = capture {
+            let path = self.capture_path.take().unwrap();
+            if let Err(error) =
+                frame_capture::save(&self.device, &buffer, pitch, &self.config, &path)
+            {
+                self.file_status = format!("Frame capture failed: {error}");
+            }
+        }
         self.window.pre_present_notify();
         output.present();
         self.frame_count += 1;

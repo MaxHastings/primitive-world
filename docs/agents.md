@@ -144,14 +144,12 @@ Packets integrate velocity with world wrapping, then damp it by 0.98 each tick;
 force does not damage them or change their genome or reserves. Transfer remains
 organism-only, and only compatible packet pairs can fuse. Packets
 spend `packet_upkeep * packet_size^(2/3)` energy per tick. The upkeep
-coefficient smoothly rises from .002 to .02 over world ticks 0–100,000. They expire at zero energy, without a separate lifetime timer. A fresh
-packet has an initial viability scale of approximately 500–1,817 ticks, falling
-to 50–182 at normal upkeep. Existing packets pay the current world-age rate. This is a
-modeling choice, not a measured biological constant or guaranteed social outcome.
+coefficient is permanently .02, independent of world age. They expire at zero
+energy, without a separate lifetime timer. Initial viability is approximately
+50–182 ticks across packet sizes 1–48. These are declared physical assumptions,
+not a guarantee that coordination evolves.
 
-The fusion radius smoothly falls from six wrapped units to two over world ticks
-0–100,000 (four at tick 50,000). Two packets within that radius fuse if they
-came from different producers.
+Two packets within two wrapped units fuse if they came from different producers.
 Producer provenance is a physical compatibility check, never a controller input;
 there are no kinship classes, mating types, sex labels, preferences or mate scores.
 Nearest contact and a tick-varying unique arbitration key resolve contention;
@@ -191,13 +189,8 @@ the hereditary reservoir.
 ## Juvenile physiology
 
 Default maturity is 1,800 ticks. With `x = clamp(age / maturity, 0, 1)`,
-gathering yield is multiplied by `floor + (1-floor)*x^6`. The world-age
-opening ramp sets `floor = 1 - 0.99*smoothstep(0, 100000, world_tick)`: 100%
-at tick zero, 50.5% at tick 50,000, and 1% from tick 100,000 onward. This uses
-the same saved world-age schedule as food and packet assistance, even with a
-static landscape. It never observes transfers or reproductive success. Existing
-bodies experience the current conditions; newborns do not restart the ramp.
-Maturity stays at 1,800 ticks, with no moving maturity threshold.
+gathering yield is multiplied by `0.01 + 0.99*x^6`. This is permanent physiology:
+world age, climate phase and population success do not change the curve.
 Gathering effort still pays
 its ordinary cost. The resource ledger rounds down to millifood, so very small
 requests can yield zero. Movement, cognition, signalling and automatic digestion
@@ -214,8 +207,7 @@ packets with a longer viability window. No packet size buys juvenile independenc
 
 At default upkeep, a stationary body needs at least 90 energy to mature, before
 cognition or effort. Maximum birth reserves are 48; one full newborn inventory
-adds only 8. Early in the ramp, gathering can support independent juvenile
-survival. After assistance ends, a GPU regression supplies unlimited ground food and maximal
+adds only 8. At every world age, a GPU regression supplies unlimited ground food and maximal
 gathering effort: the early deficit still kills that unprovisioned juvenile.
 A separate controlled fixture survives through ordinary repeated food transfers.
 These are physical feasibility checks, not behaviors installed in founders.
@@ -231,4 +223,4 @@ ticks; interaction pairs are disjoint) and `juvenile_received_milli`. Existing
 `births_to_descendant_parents` distinguish mortality, maturation and reproductive
 continuity. These counters cover descendants, including terminal ticks, and are
 observer-only: no controller can read them. The model ID is now
-`primitive-v41-juvenile-opening-ramp`; old model checkpoints are rejected.
+`primitive-v42-climate-care`; old model checkpoints are rejected.

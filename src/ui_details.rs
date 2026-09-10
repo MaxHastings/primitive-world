@@ -194,21 +194,8 @@ pub fn events(ui: &mut egui::Ui, state: &mut AppState, command: &mut controls::C
 }
 
 pub fn stats(ui: &mut egui::Ui, state: &mut AppState) {
-    let ecology_tick = if state.simulation.settings.ecology_ramp {
-        state.simulation.tick
-    } else {
-        100_000
-    };
-    let reproduction_tick = if state.simulation.settings.reproduction_ramp {
-        state.simulation.tick
-    } else {
-        100_000
-    };
-    ui.small(format!(
-        "Opening coverage assistance: {:.0}% · ecology speed: {:.0}% · normal at tick 100,000",
-        100.0 * simulation::opening_ground_cover(ecology_tick) / model::INITIAL_GROUND_COVER,
-        100.0 * simulation::ecology_speed(ecology_tick)
-    ));
+    let reproduction_tick = state.simulation.tick;
+    ui.small("Permanent juvenile dependence · ongoing abundance and drought · no opening ramps");
     ui.small(format!(
         "Packet fusion radius: {:.2} · packet upkeep: {:.4} × size^(2/3)",
         simulation::packet_fusion_radius(reproduction_tick),

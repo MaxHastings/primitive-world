@@ -1,5 +1,93 @@
 use super::*;
 
+/// An upper-bound physical feasibility experiment, not an evolved genome or
+/// ordinary random initialization. Only action readouts are controlled after
+/// initialization; bodies, energy, food, packets and offspring are never edited.
+#[test]
+fn controlled_finite_reserve_colony_reaches_descendant_reproduction() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings = SimSettings {
+        population: 0,
+        ..SimSettings::default()
+    };
+    s.reset(&q);
+    let positions = [
+        [100.0, 100.0],
+        [102.0, 100.0],
+        [97.0, 100.0],
+        [105.0, 100.0],
+        [101.0, 97.0],
+        [101.0, 103.0],
+    ];
+    for (slot, position) in positions.into_iter().enumerate() {
+        let a = AgentGpu {
+            energy: 100.0,
+            food: 8.0,
+            packet_size: 16.0,
+            lineage_id: slot as u32 + 1,
+            active_mask: 1,
+            parameter_mutation_rate: 1.0,
+            parameter_mutation_step: 1.0,
+            topology_mutation_rate: 1.0,
+            ..body(position)
+        };
+        put(&s, &q, slot, a, &fixed(0, [0.0; 2]));
+    }
+    s.family_observer =
+        Some(crate::family_observer::FamilyObserver::new(&d, &q, &s, 2200).unwrap());
+    for _ in 0..2200 {
+        let bodies = s.agent_snapshot(&d, &q).unwrap();
+        if bodies.iter().any(|a| a.alive == 1 && a.ancestry_depth >= 2) {
+            break;
+        }
+        for (slot, a) in bodies.iter().enumerate().filter(|(_, a)| a.alive == 1) {
+            let breeder = slot < 2 || a.ancestry_depth > 0;
+            let adult = a.age >= s.settings.maturity_age;
+            let reproduce = breeder && adult && a.packets_produced < 2 && a.energy > 25.0;
+            let action = if reproduce {
+                5
+            } else if adult {
+                2
+            } else {
+                0
+            };
+            let mut genes = fixed(action, [0.0; 2]);
+            // No ancestry-aware transfer targeting: the normal nearest-body
+            // rule decides who receives every attempted transfer.
+            genes[OUTPUT_BIAS + 1] = if adult && breeder { 1.0 } else { 0.0 };
+            s.write_genome_slot(&q, slot, &genes);
+        }
+        step(&mut s, &d, &q, 1);
+    }
+    let report = s.family_observer.as_ref().unwrap().report(&d, &q).unwrap();
+    let f = &report.families[0];
+    for (slot, a) in s
+        .agent_snapshot(&d, &q)
+        .unwrap()
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| a.alive != 0)
+    {
+        eprintln!(
+            "colony slot={slot} state={} depth={} age={} energy={} food={} packets={}",
+            a.alive, a.ancestry_depth, a.age, a.energy, a.food, a.packets_produced
+        );
+    }
+    eprintln!(
+        "controlled colony: ticks={} births={} matured={} juvenile_transfer_ticks={} food_received={} descendant_parent_births={}",
+        s.tick,
+        f.births,
+        f.matured_descendants,
+        f.juvenile_transfers_received,
+        f.juvenile_received_milli,
+        f.births_to_descendant_parents
+    );
+    assert!(f.matured_descendants >= 2);
+    assert!(f.juvenile_transfers_received > 0);
+    assert!(f.births_to_descendant_parents > 0);
+}
+
 pub(super) fn packet(position: [f32; 2], producer: u32, energy: f32) -> AgentGpu {
     AgentGpu {
         alive: 2,
@@ -14,7 +102,7 @@ pub(super) fn packet(position: [f32; 2], producer: u32, energy: f32) -> AgentGpu
 }
 
 fn decay(size: f32) -> f32 {
-    0.002 * size.powf(2.0 / 3.0)
+    0.02 * size.powf(2.0 / 3.0)
 }
 
 #[test]
@@ -98,7 +186,7 @@ fn pushed_packet_can_drift_into_compatible_fusion_range() {
             &s,
             &q,
             2,
-            packet([110.0, 100.0], 2, 16.0),
+            packet([106.0, 100.0], 2, 16.0),
             &fixed(0, [0.0; 2]),
         );
         step(&mut s, &d, &q, 1);
@@ -221,9 +309,9 @@ fn packets_fuse_only_locally_and_only_between_different_producers() {
     let (d, q) = gpu();
     for (other_producer, distance, energy, births, failed) in [
         (1, 1.0, 16.0, 0, 0),
-        (2, 6.01, 16.0, 0, 0),
-        (2, 6.0, 16.0, 1, 0),
-        (1, 6.0, 16.0, 0, 0),
+        (2, 2.01, 16.0, 0, 0),
+        (2, 2.0, 16.0, 1, 0),
+        (1, 2.0, 16.0, 0, 0),
         (2, 1.0, 16.0, 1, 0),
         (2, 1.0, 24.0, 1, 0),
         (2, 1.0, 48.0, 1, 0),
@@ -277,12 +365,12 @@ fn packet_snapshots_outlive_producers_and_do_not_require_synchronized_release() 
     let mut s = scene(&d, &q);
     let genome = fixed(0, [0.0; 2]);
     put(&s, &q, 0, packet([100.0, 100.0], 7, 32.0), &genome);
-    step(&mut s, &d, &q, 200);
+    step(&mut s, &d, &q, 100);
     let before = s.agent_snapshot(&d, &q).unwrap()[0];
     assert_eq!(before.alive, 2);
     near(
         before.energy,
-        (0..200).fold(32.0, |e, t| e - packet_upkeep(t) * 32.0f32.powf(2.0 / 3.0)),
+        (0..100).fold(32.0, |e, t| e - packet_upkeep(t) * 32.0f32.powf(2.0 / 3.0)),
     );
     assert_eq!(before.position, [100.0, 100.0]);
     assert_eq!(
@@ -299,8 +387,8 @@ fn packet_snapshots_outlive_producers_and_do_not_require_synchronized_release() 
     let child = after.iter().find(|a| a.alive == 1).unwrap();
     near(
         child.energy,
-        before.energy - packet_upkeep(200) * 32.0f32.powf(2.0 / 3.0) + 8.0
-            - packet_upkeep(200) * 8.0f32.powf(2.0 / 3.0)
+        before.energy - packet_upkeep(100) * 32.0f32.powf(2.0 / 3.0) + 8.0
+            - packet_upkeep(100) * 8.0f32.powf(2.0 / 3.0)
             - s.settings.fusion_loss,
     );
     assert!(
@@ -321,13 +409,13 @@ fn unfused_packets_expire_by_resource_depletion_without_cognition() {
         packet([100.0, 100.0], 1, 1.0),
         &fixed(4, [1.0, 1.0]),
     );
-    step(&mut s, &d, &q, 300);
+    step(&mut s, &d, &q, 30);
     let a = s.agent_snapshot(&d, &q).unwrap()[0];
     assert_eq!(a.alive, 2);
-    near(a.energy, (0..300).fold(1.0, |e, t| e - packet_upkeep(t)));
+    near(a.energy, (0..30).fold(1.0, |e, t| e - packet_upkeep(t)));
     assert_eq!(a.position, [100.0, 100.0]);
     assert_eq!(a.lived_ticks, 0);
-    step(&mut s, &d, &q, 300);
+    step(&mut s, &d, &q, 30);
     let m = s.metrics(&d, &q).unwrap();
     assert_eq!(m.living, 0);
     assert_eq!(m.signals, 0);
@@ -432,53 +520,22 @@ fn accounting_horizon_rolls_forward_without_extinction_or_losing_the_pool() {
 }
 
 #[test]
-fn opening_food_allowance_is_smooth_monotone_and_ends_at_one_hundred_thousand() {
-    assert_eq!(opening_ground_cover(0), 0.5);
-    assert_eq!(opening_ground_cover(50_000), 0.25);
-    assert_eq!(opening_ground_cover(100_000), 0.0);
-    assert_eq!(opening_ground_cover(u32::MAX), 0.0);
-    for tick in (0..100_000).step_by(100) {
-        assert!(opening_ground_cover(tick + 100) <= opening_ground_cover(tick));
-    }
-    assert!((opening_ground_cover(1) - opening_ground_cover(0)).abs() < 0.00001);
-    assert!((opening_ground_cover(100_000) - opening_ground_cover(99_999)).abs() < 0.00001);
-    assert_eq!(
-        build_resources(&[0.0, 0.25, 0.5, 1.0]),
-        [275, 275, 275, 550]
-    );
-    let settings = SimSettings::default();
-    assert_eq!(
-        params_for(50_000, 750_000, &settings, 1).time_and_costs[0],
-        0.25
-    );
-    assert_eq!(params_for(0, 750_000, &settings, 1).time_and_costs[0], 0.5);
+fn initial_food_preserves_habitat_edges_without_opening_cover() {
+    assert_eq!(build_resources(&[0.0, 0.25, 0.5, 1.0]), [0, 137, 275, 550]);
+    let habitat = build_habitat_at(42, 0, 1.0);
+    let food = build_resources(&habitat);
+    assert!(food.contains(&0));
+    assert!(food.iter().any(|v| *v > 0));
 }
 
 #[test]
-fn ecology_clock_accelerates_smoothly_without_an_end_of_ramp_jump() {
-    near(ecology_speed(0), 0.1);
-    near(ecology_speed(50_000), 0.55);
-    near(ecology_speed(100_000), 1.0);
-    near(ecology_speed(u32::MAX), 1.0);
-    assert_eq!(ecology_time(0), 0);
-    assert_eq!(ecology_time(10), 1);
-    assert_eq!(ecology_time(100_000), 55_000);
-    assert_eq!(ecology_time(100_001), 55_001);
-    assert_eq!(ecology_time(200_000), 155_000);
-    for tick in 0..100_001 {
-        assert!(ecology_time(tick + 1) >= ecology_time(tick));
-        assert!(ecology_time(tick + 1) - ecology_time(tick) <= 1);
-    }
-}
-
-#[test]
-fn evolving_terrain_and_weather_resume_across_the_opening_ramp_boundary() {
+fn evolving_terrain_and_weather_resume_across_million_tick_boundary() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     s.settings.evolving_landscape = true;
     s.settings.resource_regeneration = 0.01;
     s.reset(&q);
-    s.tick = 99_998;
+    s.tick = 999_998;
     step(&mut s, &d, &q, 1);
     let path = temp("ecology-ramp-boundary.checkpoint");
     s.save_checkpoint(&d, &q, &path).unwrap();
@@ -503,55 +560,18 @@ fn evolving_terrain_and_weather_resume_across_the_opening_ramp_boundary() {
                 &s.fertility_buffer,
                 (RESOURCE_GRID * RESOURCE_GRID) as usize,
             ),
+            read::<[f32; 4]>(
+                &d,
+                &q,
+                &s.ecology_buffer,
+                (RESOURCE_GRID * RESOURCE_GRID) as usize,
+            ),
         )
     };
     let expected = finish(&mut s);
     s.load_checkpoint(&q, &path).unwrap();
     assert!(finish(&mut s) == expected);
-    assert_eq!(s.tick, 100_003);
-    std::fs::remove_file(path).unwrap();
-}
-
-#[test]
-fn opening_cover_preserves_rich_patch_capacity_and_survives_resume() {
-    let (d, q) = gpu();
-    let mut s = scene(&d, &q);
-    let mut amounts = Vec::new();
-    for tick in [100_000, 50_000, 0] {
-        s.reset(&q);
-        q.write_buffer(&s.resource_buffer, 0, bytemuck::bytes_of(&16000u32));
-        q.write_buffer(
-            &s.ground_buffer,
-            0,
-            bytemuck::cast_slice(&[0u32, 0, 0, 0, 0, 0, 1.0f32.to_bits(), 1.0f32.to_bits()]),
-        );
-        let mut params = params_for(tick, 0, &s.settings, s.seed);
-        params.environment[0] = 1.0; // Isolate food capacity from soil-speed changes.
-        q.write_buffer(&s.params_buffer, 0, bytemuck::bytes_of(&params));
-        let mut e = d.create_command_encoder(&Default::default());
-        s.dispatch(&mut e, "resource", 0, 64, 64);
-        q.submit(Some(e.finish()));
-        amounts.push(read::<u32>(&d, &q, &s.resource_buffer, 1)[0]);
-    }
-    assert!(amounts[0] > 0);
-    assert_eq!(amounts[1], amounts[0]);
-    assert_eq!(amounts[2], amounts[0]);
-    s.tick = 50_000;
-    s.update_params(&q);
-    let path = temp("opening-abundance.checkpoint");
-    s.save_checkpoint(&d, &q, &path).unwrap();
-    let update_food = |s: &Simulation| {
-        let mut e = d.create_command_encoder(&Default::default());
-        s.dispatch(&mut e, "resource", 0, 64, 64);
-        q.submit(Some(e.finish()));
-        read::<u32>(&d, &q, &s.resource_buffer, 1)[0]
-    };
-    let expected = update_food(&s);
-    s.tick = 0;
-    s.load_checkpoint(&q, &path).unwrap();
-    assert_eq!(s.tick, 50_000);
-    assert_eq!(opening_ground_cover(s.tick), 0.25);
-    assert_eq!(update_food(&s), expected);
+    assert_eq!(s.tick, 1_000_003);
     std::fs::remove_file(path).unwrap();
 }
 
@@ -593,58 +613,11 @@ fn in_place_fusion_keeps_both_packet_genomes_and_module_traits() {
 }
 
 #[test]
-fn opening_cover_feeds_barren_travel_space_and_fades_to_normal() {
-    let (d, q) = gpu();
-    let mut s = scene(&d, &q);
-    for initial in [0u32, 1000] {
-        let mut amounts = Vec::new();
-        for tick in [0, 50_000, 100_000] {
-            s.reset(&q);
-            q.write_buffer(&s.resource_buffer, 0, bytemuck::bytes_of(&initial));
-            q.write_buffer(
-                &s.ground_buffer,
-                0,
-                bytemuck::cast_slice(&[0u32, 0, 0, 0, 0, 0, 1.0f32.to_bits(), 0]),
-            );
-            q.write_buffer(&s.terrain_buffer, 0, &vec![0; 512 * 512 * 16]);
-            let mut params = params_for(tick, 0, &s.settings, s.seed);
-            params.mutation[2] = 1.0;
-            params.time_and_costs[1] = 1.0;
-            params.environment[0] = 1.0;
-            q.write_buffer(&s.params_buffer, 0, bytemuck::bytes_of(&params));
-            let mut e = d.create_command_encoder(&Default::default());
-            for _ in 0..64 {
-                s.dispatch(&mut e, "resource", 0, 64, 64);
-            }
-            q.submit(Some(e.finish()));
-            amounts.push(read::<u32>(&d, &q, &s.resource_buffer, 1)[0]);
-        }
-        assert!(amounts[0] > amounts[1], "{amounts:?}");
-        assert!(amounts[1] > 0, "{amounts:?}");
-        if initial == 0 {
-            assert_eq!(amounts[2], 0);
-        } else {
-            assert!(amounts[2] > 0 && amounts[2] < amounts[1]);
-        }
-    }
-    let habitat = build_habitat_at(42, 0, 1.0);
-    let normal = habitat.iter().filter(|h| **h * 550.0 >= 1.0).count();
-    let opening = build_resources(&habitat).iter().filter(|v| **v > 0).count();
-    assert_eq!(opening, habitat.len());
-    assert!(normal < opening);
-    eprintln!(
-        "Food coverage: opening {:.1}%, baseline {:.1}%",
-        100.0,
-        100.0 * normal as f64 / habitat.len() as f64
-    );
-}
-
-#[test]
 fn weather_event_boundaries_do_not_flash_food_or_soil() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let cells = (RESOURCE_GRID * RESOURCE_GRID) as usize;
-    for boundary in [640, 1280, 1920, 2560, 3200] {
+    for boundary in [997, 1994, 47003, 173003, 1_100_009] {
         let mut frames = Vec::new();
         for environmental_tick in [boundary - 1, boundary, boundary + 1] {
             s.reset(&q);
@@ -697,6 +670,7 @@ fn disappearing_food_fades_at_ecology_speed_and_conserves_loss_accounting() {
         s.reset(&q);
         q.write_buffer(&s.resource_buffer, 0, bytemuck::bytes_of(&1000u32));
         q.write_buffer(&s.ground_buffer, 0, bytemuck::cast_slice(&[0u32; 8]));
+        q.write_buffer(&s.ecology_buffer, 0, bytemuck::cast_slice(&[0.0f32; 4]));
         let mut params = params_for(tick, 0, &s.settings, s.seed);
         params.time_and_costs[0] = 0.0; // Isolate recession of a vanished patch.
         q.write_buffer(&s.params_buffer, 0, bytemuck::bytes_of(&params));
@@ -715,18 +689,18 @@ fn disappearing_food_fades_at_ecology_speed_and_conserves_loss_accounting() {
         assert_eq!(food + loss, 1000);
         remaining.push(food);
     }
-    assert!(remaining[0] > remaining[1] && remaining[1] > remaining[2]);
+    assert!(remaining.windows(2).all(|pair| pair[0] == pair[1]));
     assert!(remaining[2] > 300);
 }
 
 #[test]
-fn packet_assistance_tracks_world_age_on_gpu_and_across_resume() {
+fn packet_physics_is_constant_across_world_ages_and_resume() {
     let (d, q) = gpu();
     for (tick, radius, upkeep) in [
-        (0, 6.0, 0.002),
-        (50_000, 4.0, 0.011),
+        (0, 2.0, 0.02),
+        (50_000, 2.0, 0.02),
         (100_000, 2.0, 0.02),
-        (200_000, 2.0, 0.02),
+        (3_000_000, 2.0, 0.02),
     ] {
         near(packet_fusion_radius(tick), radius);
         near(packet_upkeep(tick), upkeep);
@@ -811,4 +785,110 @@ fn pending_identity_rollover_keeps_ticking_without_allocating_or_fusing() {
     assert_eq!(agents[1].alive, 2);
     assert_eq!(agents[2].alive, 2);
     assert!(agents[1].energy < 16.0);
+}
+
+#[test]
+fn water_nutrient_and_weather_drive_coverage_depletion_and_recovery() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let count = (RESOURCE_GRID * RESOURCE_GRID) as usize;
+    let mut snapshots = Vec::new();
+    let mut states = Vec::new();
+    // Dispatch a 64x64 region, preserving the full-size world coordinates.
+    for (water, rain, mineral) in [(1.0, 1.5, 3.0), (0.0, 0.0, 3.0), (1.0, 1.5, 0.0)] {
+        s.reset(&q);
+        q.write_buffer(
+            &s.resource_buffer,
+            0,
+            bytemuck::cast_slice(&vec![0u32; count]),
+        );
+        q.write_buffer(
+            &s.ground_buffer,
+            0,
+            bytemuck::cast_slice(&vec![0u32; count * 8]),
+        );
+        q.write_buffer(
+            &s.fertility_buffer,
+            0,
+            bytemuck::cast_slice(&vec![0.55f32; count]),
+        );
+        q.write_buffer(
+            &s.ecology_buffer,
+            0,
+            bytemuck::cast_slice(&vec![[water, mineral, 0.0f32, 0.0]; count]),
+        );
+        let mut params = params_for(0, 0, &s.settings, 91);
+        params.time_and_costs[0] = rain;
+        params.time_and_costs[1] = 0.1;
+        params.world_size[3] = 0.5;
+        params.mutation[2] = 0.0;
+        q.write_buffer(&s.params_buffer, 0, bytemuck::bytes_of(&params));
+        let mut e = d.create_command_encoder(&Default::default());
+        for _ in 0..512 {
+            s.dispatch(&mut e, "resource", 0, 8, 8);
+        }
+        q.submit(Some(e.finish()));
+        snapshots.push(read::<u32>(&d, &q, &s.resource_buffer, count));
+        states.push(read::<[f32; 4]>(&d, &q, &s.ecology_buffer, count));
+    }
+    let total = |v: &Vec<u32>| v.iter().map(|x| u64::from(*x)).sum::<u64>();
+    assert!(total(&snapshots[0]) > 1000);
+    assert_eq!(total(&snapshots[1]), 0, "dry cells cannot grow broad cover");
+    assert!(
+        total(&snapshots[0]) > total(&snapshots[2]) * 2,
+        "mineral limits wet growth"
+    );
+    // Restore the same dry physical state, then rain gradually replenishes water.
+    q.write_buffer(&s.resource_buffer, 0, bytemuck::cast_slice(&snapshots[1]));
+    q.write_buffer(&s.ecology_buffer, 0, bytemuck::cast_slice(&states[1]));
+    let mut params = params_for(0, 0, &s.settings, 91);
+    params.time_and_costs[0] = 5.0;
+    params.time_and_costs[1] = 0.1;
+    params.world_size[3] = 0.5;
+    params.mutation[2] = 0.0;
+    q.write_buffer(&s.params_buffer, 0, bytemuck::bytes_of(&params));
+    let mut e = d.create_command_encoder(&Default::default());
+    for _ in 0..3000 {
+        s.dispatch(&mut e, "resource", 0, 8, 8);
+    }
+    q.submit(Some(e.finish()));
+    let recovered = read::<u32>(&d, &q, &s.resource_buffer, count);
+    assert!(
+        total(&recovered) > 1000,
+        "rain restores broad vegetation through stored water"
+    );
+    let pools = read::<[f32; 4]>(&d, &q, &s.ecology_buffer, count);
+    for row in 0..64 {
+        for x in 0..64 {
+            let p = pools[row * 512 + x];
+            assert!(p.iter().all(|v| v.is_finite() && *v >= 0.0));
+            assert!(p[0] <= 2.0);
+        }
+    }
+    assert!(
+        (pools[0][0] - pools[63 * 512 + 63][0]).abs() > 0.01,
+        "substrate/weather create spatial differences"
+    );
+}
+
+#[test]
+fn invalid_ecology_checkpoint_is_rejected_without_mutating_live_water() {
+    use std::io::{Seek, SeekFrom, Write};
+    let (d, q) = gpu();
+    let s = scene(&d, &q);
+    let path = temp("invalid-ecology.checkpoint");
+    s.save_checkpoint(&d, &q, &path).unwrap();
+    let before = read::<[f32; 4]>(&d, &q, &s.ecology_buffer, 1);
+    let mut file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+    file.seek(SeekFrom::End(-16)).unwrap();
+    file.write_all(&f32::NAN.to_le_bytes()).unwrap();
+    drop(file);
+    let mut s = s;
+    assert!(
+        s.load_checkpoint(&q, &path)
+            .unwrap_err()
+            .contains("ecological")
+    );
+    assert_eq!(before, read::<[f32; 4]>(&d, &q, &s.ecology_buffer, 1));
+    std::fs::remove_file(path).unwrap();
 }

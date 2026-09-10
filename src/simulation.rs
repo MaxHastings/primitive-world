@@ -188,6 +188,7 @@ pub struct Simulation {
     birth_flags: wgpu::Buffer,
     pub(crate) decision_buffer: wgpu::Buffer,
     fertility_buffer: wgpu::Buffer,
+    ecology_buffer: wgpu::Buffer,
     terrain_buffer: wgpu::Buffer,
     terrain_epoch: u32,
     pub(crate) death_stats_buffer: wgpu::Buffer,
@@ -269,6 +270,7 @@ impl Simulation {
         let resource_display_buffer = buffer(device, "food display", 512 * 512 * 4);
         let ground_buffer = buffer(device, "ground", 512 * 512 * 32);
         let fertility_buffer = buffer(device, "soil", 512 * 512 * 4);
+        let ecology_buffer = buffer(device, "water nutrient detritus", 512 * 512 * 16);
         let terrain_buffer = buffer(device, "terrain", 512 * 512 * 16);
         let perception_buffer = buffer(
             device,
@@ -352,13 +354,14 @@ impl Simulation {
             "resource",
             "../shaders/resource_update.wgsl",
             "main",
-            "wuw wr".replace(' ', "").as_str(),
+            "wuw wrw".replace(' ', "").as_str(),
             vec![vec![
                 &resource_buffer,
                 &params_buffer,
                 &fertility_buffer,
                 &ground_buffer,
-                &terrain_buffer
+                &terrain_buffer,
+                &ecology_buffer
             ]]
         );
         add!(
@@ -896,6 +899,7 @@ impl Simulation {
             cognitive_dispatch,
             birth_flags,
             fertility_buffer,
+            ecology_buffer,
             terrain_buffer,
             terrain_epoch: 0,
             death_stats_buffer,
@@ -998,9 +1002,8 @@ impl Simulation {
         for b in &self.agent_buffers {
             queue.write_buffer(b, 0, bytemuck::cast_slice(&data));
         }
-        self.settings.ecology_clock_offset = 0;
         self.environment_start_age = environment_start_age;
-        let environment_epoch = environment_start_age / 8192;
+        let environment_epoch = environment_start_age / TERRAIN_EPOCH_TICKS;
         let terrain_a =
             build_habitat_at(self.seed, environment_epoch, self.settings.habitat_contrast);
         let terrain_b = build_habitat_at(
@@ -1008,22 +1011,20 @@ impl Simulation {
             environment_epoch + 1,
             self.settings.habitat_contrast,
         );
-        let terrain_phase = (environment_start_age % 8192) as f32 / 8192.0;
+        let terrain_phase =
+            (environment_start_age % TERRAIN_EPOCH_TICKS) as f32 / TERRAIN_EPOCH_TICKS as f32;
         let terrain_blend = terrain_phase * terrain_phase * (3.0 - 2.0 * terrain_phase);
         let habitat: Vec<_> = terrain_a
             .iter()
             .zip(&terrain_b)
             .map(|(a, b)| a + (b - a) * terrain_blend)
             .collect();
+        // Initial physical stocks describe an established landscape, not an
+        // age-dependent subsidy. Subsequent climate acts through stored water.
+        let ecology = vec![[0.7f32, 3.0, 0.3, 0.0]; (RESOURCE_GRID * RESOURCE_GRID) as usize];
+        queue.write_buffer(&self.ecology_buffer, 0, bytemuck::cast_slice(&ecology));
         let food = crate::environment::rotate_grid(
-            build_resources_with_cover(
-                &habitat,
-                if self.settings.ecology_ramp {
-                    opening_ground_cover(0)
-                } else {
-                    0.0
-                },
-            ),
+            build_resources_with_coverage(&habitat, 0.45),
             RESOURCE_GRID as usize,
             self.settings.environment_rotation,
         );
@@ -1216,7 +1217,7 @@ impl Simulation {
         for offset in 0..ticks {
             let environment_tick = configured_ecology_time(self.tick, &self.settings)
                 .saturating_add(self.environment_start_age);
-            let epoch = environment_tick / 8192;
+            let epoch = environment_tick / TERRAIN_EPOCH_TICKS;
             if self.terrain_epoch != epoch && self.settings.evolving_landscape {
                 let staging = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("terrain update"),
@@ -1516,64 +1517,29 @@ impl Simulation {
         Some(result)
     }
 }
-/// Opening ecology is slow, with timing determined only by world age.
-pub(crate) fn ecological_pressures(age: u32) -> [f32; 4] {
-    [ecology_speed(age), 1.0, 1.0, 0.0]
+/// Environmental processes use ordinary speed from the first tick.
+pub(crate) fn ecological_pressures(_age: u32) -> [f32; 4] {
+    [1.0, 1.0, 1.0, 0.0]
 }
-
-fn configured_ecology_time(tick: u32, s: &SimSettings) -> u32 {
-    let base = if s.ecology_ramp {
-        ecology_time(tick)
-    } else {
-        tick
-    };
-    (i64::from(base) + s.ecology_clock_offset).clamp(0, i64::from(u32::MAX)) as u32
-}
-
-impl Simulation {
-    pub fn set_ramps(&mut self, enabled: [bool; 3]) {
-        let before = configured_ecology_time(self.tick, &self.settings);
-        self.settings.ecology_ramp = enabled[0];
-        self.settings.reproduction_ramp = enabled[1];
-        self.settings.juvenile_ramp = enabled[2];
-        let base = if enabled[0] {
-            ecology_time(self.tick)
-        } else {
-            self.tick
-        };
-        self.settings.ecology_clock_offset = i64::from(before) - i64::from(base);
-    }
+fn configured_ecology_time(tick: u32, _s: &SimSettings) -> u32 {
+    tick
 }
 
 fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> SimParams {
-    let ecology_tick = if s.ecology_ramp {
-        tick
-    } else {
-        FOOD_EASING_TICKS
-    };
-    let reproduction_tick = if s.reproduction_ramp {
-        tick
-    } else {
-        FOOD_EASING_TICKS
-    };
-    let juvenile_tick = if s.juvenile_ramp {
-        tick
-    } else {
-        FOOD_EASING_TICKS
-    };
+    let climate = crate::climate::at(environment_tick, seed, s.flourishing_start);
     SimParams {
         world_size: [
             s.habitat_width,
             s.habitat_height,
-            juvenile_gathering_floor(juvenile_tick),
-            0.0,
+            juvenile_gathering_floor(tick),
+            climate.temperature,
         ],
         resource_grid_size: RESOURCE_GRID,
         agent_count: MAX_AGENTS,
         tick,
         world_padding: 0,
         time_and_costs: [
-            opening_ground_cover(ecology_tick),
+            climate.rainfall,
             s.resource_regeneration,
             s.movement_energy_cost,
             s.metabolic_cost,
@@ -1587,14 +1553,14 @@ fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> S
         sensor_and_padding: [
             s.sensor_radius,
             s.maturity_age,
-            packet_upkeep(reproduction_tick),
+            packet_upkeep(tick),
             s.fusion_loss,
         ],
         physical: [
             f32::from(s.force_enabled),
             f32::from(s.communication_enabled),
             s.motor_response_gain,
-            packet_fusion_radius(reproduction_tick),
+            packet_fusion_radius(tick),
         ],
         lifecycle: [seed, 0, s.environment_rotation, environment_tick],
         mutation: [
@@ -1604,7 +1570,7 @@ fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> S
             s.active_unit_upkeep,
         ],
         environment: {
-            let mut pressure = ecological_pressures(ecology_tick);
+            let mut pressure = ecological_pressures(tick);
             pressure[3] = s.memory_write_energy;
             pressure
         },
@@ -1998,50 +1964,24 @@ fn terrain_noise(x: f32, y: f32, seed: u32) -> f32 {
 
 #[cfg(test)]
 fn build_resources(habitat: &[f32]) -> Vec<u32> {
-    build_resources_with_cover(habitat, opening_ground_cover(0))
+    build_resources_with_coverage(habitat, 0.0)
 }
-fn build_resources_with_cover(habitat: &[f32], cover: f32) -> Vec<u32> {
+fn build_resources_with_coverage(habitat: &[f32], coverage: f32) -> Vec<u32> {
     habitat
         .iter()
-        .map(|h| (h.max(cover) * 0.55 * RESOURCE_SCALE) as u32)
+        .map(|h| ((h + (1.0 - h) * coverage * 0.2) * 0.55 * RESOURCE_SCALE) as u32)
         .collect()
 }
 
-/// A fixed world-age opening allowance, independent of population or behavior.
-/// Smoothstep has zero slope at both ends, avoiding a tick-100,000 food cliff.
-pub(crate) fn opening_ground_cover(tick: u32) -> f32 {
-    INITIAL_GROUND_COVER * (1.0 - opening_progress(tick))
+// Body development remains age-dependent; these constants never track world age.
+pub(crate) fn juvenile_gathering_floor(_tick: u32) -> f32 {
+    0.01
 }
-
-pub(crate) fn ecology_speed(tick: u32) -> f32 {
-    0.1 + 0.9 * opening_progress(tick)
+pub(crate) fn packet_upkeep(_tick: u32) -> f32 {
+    0.02
 }
-
-fn opening_progress(tick: u32) -> f32 {
-    let t = (tick as f32 / FOOD_EASING_TICKS as f32).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
-
-// Same saved world-age clock as food and packet assistance; never outcome-driven.
-pub(crate) fn juvenile_gathering_floor(tick: u32) -> f32 {
-    1.0 - 0.99 * opening_progress(tick)
-}
-
-pub(crate) fn packet_upkeep(tick: u32) -> f32 {
-    0.002 + 0.018 * opening_progress(tick)
-}
-
-pub(crate) fn packet_fusion_radius(tick: u32) -> f32 {
-    6.0 - 4.0 * opening_progress(tick)
-}
-
-/// Integral of the speed curve: deriving the clock from saved world age avoids
-/// accumulated rounding error and preserves the exact phase across resume.
-pub(crate) fn ecology_time(tick: u32) -> u32 {
-    let duration = f64::from(FOOD_EASING_TICKS);
-    let t = (f64::from(tick) / duration).min(1.0);
-    let opening = duration * (0.1 * t + 0.9 * (t.powi(3) - 0.5 * t.powi(4)));
-    (opening + f64::from(tick.saturating_sub(FOOD_EASING_TICKS))) as u32
+pub(crate) fn packet_fusion_radius(_tick: u32) -> f32 {
+    2.0
 }
 
 fn build_ground(habitat: &[f32]) -> Vec<[u32; 8]> {

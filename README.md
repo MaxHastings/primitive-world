@@ -102,7 +102,7 @@ The game keeps running at storage capacity. Requests for packets that cannot fit
 are skipped without charge, while fusion reuses a consumed packet slot. Bodies
 and packets are counted separately in the statistics panel.
 
-All modes use `primitive-v39-shorter-lifespans`, checkpoint format 57 and founder
+All modes use `primitive-v42-climate-care`, checkpoint format 58 and founder
 bank format 21. Other biological layouts are rejected. The current freeze status,
 validation evidence and remaining operational checks are recorded in the
 [finish-line checklist](docs/implementation-checklist.md).
@@ -126,16 +126,14 @@ Gathering can compose with movement, reproduction and other actions; it remains
 controlled by the organism. Brains receive body state, changes in their own body
 state, movement, local fields, and nearby signals—not labels such as “collected,”
 “successful,” or “received.” Body upkeep defaults to .05 per tick and can be adjusted live. Each new
-world begins with 4,096 agents and food across the whole map, including normally barren travel
-space. This temporary ground cover fades smoothly to the normal sparse geography
-by tick 100,000. Rich patches keep their normal capacity and growth rate.
-Terrain, weather, seasons and soil
-start at 10% speed and smoothly reach normal speed over the same interval.
-Resuming preserves both phases. Organisms live up to 9,000–11,000 ticks. Extinction remains a valid outcome; a world
-that closes off nearly every viable life cycle is a design problem to investigate.
-Packet assistance follows the same 100,000-tick ramp: fusion radius falls from
-six to two units while upkeep rises from .002 to .02 times size^(2/3), allowing
-early accidental encounters before coordination evolves.
+world begins with 4,096 mature founders in the original fine-grained habitat.
+There is no scheduled ecology, reproduction or juvenile assistance. Smooth,
+seeded climate forcing varies across local, regional and global timescales up
+to millions of ticks. Stored water, mineral, detritus and persistent substrate
+control vegetation growth and habitable coverage. Abundance and drought are
+outcomes of those variables, not named modes or a training schedule. Existing
+vegetation responds gradually. The original lifespan assumptions remain.
+Packet fusion stays at radius two and upkeep .02 times size^(2/3) at every age.
 Read the exact [inheritance protocol](docs/evolution.md).
 
 ## Explore and contribute
@@ -160,11 +158,12 @@ source and curated documentation belong in the repository.
 For a resumable unattended test, see [long-run testing](docs/long-run.md).
 Start a fresh experiment for this model; older saves remain untouched.
 
-Juveniles mature at 1,800 ticks. Over the opening 100,000 world ticks, newborn
-gathering smoothly falls from 100% to 1% of adult ability, while their own growth
-ramps it back to full ability by maturity. They have growing
+Juveniles mature at 1,800 ticks. Newborn gathering is permanently 1% of adult
+ability and increases with the organism's own age; they have growing
 energy/food storage. Ordinary food transfer can provision them; no care policy or
 feeding quota exists. Random founders start mature to bootstrap the population.
 See [juvenile physiology](docs/agents.md#juvenile-physiology) and the
 [validation results](docs/juvenile-validation.md). Run the fixed-seed continuity
 probe with `python tools/juvenile_probe.py --output reports/juvenile-probe.json`.
+
+The preservation contract and current recovery checks are in [recovery](docs/recovery.md).

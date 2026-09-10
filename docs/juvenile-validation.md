@@ -1,69 +1,43 @@
-# Juvenile physiology validation
+# Juvenile-care validation
 
-Model: `primitive-v41-juvenile-opening-ramp`. Default maturity: 1,800 ticks.
+Current model: `primitive-v42-climate-care`. The GPU provisioning fixture tests
+world ticks 0, 100,000 and 3,000,000. Unprovisioned newborns, including those given
+unlimited ground food and maximal gathering, must fail to bridge infancy.
+Ordinary repeated transfer must support maturation. Newborn physical limits and
+packet range/upkeep do not change with world age.
 
-Newborn gathering eases from 100% to 1% over the existing 100,000-world-tick
-smooth schedule. The GPU survival fixture runs both at tick zero and after
-tick 100,000: independent gathering succeeds early and fails after assistance
-ends. Repeated generic provisioning succeeds in both phases.
+Older ramp-era cohort observations are preserved in Git and are not evidence
+for this model. Random-policy care emergence and long-run persistence remain
+empirical questions. See [recovery](recovery.md) for current validation scope.
 
-After assistance ends, the GPU feasibility fixture starts juveniles with maximum retained birth energy
-(48). Reserves alone, reserves plus a full newborn inventory, and maximum
-gathering effort with repeatedly replenished ground food all starve before
-maturity. A separate juvenile starting with 12 energy reaches maturity through
-ordinary transfers from a stationary gathering adult. This fixture establishes
-physical reachability; its test controllers are not installed in the world.
+## Flourishing-start evidence, 2026-09-10
 
-Additional GPU checks cover gathering at six ages, adult gathering throughput,
-transfer inventory limits, capped large-packet fusion, and starvation on the last
-growth tick. Death on that tick is juvenile starvation, not successful maturation.
-Additional opening-ramp checks cover the midpoint, clamped endpoint, adult
-gathering independence from world age, and checkpoint replay across tick 100,000.
+The controlled finite-reserve colony test completes packet production, fusion,
+generic juvenile transfer, maturation and descendant-parent birth at tick 1,805.
+Two descendants mature and produce one depth-two offspring. Juveniles receive
+26.731 food units across 637 recipient ticks. This is an upper-bound feasibility
+fixture: six stationary mature adults start with 100 energy and eight food each,
+two act as breeders, four as donors, and a scripted categorical action policy is
+applied through the real controller. Starting packets are size 16. Default
+physical/ecological settings and costs remain enabled, with one expressed neural
+unit in the founders. No bodies, reserves, food fields or offspring are rewritten
+after initialization. Genome readouts are deliberately controlled each tick;
+this is not evidence of an inherited or randomly discovered policy. The test
+does not establish indefinite persistence or maturation of the depth-two child.
 
-## Previous fixed-physiology evidence (v40)
+Ten unselected random-founder worlds (seeds 1-10, default settings, 20,000-tick
+ceiling, stopping at extinction) produced 33 births, nine juvenile recipient
+ticks transferring only .029 food units in total, zero mature descendants and
+zero descendant-parent births. All 33 juveniles starved. Food was locally present
+in 3,817 of 3,853 juvenile body-ticks, although presence does not establish an
+adequate supply or access after competition. Every world ended between ticks
+9,128 and 9,224. Per-seed counts are in [the cohort summary](evidence/flourishing-cohort.json).
 
-Three fixed seeds used 4,096 random mature founders, default settings and a
-12,000-tick ceiling, stopping at extinction. No founder genomes were selected or
-edited, and no social parameters were tuned from these results.
-
-| Seed | Extinction tick | Births | Juvenile starvation | Matured offspring | Juvenile transfers | Births from descendants |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 42 | 9,928 | 12 | 12 | 0 | 0 | 0 |
-| 91 | 9,640 | 17 | 17 | 0 | 0 | 0 |
-| 3137 | 10,344 | 14 | 14 | 0 | 0 | 0 |
-
-These runs demonstrate first-generation reproduction, **not reproductive
-continuity**. None achieved offspring maturation or descendant reproduction.
-They do not prove that random populations can never achieve continuity. The
-controlled provisioning result also does not demonstrate an evolved solution.
-The default dependent life cycle is physically reachable, but bootstrapping an
-evolving population through it remains unresolved.
-
-## Opening-ramp evidence (v41)
-
-Reproduce the current model with `cargo build --release`, then
-`python tools/juvenile_probe.py --output reports/juvenile-probe.json`.
-The diagnostic retains raw family reports, reports continuity explicitly, and
-does not select founders or feed observations into the simulation. The v40 table
-above records the earlier fixed-physiology comparison, not this command's model.
-
-The same fixed seeds, population and 12,000-tick ceiling were rerun without
-controller changes or selection. These observations cover only the early ramp,
-not survival through the entire 100,000-tick transition.
-
-| Seed | Final tick | Births | Juvenile starvation | Matured offspring | Juvenile transfers | Births from descendants |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 42 | 10,120 | 10 | 10 | 0 | 0 | 0 |
-| 91 | 12,000 | 14 | 12 | 2 | 1 | 0 |
-| 3137 | 10,376 | 11 | 10 | 1 | 0 | 0 |
-
-Seeds 42 and 3137 became extinct; seed 91 reached the observation ceiling.
-The single transfer delivered 0.599 food units. Three offspring matured, but
-none produced another generation within this window. This is evidence of early
-maturation, not sustained reproductive continuity or evolved care. Physiology
-was not adjusted to make a social metric positive.
-
-Validation: all 144 release tests passed (8 manual tests ignored), including
-GPU phase checks, independent ramp toggles and checkpoint replay. Formatting,
-Clippy with warnings denied, and all 12 Python tests pass. The release executable
-builds successfully.
+The at-most-ten-world continuity criterion is **not met**. These observations
+locate a failure at juvenile survival despite occasional transfers; they neither
+prove a disconnected search landscape nor justify interpreting abundance alone
+as a solved bootstrap. The controlled policy demonstrates physical feasibility
+under generous explicit initial provisioning, not robustness from ordinary
+founder conditions. Larger unselected cohorts and controlled-policy sensitivity
+to initial reserves, placement and policy complexity are the next evidence stage.
+No assistance ramp or care reward was introduced in response to these results.

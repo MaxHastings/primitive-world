@@ -53,20 +53,10 @@ it without adding food. Manual food additions are saved as part of the experimen
 
 The live Metabolism slider adjusts global agent upkeep from 0.00 to 0.20 energy per tick (default 0.05).
 
-Three independent checkboxes beneath it control **Ecology ramp**, **Reproduction
-ramp**, and **Juvenile ramp**. They are also available in the regular viewer's
-sidebar. Checked means opening assistance fades with world age over 100,000 ticks.
-Unchecked applies normal post-ramp conditions immediately:
-
-- Ecology: no opening ground-cover allowance; full ecology speed. Current food
-  adjusts through ordinary resource dynamics, and terrain phase stays continuous.
-- Reproduction: normal packet upkeep and fusion radius.
-- Juvenile: the normal 1% newborn gathering floor, increasing with body age.
-
-Turning a ramp back on resumes assistance appropriate to the current world age;
-it does not restart or pause the schedule. All three default on, are stored in
-saves, and remain selected across rolling worlds. Only the ecology clock phase
-offset resets for a new world. Toggles apply after pending simulation work finishes.
+The ecology, reproduction and juvenile ramp switches have been removed. Juvenile
+dependence and packet costs/range are constant; ongoing climate supplies abundance
+and drought without observing population success. The existing overlay, lenses,
+inspection, brush controls, speed controls and save library are retained.
 
 The top-right paintbrush button toggles food painting (off when the app starts).
 When enabled, a translucent brush ghost previews the radius and dense center on
@@ -141,8 +131,8 @@ overrides it. Import a current receipt with Load Game or:
 cargo run --release -- --load-game path/to/save-123.json
 ```
 
-The current model is `primitive-v39-shorter-lifespans`: receipts 4,
-checkpoints 57, founder banks 21. Noncurrent data is rejected without conversion
+The current model is `primitive-v42-climate-care`: receipts 4,
+checkpoints 58, founder banks 21. Noncurrent data is rejected without conversion
 or deletion.
 Exports require new paths. See [headless observation](observing.md),
 [performance limits](performance.md), and the [implementation checklist](implementation-checklist.md).

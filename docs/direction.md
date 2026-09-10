@@ -20,10 +20,10 @@ simple test controllers while designing the world. Such tests never become
 founder policies, behavioral rewards, online difficulty adjustments or selection
 rules. Longer survival alone is not evidence that the search space is viable.
 
-The simulator should provide possibilities, not preferred solutions. A declared
-gameplay allowance extends food across the map at the start of each world and
-smoothly restores the normal sparse coverage by tick 100,000. It is tied to world age, never to observed success,
-and does not prescribe gathering, signaling or reproduction behavior.
+The simulator should provide possibilities, not preferred solutions. Juvenile dependence
+is permanent physical physiology. Ongoing climate alternates abundance and drought,
+independent of population success. Preserving the game's presentation, controls, scale,
+sensing, cognition and interaction capabilities is an explicit requirement.
 
 A good primitive supports many incompatible strategies. Movement may be used to flee, hunt, explore, migrate, follow, orbit, or remain still. Signals may become communication, deception, coordination, noise, or be ignored. Memory and plasticity may become useful, useless, or actively selected against.
 

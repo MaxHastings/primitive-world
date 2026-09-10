@@ -55,6 +55,23 @@
 
 # Changelog
 
+## Recovery: climate and permanent juvenile care
+
+Restored the original game baseline: renderer, wallpaper UX, 512x512 ecology,
+full sensing, gated cognition/plasticity/mutation, packet pushing and directional
+impulse/recoil. Removed all world-age ramp settings and controls. Juvenile
+dependence and packet physics are permanent. Added slow seeded global moisture
+forcing and physical water/mineral/detritus stores; terrain interpolation now spans one million ticks.
+Model `primitive-v42-climate-care`, checkpoint 58. Historical saves remain intact.
+
+New worlds start with wet, mild global climate keyframes. Ordinary interpolation
+and unconditioned future keyframes govern subsequent weather; no grace-period
+timer or population feedback is added. The setting is saved explicitly; existing
+v42 saves retain their former climate. Controlled full-life-cycle feasibility and
+the unsuccessful ten-world random-founder cohort are recorded in juvenile validation.
+
+Earlier entries below describe historical models.
+
 ## Unreleased — reproductive packets and continuous gameplay
 
 - Keep food as the only painting tool; add live global metabolism controls in wallpaper and windowed play, including saves while paused. New worlds start with 4,096 agents.

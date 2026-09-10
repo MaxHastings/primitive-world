@@ -1,0 +1,135 @@
+{
+  "worlds": [
+    {
+      "seed": 1,
+      "ticks": 9192,
+      "births": 2,
+      "matured_descendants": 0,
+      "juvenile_transfers_received": 0,
+      "juvenile_received_milli": 0,
+      "births_to_descendant_parents": 0,
+      "juvenile_starvation_deaths": 2,
+      "juvenile_food_present_ticks": 358,
+      "juvenile_processed_ticks": 358
+    },
+    {
+      "seed": 2,
+      "ticks": 9192,
+      "births": 3,
+      "matured_descendants": 0,
+      "juvenile_transfers_received": 0,
+      "juvenile_received_milli": 0,
+      "births_to_descendant_parents": 0,
+      "juvenile_starvation_deaths": 3,
+      "juvenile_food_present_ticks": 460,
+      "juvenile_processed_ticks": 460
+    },
+    {
+      "seed": 3,
+      "ticks": 9224,
+      "births": 5,
+      "matured_descendants": 0,
+      "juvenile_transfers_received": 8,
+      "juvenile_received_milli": 21,
+      "births_to_descendant_parents": 0,
+      "juvenile_starvation_deaths": 5,
+      "juvenile_food_present_ticks": 832,
+      "juvenile_processed_ticks": 832
+    },
+    {
+      "seed": 4,
+      "ticks": 9224,
+      "births": 3,
+      "matured_descendants": 0,
+      "juvenile_transfers_received": 0,
+      "juvenile_received_milli": 0,
+      "births_to_descendant_parents": 0,
+      "juvenile_starvation_deaths": 3,
+      "juvenile_food_present_ticks": 151,
+      "juvenile_processed_ticks": 151
+    },
+    {
+      "seed": 5,
+      "ticks": 9224,
+      "births": 5,
+      "matured_descendants": 0,
+      "juvenile_transfers_received": 0,
+      "juvenile_received_milli": 0,
+      "births_to_descendant_parents": 0,
+      "juvenile_starvation_deaths": 5,
+      "juvenile_food_present_ticks": 235,
+      "juvenile_processed_ticks": 235
+    },
+    {
+      "seed": 6,
+      "ticks": 9160,
+      "births": 6,
+      "matured_descendants": 0,
+      "juvenile_transfers_received": 0,
+      "juvenile_received_milli": 0,
+      "births_to_descendant_parents": 0,
+      "juvenile_starvation_deaths": 6,
+      "juvenile_food_present_ticks": 609,
+      "juvenile_processed_ticks": 616
+    },
+    {
+      "seed": 7,
+      "ticks": 9160,
+      "births": 4,
+      "matured_descendants": 0,
+      "juvenile_transfers_received": 0,
+      "juvenile_received_milli": 0,
+      "births_to_descendant_parents": 0,
+      "juvenile_starvation_deaths": 4,
+      "juvenile_food_present_ticks": 435,
+      "juvenile_processed_ticks": 436
+    },
+    {
+      "seed": 8,
+      "ticks": 9128,
+      "births": 1,
+      "matured_descendants": 0,
+      "juvenile_transfers_received": 0,
+      "juvenile_received_milli": 0,
+      "births_to_descendant_parents": 0,
+      "juvenile_starvation_deaths": 1,
+      "juvenile_food_present_ticks": 212,
+      "juvenile_processed_ticks": 212
+    },
+    {
+      "seed": 9,
+      "ticks": 9192,
+      "births": 3,
+      "matured_descendants": 0,
+      "juvenile_transfers_received": 1,
+      "juvenile_received_milli": 8,
+      "births_to_descendant_parents": 0,
+      "juvenile_starvation_deaths": 3,
+      "juvenile_food_present_ticks": 500,
+      "juvenile_processed_ticks": 528
+    },
+    {
+      "seed": 10,
+      "ticks": 9224,
+      "births": 1,
+      "matured_descendants": 0,
+      "juvenile_transfers_received": 0,
+      "juvenile_received_milli": 0,
+      "births_to_descendant_parents": 0,
+      "juvenile_starvation_deaths": 1,
+      "juvenile_food_present_ticks": 25,
+      "juvenile_processed_ticks": 25
+    }
+  ],
+  "totals": {
+    "births": 33,
+    "matured_descendants": 0,
+    "juvenile_transfers_received": 9,
+    "juvenile_received_milli": 29,
+    "births_to_descendant_parents": 0,
+    "juvenile_starvation_deaths": 33,
+    "juvenile_food_present_ticks": 3817,
+    "juvenile_processed_ticks": 3853
+  },
+  "protocol": "Seeds 1-10, fresh unselected default founders, single world, 20000 tick ceiling or extinction; no interventions. Family observer records per-tick outcomes."
+}

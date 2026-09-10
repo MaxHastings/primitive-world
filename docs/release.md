@@ -9,8 +9,8 @@ declared done.
 ## Build and data formats
 
 - Application version: 0.9.0.
-- Model: `primitive-v39-shorter-lifespans`.
-- Checkpoint format: 57, including lifetime state, hereditary pool, RNG streams and world history.
+- Model: `primitive-v42-climate-care`.
+- Checkpoint format: 58, including lifetime state, hereditary pool, RNG streams and world history.
 - Founder-bank format: 21; game receipts: 4.
 - Genome allocation: 155.875 MiB for 16,384 shared organism/packet slots, plus world/render buffers.
 

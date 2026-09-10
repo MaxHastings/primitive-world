@@ -408,6 +408,7 @@ impl Simulation {
             &self.reservoir_genome_buffers[1],
             &self.reservoir_traits_buffer,
             &self.reservoir_rng_buffer,
+            &self.ecology_buffer,
         ];
         let data: Vec<_> = buffers
             .iter()
@@ -536,6 +537,7 @@ impl Simulation {
             &self.reservoir_genome_buffers[1],
             &self.reservoir_traits_buffer,
             &self.reservoir_rng_buffer,
+            &self.ecology_buffer,
         ]);
         for buffer in buffers.iter() {
             let mut length = [0; 8];
@@ -721,6 +723,12 @@ impl Simulation {
             crate::brain::validate(&genome)?;
             if !reservoir_traits[slot].validate() {
                 return Err("Invalid hereditary reservoir traits".into());
+            }
+        }
+        for cell in data[17].chunks_exact(16) {
+            let pools: [f32; 4] = bytemuck::pod_read_unaligned(cell);
+            if pools.iter().any(|x| !x.is_finite() || *x < 0.0) || pools[0] > 2.0 {
+                return Err("Invalid ecological water or material pools".into());
             }
         }
         let counters: &[u32] = bytemuck::cast_slice(&data[4]);

@@ -2,7 +2,7 @@
 
 [direction.md](direction.md) is the design contract. These constants describe the
 implemented world, not inevitable laws of life. Model identity is
-`primitive-v39-shorter-lifespans`, checkpoint format 57, founder-bank format 21.
+`primitive-v42-climate-care`, checkpoint format 58, founder-bank format 21.
 The release/freeze evidence is tracked in [implementation-checklist.md](implementation-checklist.md).
 
 ## Geometry and tick order
@@ -81,23 +81,17 @@ penalty is modeled. Both beneficial and harmful displacements are possible.
 
 ## Reproductive packets and social opportunity
 
-Organisms manufacture local, stationary reproductive packets using their energy.
-Packet size is inherited and evolves; production timing and bounded local release
-position remain controller-owned. Two packets from different producers fuse within
-a radius that smoothly shrinks from six to two wrapped units by tick 100,000. Offspring receive the combined remaining reserves minus ten
-energy of construction loss. No body mating or cooldown path remains.
-
-Packet maintenance costs `(.002 + .018 * smoothstep) * size^(2/3)` per tick,
-using the same world-age smoothstep as the ecology ramp. Resource depletion ends
-viability; there is no arbitrary expiry timer. The opening 500–1,817 tick viability scale falls to 50–182 at normal upkeep; it leaves room for asynchronous coordination without indefinite
-broadcast storage. These constants are declared assumptions, not a claim that
-coordination or differentiated packet-size strategies must evolve.
+Organisms manufacture passive reproductive packets using inherited sizes 1–48.
+Ordinary paid impulses can push them; velocity damps each tick. Different-producer
+packets fuse within two wrapped units. Offspring receive remaining energy minus
+ten construction energy, capped by newborn storage. Packet upkeep is permanently
+`.02 * size^(2/3)` per tick. There is no world-age reproduction assistance.
 
 Signals are generic, optional and longer-range than fusion. Gathering, transfer,
 pushing, local sensing and memory retain their previous physical meanings.
 See [the exact packet contract](agents.md#reproductive-packets).
 
-Organism maturity at age 400, juvenile motor development, and uniformly sampled
+Organism maturity at age 1,800, age-dependent juvenile gathering and storage, and uniformly sampled
 maximum age of 9,000-11,000 ticks remain coarse physiological assumptions. There is no
 packet aging deadline and no prescribed reproductive role.
 
@@ -114,27 +108,36 @@ reductions may differ with unordered spatial scatter; the regression allows
 telemetry is an observation, not an exact ledger. Body counts balance births and body deaths; packet counts separately track
 manufacturing, fusion and resource depletion. There is no kinetic-energy conservation claim.
 
-Seeded correlated geography, periodic weather, soil recovery, depletion and seasonal
-production evolve on the gradually accelerating environmental clock. Habitat contrast blends
-the geography with its mean, preserving mean habitat but not guaranteeing equal
-carrying capacity. No parameter depends on population performance. There is no
-metabolism ramp, inherited age floor or population-triggered rescue.
-New worlds start with 4,096 agents by default. Opening ground cover supplies food across the whole map, including normally
-barren cells. With t=clamp(world_tick/100000,0,1), the temporary habitat and
-productivity floor is 0.5*(1-t*t*(3-2*t)). Initial food uses the same floor.
-It reaches zero smoothly by tick 100,000. Existing rich patches retain normal
-capacity and growth; there is no food-quantity multiplier. Climate
-and geography start at 10% speed and smoothly accelerate to 100% by tick 100,000.
-Soil changes use the same speed factor. The environmental clock integrates this
-rate (55,000 environmental ticks have elapsed at world tick 100,000); it never
-jumps forward when the opening allowance ends. Rain/drought strength, weather
-positions and local growth variation interpolate smoothly between event endpoints.
-Food capacity is a target: excess vegetation recedes at 1% of the excess per
-environmental tick, scaled by ecology speed. Fractional losses are carried across
-ticks. Even disappearing patches fade; dropped food is separate. At tick 100,000
-the targets are normal, while existing vegetation continues responding gradually. Agent speed is unchanged; no population or behavior controls the
-allowance. Every new world restarts it; checkpoint continuation does not.
-The packet model's social outcomes and long-run persistence remain open.
+Climate has no abundant/drought modes or fixed season. Global rainfall and
+temperature combine smooth seeded random-like components at unrelated correlation
+scales: rainfall at 173,003 / 1,100,009 / 4,700,021 ticks, temperature at
+281,003 / 1,700,029 / 6,100,033 ticks. Regional weather varies around 47,003 ticks;
+local weather around 997. C2 temporal interpolation avoids keyframe jumps.
+
+Persistent seeded elevation, retention and permeability affect local water
+storage, evaporation and drainage. Each cell stores water, mineral and detritus.
+Vegetation growth consumes mineral; recession returns it to detritus;
+moisture/temperature-dependent decomposition returns mineral. Mineral weathering
+is an external input; rainfall is an external water input; evaporation, drainage
+and overflow leave the local water store. Harvested vegetation leaves this
+soil subsystem through the existing food/organism system. This is a simplified
+open system, not a claim of full watershed transport or closed-world nutrient
+conservation. The old dropped-food and body physiology rules are retained.
+
+Habitable coverage responds continuously to stored water, available mineral and
+temperature. Favorable conditions support food between the old rich patches;
+dry conditions contract cover. Refuges arise from substrate and water history.
+Initial physical stocks are water .7, mineral 3 and detritus .3 per cell, with an
+established vegetation snapshot. These are initial conditions, never a changing
+juvenile subsidy. No climate variable reads population, diversity, care or success.
+
+The original terrain generator remains, with keyframes slowed to one million
+ticks. Static-landscape mode fixes geography without freezing weather. The
+correlation scales are declared assumptions, not a schedule for evolution.
+
+Juvenile gathering is always `0.01 + 0.99*x^6`, with x equal to age/maturity,
+clamped to [0,1]. Ordinary transfer can bridge the early energy deficit. This
+establishes care pressure, not a prescribed care policy or guaranteed evolution.
 
 ## Persistence, observation and engineering limits
 

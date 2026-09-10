@@ -12,7 +12,6 @@ pub enum Command {
     Import,
     Save,
     Pause,
-    SetRamps([bool; 3]),
     Step,
     WorldClick(egui::Pos2),
     BrushClick(egui::Pos2),
@@ -61,10 +60,6 @@ pub fn apply(state: &mut AppState, command: Command) {
         Command::Save => state
             .save_experiment()
             .map(|message| state.file_status = message),
-        Command::SetRamps(enabled) => {
-            state.set_ramps(enabled);
-            return;
-        }
         Command::Pause => {
             state.paused = !state.paused;
             return;

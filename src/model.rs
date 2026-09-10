@@ -1,10 +1,10 @@
 //! primitive-world: body-relative sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
 /// Persistence accepts only this model's controller and lifetime-state layout.
-pub const MODEL_ID: &str = "primitive-v41-juvenile-opening-ramp";
+pub const MODEL_ID: &str = "primitive-v42-climate-care";
 pub const FOUNDER_BANK_VERSION: u32 = 21;
-pub const CHECKPOINT_VERSION: u32 = 57;
-pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD057";
+pub const CHECKPOINT_VERSION: u32 = 58;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD058";
 /// Fixed rolling hereditary storage; independent of body-engine capacity.
 pub const HEREDITARY_RESERVOIR_SIZE: u32 = 4_096;
 /// Incremental maintenance paid for each expressed recurrent unit.
@@ -14,8 +14,7 @@ pub const DEFAULT_MEMORY_WRITE_ENERGY: f32 = 0.0001;
 /// Blind per-birth connection mutation probability and bounded magnitude.
 pub const BASE_MUTATION_PROBABILITY: f32 = 0.25;
 pub const BASE_MUTATION_MAGNITUDE: f32 = 0.03;
-pub const FOOD_EASING_TICKS: u32 = 100_000;
-pub const INITIAL_GROUND_COVER: f32 = 0.5;
+pub const TERRAIN_EPOCH_TICKS: u32 = 1_000_000;
 pub const MAX_AGENTS: u32 = 16_384;
 /// Leave headroom for bounded tick arithmetic and observer windows.
 pub const MAX_WORLD_TICKS: u32 = u32::MAX - 1_000_001;
@@ -252,7 +251,7 @@ impl Default for DecisionGpu {
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
 pub struct SimParams {
-    /// Habitat width/height, world-age juvenile gathering floor, reserved.
+    /// Habitat width/height, permanent juvenile gathering floor, global temperature.
     pub world_size: [f32; 4],
     pub resource_grid_size: u32,
     pub agent_count: u32,
@@ -298,6 +297,9 @@ fn no_environment_rotation(rotation: &u32) -> bool {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SimSettings {
+    /// Condition the starting climate keyframes only. Missing in older saves.
+    #[serde(default)]
+    pub flourishing_start: bool,
     /// Logical habitat width. Wallpaper mode sets this to the monitor width.
     #[serde(default = "default_habitat_width")]
     pub habitat_width: f32,
@@ -331,27 +333,16 @@ pub struct SimSettings {
     pub force_enabled: bool,
     pub communication_enabled: bool,
     pub evolving_landscape: bool,
-    #[serde(default = "ramp_enabled_default")]
-    pub ecology_ramp: bool,
-    #[serde(default = "ramp_enabled_default")]
-    pub reproduction_ramp: bool,
-    #[serde(default = "ramp_enabled_default")]
-    pub juvenile_ramp: bool,
-    /// Preserves ecological phase when changing its clock rate live.
-    #[serde(default)]
-    pub ecology_clock_offset: i64,
     pub founder_genomes: Vec<Vec<f32>>,
     /// Topology and plasticity are inherited alongside every founder genome.
     pub founder_traits: Vec<CognitiveTraits>,
     pub founder_name: String,
 }
-fn ramp_enabled_default() -> bool {
-    true
-}
 
 impl Default for SimSettings {
     fn default() -> Self {
         Self {
+            flourishing_start: true,
             habitat_width: WORLD_SIZE,
             habitat_height: WORLD_SIZE,
             environment_rotation: 0,
@@ -373,10 +364,6 @@ impl Default for SimSettings {
             force_enabled: true,
             communication_enabled: true,
             evolving_landscape: true,
-            ecology_ramp: true,
-            reproduction_ramp: true,
-            juvenile_ramp: true,
-            ecology_clock_offset: 0,
             founder_genomes: Vec::new(),
             founder_traits: Vec::new(),
             founder_name: "primitive-world-random".into(),
@@ -384,13 +371,6 @@ impl Default for SimSettings {
     }
 }
 impl SimSettings {
-    pub fn ramps(&self) -> [bool; 3] {
-        [
-            self.ecology_ramp,
-            self.reproduction_ramp,
-            self.juvenile_ramp,
-        ]
-    }
     pub fn validate(&self) -> Result<(), String> {
         if self.environment_rotation > 3
             || !self.habitat_width.is_finite()
@@ -430,7 +410,6 @@ impl SimSettings {
             || self.habitat_contrast > 1.0
             || self.heterogeneity > 1.0
             || self.maturity_age > 11000.0
-            || !(-4_294_967_295..=4_294_967_295).contains(&self.ecology_clock_offset)
         {
             return Err("Invalid primitive-world physical settings".into());
         }
