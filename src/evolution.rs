@@ -173,7 +173,9 @@ impl Simulation {
             if !stored_traits[slot].validate() {
                 return Err("Invalid hereditary reservoir traits".into());
             }
-            traits.push(stored_traits[slot]);
+            let mut body_traits = stored_traits[slot];
+            body_traits.padding = [0; 2]; // Pool evidence is not inherited physiology.
+            traits.push(body_traits);
         }
         self.progress.world = self
             .progress

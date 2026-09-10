@@ -8,11 +8,11 @@ experiment; unassisted life-cycle closure is an outcome to measure.
 From the project directory, start a fresh wallpaper experiment with:
 
 ```powershell
-.\Play.ps1 --wallpaper --seed 3001
+.\Play.ps1 --wallpaper --seed 3001 --view-speed 32x
 ```
 
-Choose MAX from the playback menu for an uncapped long run; 1x targets only
-60 ticks/second. The tick counter in Details tracks the current world; experiment
+The command selects 32x (target 1,920 ticks/second; actual speed depends on load).
+Choose MAX only if you want an uncapped run; 1x targets 60 ticks/second. The tick counter in Details tracks the current world; experiment
 progress also records cumulative ticks across natural restarts. There is no automatic
 wallpaper stop at 20 or 50 million ticks.
 
@@ -26,7 +26,7 @@ Use the tray's Save and quit command before closing an experiment deliberately.
 To resume the most recently saved experiment:
 
 ```powershell
-.\Play.ps1 --wallpaper --resume
+.\Play.ps1 --wallpaper --resume --view-speed 32x
 ```
 
 Resume restores saved state and settings. It is not a fresh random trial.
@@ -37,7 +37,7 @@ flow instead of relying on which save happens to be most recent.
 
 Record the accepted main commit, executable SHA-256, model, initial seed, desktop
 size, playback rate and experiment receipt. Retain the original starting save.
-Current model: `primitive-v44-open-investment`; checkpoint layout: 58. Historical
+Current model: `primitive-v45-depth-retention`; checkpoint layout: 58. Historical
 model saves are preserved and rejected rather than silently reinterpreted.
 
 Do not paint food, move bodies, change settings or import founders during an

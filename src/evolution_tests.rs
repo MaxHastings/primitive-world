@@ -321,6 +321,15 @@ fn simultaneous_births_replace_whole_reservoir_records_deterministically() {
         a.parent_lineage = a.lineage_id;
         put(&s, &q, MAX_AGENTS as usize - COUNT + i, a, &g);
     }
+    let (_, mut pool_traits, _) = s.reservoir_snapshot(&d, &q).unwrap();
+    for (i, t) in pool_traits.iter_mut().enumerate() {
+        t.padding[0] = (i % 4) as u32;
+    }
+    q.write_buffer(
+        &s.reservoir_traits_buffer,
+        0,
+        bytemuck::cast_slice(&pool_traits),
+    );
     let before = s.reservoir_snapshot(&d, &q).unwrap();
     step(&mut s, &d, &q, 1);
     let after = s.reservoir_snapshot(&d, &q).unwrap();
@@ -342,7 +351,22 @@ fn simultaneous_births_replace_whole_reservoir_records_deterministically() {
     assert_eq!(children.len(), COUNT);
     for (slot, _) in children {
         replacement_claims.insert(
-            hash(before.2.wrapping_add(slot as u32)) as usize % HEREDITARY_RESERVOIR_SIZE as usize,
+            {
+                let key = before.2.wrapping_add(slot as u32);
+                let a = hash(key) as usize % 4096;
+                let b = hash(key ^ 0x9e3779b9) as usize % 4096;
+                match before.1[a].padding[0].cmp(&before.1[b].padding[0]) {
+                    std::cmp::Ordering::Less => a,
+                    std::cmp::Ordering::Greater => b,
+                    std::cmp::Ordering::Equal => {
+                        if hash(key ^ 0x85ebca6b) & 1 == 0 {
+                            a
+                        } else {
+                            b
+                        }
+                    }
+                }
+            },
             slot,
         );
     }
@@ -358,7 +382,9 @@ fn simultaneous_births_replace_whole_reservoir_records_deterministically() {
                 &after.0[range],
                 &genes[child * GENOME_SIZE..(child + 1) * GENOME_SIZE]
             );
-            assert_eq!(after.1[slot], agents[child].cognitive_traits());
+            let mut expected = agents[child].cognitive_traits();
+            expected.padding[0] = agents[child].ancestry_depth;
+            assert_eq!(after.1[slot], expected);
         } else {
             assert_eq!(&after.0[range.clone()], &before.0[range]);
             assert_eq!(after.1[slot], before.1[slot]);
@@ -376,6 +402,11 @@ fn reservoir_and_world_transitions_resume_without_observer_selection() {
     s.settings.population = 4;
     s.settings.metabolic_cost = 100.0;
     s.reset(&q);
+    let (_, mut stored, _) = s.reservoir_snapshot(&d, &q).unwrap();
+    for t in &mut stored {
+        t.padding[0] = 7;
+    }
+    q.write_buffer(&s.reservoir_traits_buffer, 0, bytemuck::cast_slice(&stored));
     let original = s.reservoir_snapshot(&d, &q).unwrap();
     step(&mut s, &d, &q, 4);
     s.complete_world(&d, &q).unwrap();
@@ -415,9 +446,15 @@ fn reservoir_and_world_transitions_resume_without_observer_selection() {
                 .0
                 .chunks_exact(GENOME_SIZE)
                 .zip(&original.1)
-                .any(|(stored, traits)| stored == g && *traits == body.cognitive_traits())
+                .any(|(stored, traits)| {
+                    let mut inherited = *traits;
+                    inherited.padding = [0; 2];
+                    stored == g && inherited == body.cognitive_traits()
+                })
         );
         assert_eq!(body.hidden, [0.0; HIDDEN]);
+        assert_eq!(body.ancestry_depth, 0);
+        assert_eq!(body.cognitive_traits().padding, [0; 2]);
     }
     std::fs::remove_file(path).unwrap();
 }

@@ -1,7 +1,7 @@
 //! primitive-world: body-relative sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
 /// Persistence accepts only this model's controller and lifetime-state layout.
-pub const MODEL_ID: &str = "primitive-v44-open-investment";
+pub const MODEL_ID: &str = "primitive-v45-depth-retention";
 pub const FOUNDER_BANK_VERSION: u32 = 21;
 pub const CHECKPOINT_VERSION: u32 = 58;
 pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD058";
@@ -69,6 +69,7 @@ pub const ACTIVE_MASK_ALL: u32 = (1u32 << HIDDEN) - 1;
 #[derive(Clone, Copy, Debug, PartialEq, Pod, Zeroable, serde::Serialize, serde::Deserialize)]
 pub struct CognitiveTraits {
     pub active_mask: u32,
+    /// Pool records only: [birth ancestry depth, reserved zero]. Ignored by body construction.
     pub padding: [u32; 2],
     pub packet_size: f32,
     pub plasticity_rate: [f32; HIDDEN],

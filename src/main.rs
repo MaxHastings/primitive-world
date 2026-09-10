@@ -225,6 +225,7 @@ impl AppState {
                     .expect("validated speed")
             })
             .unwrap_or(0);
+        eprintln!("Playback target: {}", playback::SPEED_LABELS[speed_index]);
         let renderer = Renderer::new(
             &device,
             config.format,

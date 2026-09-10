@@ -1,5 +1,5 @@
-// Successful births alone enter the rolling hereditary reservoir. The copied
-// state is strictly the child's genome and inherited cognitive traits.
+// Each newborn challenges two random pool entries; replace the shallower one.
+// padding[0] stores pool-only depth evidence, never a cognitive input.
 @group(0) @binding(0) var<storage,read> agents:array<Agent>;
 @group(0) @binding(1) var<storage,read> free_indices:array<u32>;
 @group(0) @binding(2) var<storage,read> free_prefix:array<u32>;
@@ -16,7 +16,7 @@ struct CognitiveTraits { active_mask:u32,padding:array<u32,2>,packet_size:f32,pl
 @group(0) @binding(11) var<storage,read_write> reservoir_rng:atomic<u32>;
 
 fn copy_traits(a:Agent)->CognitiveTraits {
- var t:CognitiveTraits;t.active_mask=a.active_mask;t.padding=array<u32,2>(0u,0u);t.packet_size=a.packet_size;t.plasticity_rate=a.plasticity_rate;
+ var t:CognitiveTraits;t.active_mask=a.active_mask;t.padding=array<u32,2>(a.ancestry_depth,0u);t.packet_size=a.packet_size;t.plasticity_rate=a.plasticity_rate;
  t.trace_retention=a.trace_retention;t.learned_weight_retention=a.learned_weight_retention;t.parameter_mutation_rate=a.parameter_mutation_rate;t.parameter_mutation_step=a.parameter_mutation_step;t.topology_mutation_rate=a.topology_mutation_rate;return t;
 }
 @group(0) @binding(12) var<storage,read_write> claims:array<atomic<u32>>;
@@ -25,15 +25,25 @@ fn valid_birth(slot:u32)->bool {
  if(slot>=INVALID){return false;}let child=agents[slot];
  return child.alive==ORGANISM && child.ancestry_depth>0u && child.birth_tick==params.tick && child.lived_ticks==0u;
 }
-fn replacement_slot(slot:u32)->u32 {return hash_u32(atomicLoad(&reservoir_rng)+slot)%4096u;}
+fn replacement_slot(slot:u32)->u32 {
+ let key=atomicLoad(&reservoir_rng)+slot;
+ let a=hash_u32(key)%4096u;
+ let b=hash_u32(key^0x9e3779b9u)%4096u;
+ let da=reservoir_traits[a].padding[0];let db=reservoir_traits[b].padding[0];
+ if(da<db){return a;}if(db<da){return b;}
+ return select(a,b,(hash_u32(key^0x85ebca6bu)&1u)!=0u);
+}
 @compute @workgroup_size(64)
 fn claim(@builtin(global_invocation_id) id:vec3<u32>) {
  if(valid_birth(id.x)){atomicMax(&claims[replacement_slot(id.x)],id.x+1u);atomicAdd(&claims[4096],1u);}
 }
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id:vec3<u32>) {
- let ci=id.x;if(!valid_birth(ci)){return;}let slot=replacement_slot(ci);
- if(atomicLoad(&claims[slot])!=ci+1u){return;}
+ // Targets were chosen against the stable pre-update pool in the claim pass.
+ // One invocation per destination prevents depth-read/write races and torn records.
+ let slot=id.x;if(slot>=4096u){return;}
+ let winner=atomicLoad(&claims[slot]);if(winner==0u){return;}let ci=winner-1u;
+ if(!valid_birth(ci)){return;}
  for(var k=0u;k<GENOME_BANK_STRIDE;k++){reservoir0[slot*GENOME_BANK_STRIDE+k]=genomes0[ci*GENOME_BANK_STRIDE+k];reservoir1[slot*GENOME_BANK_STRIDE+k]=genomes1[ci*GENOME_BANK_STRIDE+k];}
  reservoir_traits[slot]=copy_traits(agents[ci]);
 }

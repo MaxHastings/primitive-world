@@ -28,24 +28,24 @@ Initial entries are uniform samples with replacement from the founding populatio
 An empty diagnostic initializes pool storage from one random record but never
 restarts automatically.
 
-Each successful birth draws a random replacement slot. A claim pass resolves
-collisions in deterministic child-slot order before copying. Both genome
-banks and traits always come from one complete child, as sequential replacement
-would produce. Private learning and failed births never enter the pool. This is
-rolling replacement, not a uniform sample of all historical births: older records
-can be overwritten, and more births naturally contribute more records.
+Each newborn gets one pool-admission attempt. Two slots are sampled with replacement
+using separate deterministic hash draws. The entry with lower stored birth ancestry
+depth is targeted; ties use a separate random bit. The newborn replaces the targeted
+entry regardless of its own depth. Deep entries are protected statistically, never
+permanently. Same-tick births choose against the pool before any updates; collisions
+at a destination retain the highest child slot, preserving whole records.
 
-Admission occurs at birth, before juvenile survival or maturation is known.
-The pool record is not removed if that juvenile dies, and additional feeding,
-longevity or maturation does not refresh it. A juvenile that later reproduces
-can contribute additional descendant records through those actual births.
-Thus partial care can extend physical opportunities without directly increasing
-cross-world representation until it changes subsequent reproduction. This is
-the production A rule. The direct re-entry audit establishes a developmental
-bypass: a dead juvenile record can return as an adult founder. A test-only
-mature-parent admission comparison is documented in
-[evolutionary-accessibility-audit.md](evolutionary-accessibility-audit.md).
-The physical care gradient remains frozen while that comparison runs.
+The child's within-world ancestry depth is stored with its pool record. It is
+selection metadata, not a neural input or inherited body trait. Initial pool entries
+have depth zero. Founder sampling remains uniform, and new founder bodies always
+start at physical ancestry depth zero. Historical pool depth is never added to new
+descendants' depths. Checkpoints retain this metadata in the first reserved trait
+word; the second remains zero. Model identity rejects pre-rule saves.
+
+This explicitly favors demonstrated multigenerational reproduction. It is not pure
+ecological selection, an automatic guarantee of progress, or permanent protection
+for relatives. Newborn mutations still get admission attempts before maturity;
+lifetime learning is never copied. No age threshold or success-triggered rule is used.
 
 Natural extinction starts a newly seeded world. Fresh bodies sample unchanged
 pool records uniformly with replacement, using a separate saved RNG. Their

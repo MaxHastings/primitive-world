@@ -1741,7 +1741,7 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v44-open-investment");
+    assert_eq!(MODEL_ID, "primitive-v45-depth-retention");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
     assert_eq!(crate::founders::bundled().version, FOUNDER_BANK_VERSION);
 }
@@ -2650,3 +2650,6 @@ mod unassisted_endowment;
 
 #[path = "budget_gate_audit.rs"]
 mod budget_gate_audit;
+
+#[path = "checkpoint_inspection.rs"]
+mod checkpoint_inspection;

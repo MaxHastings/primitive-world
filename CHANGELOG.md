@@ -1,3 +1,16 @@
+## 0.9.2 — depth-biased hereditary retention
+
+- Every newborn challenges two random pool entries. Replace the shallower stored
+  within-world ancestry depth; choose randomly on ties. Same-tick destination
+  collisions still resolve deterministically without partial genome writes.
+- Preserve depth evidence in checkpointed pool metadata, separately from physical
+  founder ancestry, which resets to zero. No change to reproduction, development,
+  ecology, mutation, founder sampling or population size.
+- Model `primitive-v45-depth-retention` rejects previous model saves unchanged.
+  Binary checkpoint layout remains 58; the first reserved pool-trait word now holds
+  depth evidence. Old runs cannot silently continue under the new selection rule.
+- This is a selection hypothesis for a new long experiment, not proven improvement.
+
 ## 0.9.1 — open investment experiment candidate
 
 - Retain paid packet reserves after decay and fusion loss; digestion cannot clip them.

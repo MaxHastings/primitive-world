@@ -865,7 +865,7 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
         ui.small(format!("Natural extinction after {} ticks", o.duration));
     } else {
         ui.small(
-            "World in progress. Successful births replace uniformly chosen reservoir entries.",
+            "World in progress. Newborns challenge two pool entries; the shallower ancestry is replaced.",
         );
     }
     ui.collapsing("Completed worlds", |ui| {

@@ -8,6 +8,11 @@ The goal is to build a world with enough expressive freedom that evolution can d
 
 See [release acceptance and stopping rules](north-star.md).
 
+The current experiment explicitly biases hereditary-pool retention toward deeper
+within-world reproduction. This is an authored selection preference, documented
+in [the evolutionary contract](evolution.md), while physical behavior and mutation
+remain unchanged. It is an intentional exception to purely ecological selection.
+
 ## North star
 
 **We define a broad, reachable space of possibilities.

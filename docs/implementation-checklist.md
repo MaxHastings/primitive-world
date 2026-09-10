@@ -1,26 +1,21 @@
-# Candidate engineering checks
+# Depth-retention candidate checks
 
-Version 0.9.1; model `primitive-v44-open-investment`; checkpoint 58; founder bank 21.
+Application 0.9.2; model `primitive-v45-depth-retention`; checkpoint layout 58;
+founder bank 21. Prior model files are preserved and rejected unchanged.
 
-The release decision and scientific unknowns are in [the north star](north-star.md).
-Historical evidence files retain their original model identities and scope.
+The new GPU regression compares 512 simultaneous births against a CPU reference
+using mixed stored depths, including ties and replacement collisions. It verifies
+whole genomes and traits, newly stored child depth, and no repeat admission.
+The checkpoint/world-reset regression stores nonzero depth, saves and reloads it,
+and verifies exact continuation with unchanged pool metadata and zero-depth
+founder bodies. This metadata is not supplied to brains.
 
-- Full serial release GPU regression suite: 163 passed, 0 failed, 25 intentionally ignored.
-- Strict Clippy, formatting and 12 Python tool tests checked.
-- Paid newborn surplus has exact checkpoint/save-load and continuation coverage.
-- Regression coverage includes natural world transitions, bounded save retention,
-  ecology continuity, resource accounting and observer neutrality.
-- `Play.ps1 --version` builds and runs the local 0.9.1 executable.
-- Wallpaper attached at 3440x1440. Save-and-stop, resume and another save-and-stop
-  preserved the same experiment and advanced its tick from 2,604 to 3,073.
-- The regular viewer loaded that wallpaper save, rendered the world and paused
-  through its UI. It was closed after the smoke check. A subsequent label-only
-  rebuild replaces the misleading phrase "Permanent juvenile dependence".
-- Wallpaper framebuffer inspection remains unverified: the computer-use API did
-  not expose the embedded desktop surface. Multi-day operation is unverified.
+Strict Clippy, formatting and 12 Python tests passed. The full serial release GPU
+suite result is recorded in [engineering evidence](evidence/depth-retention-engineering.json).
+`Play.ps1 --version` built and ran 0.9.2. The launch supports explicit 32x selection;
+the application logs its selected playback target for operational verification.
 
-No 20–50 million tick experiment was run for this handoff. The owner will launch
-that experiment. Unassisted matured-descendant reproduction remains unproven;
-reservoir-born adult founders do not establish it.
-
-See [candidate engineering evidence](evidence/open-investment-engineering.json).
+The owner authorized a fresh seed 3001 wallpaper experiment at 32x after commit and
+push to main. Physical reproduction, development, ecology and mutation are unchanged.
+Improvement in sustained generations under this selection rule is unverified.
+No claim of long-term stability follows from the regression tests.

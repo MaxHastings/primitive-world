@@ -991,7 +991,9 @@ impl Simulation {
                 ((random01(&mut rng) * traits.len() as f32) as usize).min(traits.len() - 1);
             pool[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE]
                 .copy_from_slice(&genes[source * GENOME_SIZE..(source + 1) * GENOME_SIZE]);
-            pool_traits.push(traits[source]);
+            let mut record = traits[source];
+            record.padding = [0; 2];
+            pool_traits.push(record);
         }
         self.write_banked(queue, &self.reservoir_genome_buffers, &pool);
         queue.write_buffer(

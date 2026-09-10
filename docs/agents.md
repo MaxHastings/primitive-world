@@ -184,7 +184,8 @@ Body observers exclude packets. `packets_produced` records manufacturing, not
 successful offspring. An offspring's family/parent annotation describes one
 producer branch; it is not a complete two-parent pedigree. Extinction waits until
 both organisms and viable packets are gone. Successful offspring alone enter
-the hereditary reservoir.
+the hereditary reservoir. Pool replacement favors stored within-world reproductive depth;
+see [the selection contract](evolution.md).
 
 ## Juvenile physiology
 
@@ -226,4 +227,4 @@ ticks; interaction pairs are disjoint) and `juvenile_received_milli`. Existing
 `births_to_descendant_parents` distinguish mortality, maturation and reproductive
 continuity. These counters cover descendants, including terminal ticks, and are
 observer-only: no controller can read them. The model ID is now
-`primitive-v44-open-investment`; old model checkpoints are rejected.
+`primitive-v45-depth-retention`; old model checkpoints are rejected.

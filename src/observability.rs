@@ -721,7 +721,10 @@ impl Simulation {
                     ..slot * GENOME_BANK_STRIDE + GENOME_SIZE - GENOME_BANK_STRIDE],
             );
             crate::brain::validate(&genome)?;
-            if !reservoir_traits[slot].validate() {
+            if !reservoir_traits[slot].validate()
+                || reservoir_traits[slot].padding[0] > MAX_WORLD_TICKS
+                || reservoir_traits[slot].padding[1] != 0
+            {
                 return Err("Invalid hereditary reservoir traits".into());
             }
         }

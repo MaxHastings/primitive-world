@@ -2,20 +2,21 @@
 
 See the [north star](north-star.md) and [long experiment launch guide](long-experiment.md).
 
-Version 0.9.1 is the frozen candidate for the owner's 20–50 million tick experiment.
+Version 0.9.2 is the frozen candidate for the owner's 20–50 million tick experiment.
 The model retains paid birth reserves, uses actual energy to fund selected packet
 manufacture and starts fresh worlds with 8,192 founders. It preserves the existing
-controller, physics and newborn hereditary-reservoir admission.
+controller and physics. Newborn admission now uses two-entry depth-biased replacement;
+see [the exact rule](evolution.md).
 
-Unassisted descendant maturation and reproduction have not been demonstrated.
-Multi-day stability is also unverified. These are explicit experimental unknowns,
+The previous model demonstrated rare unassisted maturation and descendant reproduction.
+Improvement under this new selection rule and multi-day stability remain unverified. These are explicit experimental unknowns,
 not claims implied by release readiness. See the implementation checks for the
 exact engineering validation; historical evidence files identify earlier models.
 
 ## Build and data formats
 
-- Application version: 0.9.1.
-- Model: `primitive-v44-open-investment`.
+- Application version: 0.9.2.
+- Model: `primitive-v45-depth-retention`.
 - Checkpoint format: 58, including lifetime state, hereditary pool, RNG streams and world history.
 - Founder-bank format: 21; game receipts: 4.
 - Genome allocation: 155.875 MiB for 16,384 shared organism/packet slots, plus world/render buffers.

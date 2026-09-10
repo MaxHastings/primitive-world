@@ -1,0 +1,20 @@
+{
+  "application_version": "0.9.2",
+  "model": "primitive-v45-depth-retention",
+  "checkpoint_layout": 58,
+  "pool_depth_storage": "First reserved CognitiveTraits word, pool records only; second reserved word zero. Physical founders reset ancestry to zero.",
+  "executable_sha256": "C12D4EE3623CB0E57BCB886C8DA1C0314E67E399FDDCE724126816D2FC13597D",
+  "full_serial_release_suite": {
+    "passed": 163,
+    "failed": 0,
+    "ignored": 26,
+    "seconds": 148.54
+  },
+  "strict_clippy": "passed",
+  "formatting": "passed",
+  "python_tests_passed": 12,
+  "release_version_command": "passed",
+  "selection_regression": "512 simultaneous births, mixed depths, CPU target reference, whole-record collision arbitration and stored depth verified.",
+  "persistence_regression": "Nonzero stored depth survives checkpoint and exact world restart; founder ancestry and trait metadata reset to zero.",
+  "scope": "Engineering validation only. Full suite preceded a startup playback-target logging-only edit; final Clippy and executable build include that edit. New long-run evolutionary improvement remains unverified."
+}

@@ -89,7 +89,7 @@ history. See the exact [agent interface](docs/agents.md).
 
 Body upkeep defaults to .05 per tick and can be adjusted live. The packet model is a new experiment; this is not a claim of intelligence or indefinite
 survival. Selection means ecological persistence through paid births and deaths.
-Across extinction, a bounded random hereditary pool supplies unchanged founder
+Across extinction, a bounded hereditary pool supplies unchanged founder
 records without ranking; acquired lifetime learning is never inherited.
 
 Reproduction requires two local packets from different producers. Organisms pay
@@ -102,7 +102,7 @@ The game keeps running at storage capacity. Requests for packets that cannot fit
 are skipped without charge, while fusion reuses a consumed packet slot. Bodies
 and packets are counted separately in the statistics panel.
 
-All modes use `primitive-v44-open-investment`, checkpoint format 58 and founder
+All modes use `primitive-v45-depth-retention`, checkpoint format 58 and founder
 bank format 21. Other biological layouts are rejected. The current freeze status,
 validation evidence and remaining operational checks are recorded in the
 [finish-line checklist](docs/implementation-checklist.md).
@@ -116,9 +116,10 @@ We define a broad, reachable space of possibilities. We avoid defining which
 solution is desirable. The environment determines consequences; evolution
 determines what persists. Read the [core direction](docs/direction.md).
 
-Selection happens through physical survival and reproduction. There is no
-lifespan contest, behavioral reward, population ranking or optimizer. Successful
-births place complete inherited records into a fixed 4,096-entry pool by blind
+Selection combines physical survival and reproduction with an explicit pool-retention
+preference for deeper within-world reproduction. There is no behavioral reward or
+lifespan score. Successful
+births place complete inherited records into a fixed 4,096-entry pool by depth-biased
 random replacement. After natural extinction, fresh bodies sample unchanged
 records from that pool. Lifetime learning is never inherited.
 
