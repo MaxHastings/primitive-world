@@ -20,9 +20,10 @@ fn contact(i:u32)->u32{
   var start=0u;if(ci>0u){start=offsets[ci-1u];}
   for(var k=start;k<offsets[ci];k++){
    let j=indices[k];if(j==i||j>=params.agent_count){continue;}let b=agents[j];
-   if(b.alive!=a.alive){continue;}
-   // Only packets of different producers are compatible; no size or sex classes.
-   if(a.alive==PACKET&&a.parent_lineage==b.parent_lineage){continue;}
+   if(b.alive==0u){continue;}
+   // Force can contact any live entity. Transfer and fusion have separate eligibility.
+   if(a.alive==ORGANISM&&decisions[i].selected_action==TRANSFER&&b.alive!=ORGANISM){continue;}
+   if(a.alive==PACKET&&(b.alive!=PACKET||a.parent_lineage==b.parent_lineage)){continue;}
    let delta=torus_delta(a.position,b.position,params.world_size.xy);let distance2=dot(delta,delta);
    if(distance2>radius*radius||distance2>best2){continue;}
    if(distance2==best2&&best!=INVALID&&priority(j)>=priority(best)){continue;}
@@ -52,13 +53,17 @@ fn resolve(@builtin(global_invocation_id) id:vec3<u32>){
  let i=id.x;if(i>=params.agent_count){return;}let d=decisions[i];
  let j=atomicLoad(&claims[INVALID+i]);let rank=atomicLoad(&claims[2u*INVALID+i]);
  if(j>=params.agent_count||atomicLoad(&claims[i])!=rank||atomicLoad(&claims[j])!=rank){return;}
- var a=agents[i];var b=agents[j];if(a.alive==0u||b.alive!=a.alive){return;}
- if(a.alive==PACKET){atomicStore(&claims[2u*INVALID+i],INVALID);return;}
+ var a=agents[i];var b=agents[j];if(a.alive==0u||b.alive==0u){return;}
+ if(a.alive==PACKET){
+  if(b.alive==PACKET&&a.parent_lineage!=b.parent_lineage){atomicStore(&claims[2u*INVALID+i],INVALID);}
+  return;
+ }
  if(d.selected_action==TRANSFER){
+  if(b.alive!=ORGANISM){return;}
   let amount=min(min(a.food,d.amount),max(0.0,inventory_capacity(b.age,params.sensor_and_padding.y)-b.food));if(amount<=0.0){return;}
   a.food-=amount;b.food+=amount;b.received+=amount;
   record(i,j,TRANSFER,amount,a.position);counter_add(4,1u);counter_add(6,u32(amount*1000.0));
- }else{
+ }else if(d.selected_action==APPLY_FORCE){
   var impulse=body_to_world(d.force,a.heading)*3.0;let requested_cost=0.1*dot(impulse,impulse);
   if(requested_cost>a.energy){impulse*=sqrt(a.energy/max(requested_cost,0.00001));}
   let cost=min(a.energy,0.1*dot(impulse,impulse));a.energy-=cost;a.spent+=cost;a.velocity-=impulse;b.velocity+=impulse;

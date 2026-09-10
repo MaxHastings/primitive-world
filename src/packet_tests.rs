@@ -18,6 +18,127 @@ fn decay(size: f32) -> f32 {
 }
 
 #[test]
+fn organism_pushes_packet_with_passive_drift_and_intact_snapshot_accounting() {
+    let (d, q) = gpu();
+    for (actor_slot, packet_slot) in [(0, 1), (1, 0)] {
+        let mut s = scene(&d, &q);
+        let mut a = body([2046.0, 100.0]);
+        a.food = 0.0;
+        let p = packet([2047.0, 100.0], 1, 16.0);
+        let genes = fixed(4, [1.0, 1.0]);
+        put(&s, &q, actor_slot, a, &fixed(3, [0.0; 2]));
+        put(&s, &q, packet_slot, p, &genes);
+        step(&mut s, &d, &q, 1);
+        let after = s.agent_snapshot(&d, &q).unwrap();
+        let pushed = after[packet_slot];
+        let impulse = 3.0 * 1.0f32.tanh();
+        near(pushed.velocity[0], impulse);
+        near(after[actor_slot].velocity[0], -impulse);
+        assert_eq!(pushed.position, p.position);
+        near(pushed.energy, p.energy - decay(p.packet_size));
+        near(after[actor_slot].energy + after[actor_slot].spent, a.energy);
+        let m = s.metrics(&d, &q).unwrap();
+        assert_eq!(m.events[5], 1);
+        assert_eq!(m.events[3], 0);
+        assert_eq!(m.events[4], 0);
+        near(m.force_energy_spent as f32, 0.1 * impulse * impulse);
+        near(m.packet_energy as f32, pushed.energy);
+        s.write_genome_slot(&q, actor_slot, &fixed(0, [0.0; 2]));
+        step(&mut s, &d, &q, 1);
+        let drifted = s.agent_snapshot(&d, &q).unwrap()[packet_slot];
+        near(drifted.position[0], (p.position[0] + impulse) % 2048.0);
+        near(drifted.velocity[0], impulse * 0.98);
+        near(
+            drifted.energy,
+            pushed.energy - packet_upkeep(1) * 16.0f32.powf(2.0 / 3.0),
+        );
+        assert_eq!(drifted.alive, 2);
+        assert_eq!(drifted.parent_lineage, p.parent_lineage);
+        assert_eq!(drifted.packet_size, p.packet_size);
+        assert_eq!(drifted.hidden, [0.0; HIDDEN]);
+        assert_eq!(drifted.lived_ticks, 0);
+        assert_eq!(drifted.food, 0.0);
+        assert_eq!(drifted.signal_tick, 0);
+        assert_eq!(
+            read::<DecisionGpu>(&d, &q, &s.decision_buffer, 2)[packet_slot].evaluated,
+            0
+        );
+        let snapshots = s.read_genomes(&d, &q, 2).unwrap();
+        assert_eq!(
+            &snapshots[packet_slot * GENOME_SIZE..(packet_slot + 1) * GENOME_SIZE],
+            &genes
+        );
+    }
+}
+
+#[test]
+fn pushed_packet_can_drift_into_compatible_fusion_range() {
+    let (d, q) = gpu();
+    for pushed in [false, true] {
+        let mut s = scene(&d, &q);
+        let mut a = body([100.0, 100.0]);
+        a.food = 0.0;
+        put(&s, &q, 0, a, &fixed(if pushed { 3 } else { 0 }, [0.0; 2]));
+        put(
+            &s,
+            &q,
+            1,
+            packet([102.0, 100.0], 1, 16.0),
+            &fixed(0, [0.0; 2]),
+        );
+        put(
+            &s,
+            &q,
+            2,
+            packet([110.0, 100.0], 2, 16.0),
+            &fixed(0, [0.0; 2]),
+        );
+        step(&mut s, &d, &q, 1);
+        assert_eq!(s.metrics(&d, &q).unwrap().events[3], 0);
+        s.write_genome_slot(&q, 0, &fixed(0, [0.0; 2]));
+        step(&mut s, &d, &q, 1);
+        let m = s.metrics(&d, &q).unwrap();
+        assert_eq!(m.events[3], u32::from(pushed));
+        assert_eq!(m.packets, if pushed { 0 } else { 2 });
+        if pushed {
+            let after = s.agent_snapshot(&d, &q).unwrap();
+            let child = after
+                .iter()
+                .find(|a| a.alive == 1 && a.ancestry_depth == 1)
+                .unwrap();
+            near(
+                child.energy,
+                32.0 - 2.0 * (packet_upkeep(0) + packet_upkeep(1)) * 16.0f32.powf(2.0 / 3.0)
+                    - s.settings.fusion_loss,
+            );
+        }
+    }
+}
+
+#[test]
+fn organism_transfer_skips_packets_without_fusion_or_reserve_transfer() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    put(&s, &q, 0, body([100.0, 100.0]), &fixed(2, [0.0; 2]));
+    put(
+        &s,
+        &q,
+        1,
+        packet([101.0, 100.0], 2, 16.0),
+        &fixed(0, [0.0; 2]),
+    );
+    step(&mut s, &d, &q, 1);
+    let after = s.agent_snapshot(&d, &q).unwrap();
+    assert_eq!(after[1].alive, 2);
+    assert_eq!(after[1].food, 0.0);
+    assert_eq!(after[1].received, 0.0);
+    near(after[1].energy, 16.0 - decay(16.0));
+    let m = s.metrics(&d, &q).unwrap();
+    assert_eq!(m.events[3], 0);
+    assert_eq!(m.events[4], 0);
+}
+
+#[test]
 fn packet_production_is_local_paid_and_independent_of_partners() {
     let (d, q) = gpu();
     for (size, energy, age, action, expected) in [

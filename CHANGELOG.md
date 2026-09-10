@@ -1,3 +1,10 @@
+## Packet contact physics
+
+- Organisms can push reproductive packets through the ordinary paid contact
+  impulse. Packets drift and damp passively; no damage or new action is added.
+- Transfers remain organism-only and fusion remains compatible-packet-only.
+  Genome snapshots, save formats, and current experiment compatibility are unchanged.
+
 ## Turning energy cost
 
 - Applied turning effort costs 0.02 energy per unit of effort (previously 0.005).

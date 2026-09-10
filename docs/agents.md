@@ -132,8 +132,12 @@ carry more offspring provisioning. At most one packet is manufactured per body
 per tick, an explicit throughput ceiling. There is no reproductive cooldown.
 
 Packets carry their own immutable genome and trait snapshots. They do not think,
-gather, signal, learn, or propel themselves. They remain at their release location
-and spend `packet_upkeep * packet_size^(2/3)` energy per tick. The upkeep
+gather, signal, learn, or propel themselves. Ordinary organism contact force can
+push them, with the same paid impulse and opposite recoil as any other target.
+Packets integrate velocity with world wrapping, then damp it by 0.98 each tick;
+force does not damage them or change their genome or reserves. Transfer remains
+organism-only, and only compatible packet pairs can fuse. Packets
+spend `packet_upkeep * packet_size^(2/3)` energy per tick. The upkeep
 coefficient smoothly rises from .002 to .02 over world ticks 0–100,000. They expire at zero energy, without a separate lifetime timer. A fresh
 packet has an initial viability scale of approximately 500–1,817 ticks, falling
 to 50–182 at normal upkeep. Existing packets pay the current world-age rate. This is a
