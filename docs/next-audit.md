@@ -3,6 +3,24 @@
 This is the handoff requested after the preservation/climate branch. It records
 future work, not new biological rules or claims that the audit is complete.
 
+## Authority and scope
+
+The user's original kickoff is the governing intent: examine the whole project
+for coherent, general mechanisms that permit emergent ecology, behavior, memory,
+communication, care and evolution; identify shortcuts, missing opportunities and
+cross-system problems while preserving immersion and existing capabilities.
+Later assistant-written recommendations are hypotheses to assess critically,
+not an approved architecture, mandatory checklist or predetermined solution.
+The user explicitly clarified this after reviewing this handoff.
+
+The closed-life-cycle test is one important investigation, not the whole audit.
+Do not assume proposals such as reservoir gating, clonal/multi-source reproduction,
+unconditioned climate starts, food release or a particular bootstrap success rate
+are requirements. Validate their premises against the actual implementation and
+the user's intent, consider alternatives, and retain useful existing mechanisms
+when the evidence favors them. Speculative examples in the kickoff likewise
+describe possibilities rather than behaviors the simulation must produce.
+
 ## Governing intent
 
 Preserve the old game's presentation, controls, scale and rich interaction space.
