@@ -1,0 +1,12 @@
+{
+  "initial_seed": 3001,
+  "initial_distinct_founder_records": 4096,
+  "later_world": 110,
+  "later_tick": 2080,
+  "pool_records": 4096,
+  "pool_records_absent_from_original_founders": 848,
+  "living_adult_founders": 77,
+  "living_adult_founders_with_records_absent_from_original_founders": 13,
+  "comparison": "Exact inherited genome bytes plus inherited cognitive traits; excludes learned deltas, traces, lifetime state and diagnostic ancestry labels.",
+  "scope": "New records can be recombinations or mutations, not necessarily adaptive innovations. Together with the separately verified absence of all offspring maturation, adult-founder re-entry demonstrates that development was not required for these inherited records to cross extinction. Counts do not measure the causal fitness effect of a particular care mutation."
+}

@@ -3,6 +3,15 @@ use super::*;
 #[path = "transfer_probe.rs"]
 mod transfer_probe;
 
+#[path = "audit_probe.rs"]
+mod audit_probe;
+
+#[path = "sensor_audit.rs"]
+mod sensor_audit;
+
+#[path = "reservoir_ab.rs"]
+mod reservoir_ab;
+
 #[test]
 #[ignore = "read-only validation of the user's current experiment library"]
 fn current_experiment_library_loads_without_rewriting_saves() {
@@ -745,7 +754,7 @@ fn fresh_world_defaults_match_documented_physical_settings() {
     assert_eq!(settings.movement_energy_cost, 0.01);
     assert_eq!(settings.motor_response_gain, 4.0);
     assert_eq!(settings.resource_regeneration, 0.01);
-    assert_eq!(settings.population, 4096);
+    assert_eq!(settings.population, 8192);
     assert!(settings.evolving_landscape);
     settings.validate().unwrap();
 }
@@ -1146,7 +1155,7 @@ fn checkpoint_rejects_corrupt_trace_and_memory_without_mutating_live_world() {
     );
     std::fs::remove_file(path).unwrap();
 }
-fn gpu() -> (wgpu::Device, wgpu::Queue) {
+pub(super) fn gpu() -> (wgpu::Device, wgpu::Queue) {
     let instance = wgpu::Instance::new(&Default::default());
     let adapter = pollster::block_on(instance.request_adapter(&Default::default())).expect("GPU");
     pollster::block_on(adapter.request_device(
@@ -1180,7 +1189,7 @@ fn read<T: Pod>(
     staging.unmap();
     out
 }
-fn step(s: &mut Simulation, d: &wgpu::Device, q: &wgpu::Queue, n: u32) {
+pub(super) fn step(s: &mut Simulation, d: &wgpu::Device, q: &wgpu::Queue, n: u32) {
     let mut e = d.create_command_encoder(&Default::default());
     s.encode_ticks(&mut e, d, q, n);
     q.submit(Some(e.finish()));
@@ -1732,7 +1741,7 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
         };
         assert!(settings.validate().is_err());
     }
-    assert_eq!(MODEL_ID, "primitive-v42-climate-care");
+    assert_eq!(MODEL_ID, "primitive-v44-open-investment");
     assert_eq!(crate::founders::bundled().model, MODEL_ID);
     assert_eq!(crate::founders::bundled().version, FOUNDER_BANK_VERSION);
 }
@@ -2448,7 +2457,7 @@ fn fresh_food_cannot_bypass_starvation_and_is_released_on_death() {
 }
 
 #[test]
-fn juvenile_physiology_requires_external_food_but_generic_repeated_transfer_reaches_maturity() {
+fn low_endowment_juveniles_need_food_and_repeated_transfer_reaches_maturity() {
     let (d, q) = gpu();
     for world_tick in [0, 100_000, 3_000_000] {
         let mut s = scene(&d, &q);
@@ -2456,7 +2465,7 @@ fn juvenile_physiology_requires_external_food_but_generic_repeated_transfer_reac
         s.settings.metabolic_cost = SimSettings::default().metabolic_cost;
         let mut juvenile = body([602.0, 902.0]);
         juvenile.age = 0.0;
-        juvenile.energy = 48.0; // Largest retained packet provisioning.
+        juvenile.energy = 48.0; // Low-endowment fixture; larger packets can now retain more.
         juvenile.food = 0.0;
         juvenile.ancestry_depth = 1;
         juvenile.birth_tick = u32::MAX;
@@ -2632,3 +2641,12 @@ fn ramp_settings_are_absent_and_old_ramp_state_is_rejected() {
         assert_eq!(configured_ecology_time(tick, &settings), tick);
     }
 }
+
+#[path = "provisioning_audit.rs"]
+mod provisioning_audit;
+
+#[path = "unassisted_endowment.rs"]
+mod unassisted_endowment;
+
+#[path = "budget_gate_audit.rs"]
+mod budget_gate_audit;

@@ -182,6 +182,20 @@ pub struct Simulation {
     pub params_buffer: wgpu::Buffer,
     pub alive_count_buffer: wgpu::Buffer,
     pub family_observer: Option<crate::family_observer::FamilyObserver>,
+    #[cfg(test)]
+    pub funnel_observer: Option<funnel_audit::FunnelObserver>,
+    #[cfg(test)]
+    pub(crate) defer_reservoir_admission: bool,
+    #[cfg(test)]
+    pub(crate) retain_packet_endowment: bool,
+    #[cfg(test)]
+    pub(crate) parent_admission: Option<parent_admission::ParentAdmission>,
+    #[cfg(test)]
+    claims_buffer: wgpu::Buffer,
+    #[cfg(test)]
+    audit_cell_offsets: wgpu::Buffer,
+    #[cfg(test)]
+    audit_indices: wgpu::Buffer,
     pub(crate) active_indices: wgpu::Buffer,
     birth_dispatch: wgpu::Buffer,
     cognitive_dispatch: wgpu::Buffer,
@@ -699,6 +713,37 @@ impl Simulation {
                 &claims
             ])
         );
+        #[cfg(test)]
+        {
+            let capped = "min(energy-params.sensor_and_padding.w,reserve_capacity(0.0,params.sensor_and_padding.y))";
+            let original = include_str!("../shaders/apply_births.wgsl");
+            let paid = "child.energy=energy-params.sensor_and_padding.w;";
+            assert_eq!(original.matches(paid).count(), 1);
+            let legacy = original.replace(paid, &format!("child.energy={capped};"));
+            passes.insert(
+                "fusion_legacy_clipped".to_string(),
+                Compute::new(
+                    device,
+                    "legacy clipped packet endowment",
+                    &legacy,
+                    "fusion",
+                    "wrrrruwrr",
+                    pair(|i| {
+                        vec![
+                            &agent_buffers[i],
+                            &free_indices,
+                            &free_prefix,
+                            &parents,
+                            &birth_prefix,
+                            &params_buffer,
+                            &death_stats_buffer,
+                            &decision_buffer,
+                            &claims,
+                        ]
+                    }),
+                ),
+            );
+        }
         add!(
             "inherit_fusion",
             "../shaders/inherit_genomes.wgsl",
@@ -893,6 +938,20 @@ impl Simulation {
             params_buffer,
             alive_count_buffer,
             family_observer: None,
+            #[cfg(test)]
+            funnel_observer: None,
+            #[cfg(test)]
+            defer_reservoir_admission: false,
+            #[cfg(test)]
+            retain_packet_endowment: true,
+            #[cfg(test)]
+            parent_admission: None,
+            #[cfg(test)]
+            claims_buffer: claims,
+            #[cfg(test)]
+            audit_cell_offsets: cell_offsets,
+            #[cfg(test)]
+            audit_indices: indices,
             decision_buffer,
             active_indices,
             birth_dispatch,
@@ -977,6 +1036,10 @@ impl Simulation {
         }
         queue.submit(Some(clear.finish()));
         self.family_observer = None;
+        #[cfg(test)]
+        {
+            self.funnel_observer = None;
+        }
         self.assisted = !self.settings.founder_genomes.is_empty();
         if self.assisted {
             queue.write_buffer(&self.death_stats_buffer, 30 * 4, bytemuck::bytes_of(&1u32));
@@ -1277,6 +1340,10 @@ impl Simulation {
             self.scan(e, "spatial", SPATIAL_CELL_COUNT);
             self.dispatch(e, "cursors", 0, 1024, 1);
             self.dispatch(e, "scatter", d, groups, 1);
+            #[cfg(test)]
+            if let Some(observer) = &self.funnel_observer {
+                observer.before_contacts(e, d);
+            }
             for n in [
                 "interact_clear",
                 "interact_propose",
@@ -1289,16 +1356,46 @@ impl Simulation {
             self.dispatch(e, "birth_compact", 0, groups, 1);
             self.passes["birth"].dispatch_indirect(e, d, &self.birth_dispatch);
             self.passes["inherit_genomes"].dispatch_indirect(e, d, &self.birth_dispatch);
-            self.dispatch(e, "fusion", d, groups, 1);
+            #[cfg(test)]
+            if let Some(observer) = &self.funnel_observer {
+                observer.before_fusion(e, d);
+            }
+            #[cfg(test)]
+            if let Some(admission) = &self.parent_admission {
+                admission.before_fusion(e, d);
+            }
+            #[cfg(test)]
+            let fusion_pass = if self.retain_packet_endowment {
+                "fusion"
+            } else {
+                "fusion_legacy_clipped"
+            };
+            #[cfg(not(test))]
+            let fusion_pass = "fusion";
+            self.dispatch(e, fusion_pass, d, groups, 1);
             self.dispatch(e, "inherit_fusion", d, groups, 1);
-            e.clear_buffer(&self.reservoir_claims_buffer, 0, None);
-            self.dispatch(e, "claim_reservoir", d, groups, 1);
-            self.dispatch(e, "update_reservoir", d, groups, 1);
-            self.dispatch(e, "advance_reservoir", d, 1, 1);
+            #[cfg(test)]
+            let admit = !self.defer_reservoir_admission && self.parent_admission.is_none();
+            #[cfg(not(test))]
+            let admit = true;
+            if admit {
+                e.clear_buffer(&self.reservoir_claims_buffer, 0, None);
+                self.dispatch(e, "claim_reservoir", d, groups, 1);
+                self.dispatch(e, "update_reservoir", d, groups, 1);
+                self.dispatch(e, "advance_reservoir", d, 1, 1);
+            }
+            #[cfg(test)]
+            if let Some(admission) = &self.parent_admission {
+                admission.after_fusion(e, d, &self.reservoir_claims_buffer);
+            }
             self.dispatch(e, "reset_cognitive_birth_state", d, groups, 1);
             self.dispatch(e, "release", d, groups, 1);
             if let Some(observer) = &self.family_observer {
                 observer.encode(e, d);
+            }
+            #[cfg(test)]
+            if let Some(observer) = &self.funnel_observer {
+                observer.after_tick(e, d);
             }
             self.current_buffer = d;
             self.tick += 1;
@@ -1537,7 +1634,7 @@ fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> S
         resource_grid_size: RESOURCE_GRID,
         agent_count: MAX_AGENTS,
         tick,
-        world_padding: 0,
+        world_padding: u32::from(s.fractional_gathering),
         time_and_costs: [
             climate.rainfall,
             s.resource_regeneration,
@@ -2049,5 +2146,13 @@ pub mod observability;
 mod tests;
 
 #[cfg(test)]
+#[path = "funnel_audit.rs"]
+pub(crate) mod funnel_audit;
+
+#[cfg(test)]
 #[path = "habitat_tests.rs"]
 mod habitat_tests;
+
+#[cfg(test)]
+#[path = "parent_admission.rs"]
+mod parent_admission;

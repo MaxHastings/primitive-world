@@ -1,5 +1,9 @@
 # Juvenile-care validation
 
+Later evidence: the [sensor reachability audit](sensor-reachability-audit.md)
+demonstrates a naturally funded, sensor-valid care-dependent descendant loop.
+The fixtures and earlier random cohort below remain historical observations.
+
 Current model: `primitive-v42-climate-care`. The GPU provisioning fixture tests
 world ticks 0, 100,000 and 3,000,000. Unprovisioned newborns, including those given
 unlimited ground food and maximal gathering, must fail to bridge infancy.

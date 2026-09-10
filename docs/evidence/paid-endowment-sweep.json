@@ -1,0 +1,1290 @@
+{
+  "results": [
+    {
+      "alive": false,
+      "birth_energy": 21.746015548706055,
+      "energy_ledger_residual": -0.00015445053577423096,
+      "final_age": 433.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.0,
+      "ingested": 0.0,
+      "matured": false,
+      "packet_size_each": 16.0,
+      "retain_paid_endowment": false,
+      "sensor_foraging": false,
+      "spent": 21.74616999924183,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 16.720684051513672,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 11.69569206237793,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 6.670685291290283,
+          "food": 0.0
+        },
+        {
+          "age": 400.0,
+          "energy": 1.645668625831604,
+          "food": 0.0
+        },
+        {
+          "age": 433.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 21.746015548706055,
+      "energy_ledger_residual": -0.00010936334729194641,
+      "final_age": 370.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.10400000493973494,
+      "ingested": 0.10400000493973494,
+      "matured": false,
+      "packet_size_each": 16.0,
+      "retain_paid_endowment": false,
+      "sensor_foraging": true,
+      "spent": 22.578124951571226,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 15.926486015319824,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 10.058979988098145,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 4.169170379638672,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 370.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 37.66718673706055,
+      "energy_ledger_residual": -0.0002774447202682495,
+      "final_age": 750.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.0,
+      "ingested": 0.0,
+      "matured": false,
+      "packet_size_each": 24.0,
+      "retain_paid_endowment": false,
+      "sensor_foraging": false,
+      "spent": 37.667464181780815,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 32.64164733886719,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 27.616714477539062,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 22.59180450439453,
+          "food": 0.0
+        },
+        {
+          "age": 400.0,
+          "energy": 17.56689453125,
+          "food": 0.0
+        },
+        {
+          "age": 500.0,
+          "energy": 12.541918754577637,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 7.516911029815674,
+          "food": 0.0
+        },
+        {
+          "age": 700.0,
+          "energy": 2.4918882846832275,
+          "food": 0.0
+        },
+        {
+          "age": 750.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 37.66718673706055,
+      "energy_ledger_residual": -0.00025133416056632996,
+      "final_age": 635.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.16900000802706927,
+      "ingested": 0.16800000797957182,
+      "matured": false,
+      "packet_size_each": 24.0,
+      "retain_paid_endowment": false,
+      "sensor_foraging": true,
+      "spent": 39.01143813505769,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 31.847362518310547,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 25.98001480102539,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 20.090373992919922,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 400.0,
+          "energy": 14.064241409301758,
+          "food": 0.0
+        },
+        {
+          "age": 500.0,
+          "energy": 8.102635383605957,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 2.068631887435913,
+          "food": 0.0
+        },
+        {
+          "age": 635.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 48.0,
+      "energy_ledger_residual": -0.00011533685028553009,
+      "final_age": 956.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.0,
+      "ingested": 0.0,
+      "matured": false,
+      "packet_size_each": 32.0,
+      "retain_paid_endowment": false,
+      "sensor_foraging": false,
+      "spent": 48.000115336850286,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 42.97445297241211,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 37.9493522644043,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 32.924251556396484,
+          "food": 0.0
+        },
+        {
+          "age": 400.0,
+          "energy": 27.899307250976562,
+          "food": 0.0
+        },
+        {
+          "age": 500.0,
+          "energy": 22.87439727783203,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 17.8494873046875,
+          "food": 0.0
+        },
+        {
+          "age": 700.0,
+          "energy": 12.824516296386719,
+          "food": 0.0
+        },
+        {
+          "age": 800.0,
+          "energy": 7.799510955810547,
+          "food": 0.0
+        },
+        {
+          "age": 900.0,
+          "energy": 2.7744834423065186,
+          "food": 0.0
+        },
+        {
+          "age": 956.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 48.0,
+      "energy_ledger_residual": 6.724335253238678e-05,
+      "final_age": 810.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.24200001149438322,
+      "ingested": 0.24200001149438322,
+      "matured": false,
+      "packet_size_each": 32.0,
+      "retain_paid_endowment": false,
+      "sensor_foraging": true,
+      "spent": 49.93593284860253,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 42.1801643371582,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 36.31249237060547,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 30.42259979248047,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 400.0,
+          "energy": 24.39651870727539,
+          "food": 0.0
+        },
+        {
+          "age": 500.0,
+          "energy": 18.435081481933594,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 12.401140213012695,
+          "food": 0.0
+        },
+        {
+          "age": 700.0,
+          "energy": 6.482611656188965,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 800.0,
+          "energy": 0.5945664644241333,
+          "food": 0.0
+        },
+        {
+          "age": 810.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 48.0,
+      "energy_ledger_residual": -0.00011533685028553009,
+      "final_age": 956.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.0,
+      "ingested": 0.0,
+      "matured": false,
+      "packet_size_each": 40.0,
+      "retain_paid_endowment": false,
+      "sensor_foraging": false,
+      "spent": 48.000115336850286,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 42.97445297241211,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 37.9493522644043,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 32.924251556396484,
+          "food": 0.0
+        },
+        {
+          "age": 400.0,
+          "energy": 27.899307250976562,
+          "food": 0.0
+        },
+        {
+          "age": 500.0,
+          "energy": 22.87439727783203,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 17.8494873046875,
+          "food": 0.0
+        },
+        {
+          "age": 700.0,
+          "energy": 12.824516296386719,
+          "food": 0.0
+        },
+        {
+          "age": 800.0,
+          "energy": 7.799510955810547,
+          "food": 0.0
+        },
+        {
+          "age": 900.0,
+          "energy": 2.7744834423065186,
+          "food": 0.0
+        },
+        {
+          "age": 956.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 48.0,
+      "energy_ledger_residual": 6.724335253238678e-05,
+      "final_age": 810.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.24200001149438322,
+      "ingested": 0.24200001149438322,
+      "matured": false,
+      "packet_size_each": 40.0,
+      "retain_paid_endowment": false,
+      "sensor_foraging": true,
+      "spent": 49.93593284860253,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 42.1801643371582,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 36.31249237060547,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 30.42259979248047,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 400.0,
+          "energy": 24.39651870727539,
+          "food": 0.0
+        },
+        {
+          "age": 500.0,
+          "energy": 18.435081481933594,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 12.401140213012695,
+          "food": 0.0
+        },
+        {
+          "age": 700.0,
+          "energy": 6.482611656188965,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 800.0,
+          "energy": 0.5945664644241333,
+          "food": 0.0
+        },
+        {
+          "age": 810.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 48.0,
+      "energy_ledger_residual": -0.00011533685028553009,
+      "final_age": 956.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.0,
+      "ingested": 0.0,
+      "matured": false,
+      "packet_size_each": 48.0,
+      "retain_paid_endowment": false,
+      "sensor_foraging": false,
+      "spent": 48.000115336850286,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 42.97445297241211,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 37.9493522644043,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 32.924251556396484,
+          "food": 0.0
+        },
+        {
+          "age": 400.0,
+          "energy": 27.899307250976562,
+          "food": 0.0
+        },
+        {
+          "age": 500.0,
+          "energy": 22.87439727783203,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 17.8494873046875,
+          "food": 0.0
+        },
+        {
+          "age": 700.0,
+          "energy": 12.824516296386719,
+          "food": 0.0
+        },
+        {
+          "age": 800.0,
+          "energy": 7.799510955810547,
+          "food": 0.0
+        },
+        {
+          "age": 900.0,
+          "energy": 2.7744834423065186,
+          "food": 0.0
+        },
+        {
+          "age": 956.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 48.0,
+      "energy_ledger_residual": 6.724335253238678e-05,
+      "final_age": 810.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.24200001149438322,
+      "ingested": 0.24200001149438322,
+      "matured": false,
+      "packet_size_each": 48.0,
+      "retain_paid_endowment": false,
+      "sensor_foraging": true,
+      "spent": 49.93593284860253,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 42.1801643371582,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 36.31249237060547,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 30.42259979248047,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 400.0,
+          "energy": 24.39651870727539,
+          "food": 0.0
+        },
+        {
+          "age": 500.0,
+          "energy": 18.435081481933594,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 12.401140213012695,
+          "food": 0.0
+        },
+        {
+          "age": 700.0,
+          "energy": 6.482611656188965,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 800.0,
+          "energy": 0.5945664644241333,
+          "food": 0.0
+        },
+        {
+          "age": 810.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 21.746015548706055,
+      "energy_ledger_residual": -0.00015445053577423096,
+      "final_age": 433.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.0,
+      "ingested": 0.0,
+      "matured": false,
+      "packet_size_each": 16.0,
+      "retain_paid_endowment": true,
+      "sensor_foraging": false,
+      "spent": 21.74616999924183,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 16.720684051513672,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 11.69569206237793,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 6.670685291290283,
+          "food": 0.0
+        },
+        {
+          "age": 400.0,
+          "energy": 1.645668625831604,
+          "food": 0.0
+        },
+        {
+          "age": 433.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 21.746015548706055,
+      "energy_ledger_residual": -0.00010936334729194641,
+      "final_age": 370.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.10400000493973494,
+      "ingested": 0.10400000493973494,
+      "matured": false,
+      "packet_size_each": 16.0,
+      "retain_paid_endowment": true,
+      "sensor_foraging": true,
+      "spent": 22.578124951571226,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 15.926486015319824,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 10.058979988098145,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 4.169170379638672,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 370.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 37.66718673706055,
+      "energy_ledger_residual": -0.0002774447202682495,
+      "final_age": 750.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.0,
+      "ingested": 0.0,
+      "matured": false,
+      "packet_size_each": 24.0,
+      "retain_paid_endowment": true,
+      "sensor_foraging": false,
+      "spent": 37.667464181780815,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 32.64164733886719,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 27.616714477539062,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 22.59180450439453,
+          "food": 0.0
+        },
+        {
+          "age": 400.0,
+          "energy": 17.56689453125,
+          "food": 0.0
+        },
+        {
+          "age": 500.0,
+          "energy": 12.541918754577637,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 7.516911029815674,
+          "food": 0.0
+        },
+        {
+          "age": 700.0,
+          "energy": 2.4918882846832275,
+          "food": 0.0
+        },
+        {
+          "age": 750.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 37.66718673706055,
+      "energy_ledger_residual": -0.00025133416056632996,
+      "final_age": 635.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.16900000802706927,
+      "ingested": 0.16800000797957182,
+      "matured": false,
+      "packet_size_each": 24.0,
+      "retain_paid_endowment": true,
+      "sensor_foraging": true,
+      "spent": 39.01143813505769,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 31.847362518310547,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 25.98001480102539,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 20.090373992919922,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 400.0,
+          "energy": 14.064241409301758,
+          "food": 0.0
+        },
+        {
+          "age": 500.0,
+          "energy": 8.102635383605957,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 2.068631887435913,
+          "food": 0.0
+        },
+        {
+          "age": 635.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 53.596824645996094,
+      "energy_ledger_residual": -2.3646280169487e-05,
+      "final_age": 1067.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.0,
+      "ingested": 0.0,
+      "matured": false,
+      "packet_size_each": 32.0,
+      "retain_paid_endowment": true,
+      "sensor_foraging": false,
+      "spent": 53.59684829227626,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 48.57126998901367,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 43.54616928100586,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 38.52106857299805,
+          "food": 0.0
+        },
+        {
+          "age": 400.0,
+          "energy": 33.495967864990234,
+          "food": 0.0
+        },
+        {
+          "age": 500.0,
+          "energy": 28.47100257873535,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 23.44609260559082,
+          "food": 0.0
+        },
+        {
+          "age": 700.0,
+          "energy": 18.42118263244629,
+          "food": 0.0
+        },
+        {
+          "age": 800.0,
+          "energy": 13.396223068237305,
+          "food": 0.0
+        },
+        {
+          "age": 900.0,
+          "energy": 8.371217727661133,
+          "food": 0.0
+        },
+        {
+          "age": 1000.0,
+          "energy": 3.346184253692627,
+          "food": 0.0
+        },
+        {
+          "age": 1067.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 53.596824645996094,
+      "energy_ledger_residual": 0.0003285510465502739,
+      "final_age": 907.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.2980000141542405,
+      "ingested": 0.29700001480523497,
+      "matured": false,
+      "packet_size_each": 32.0,
+      "retain_paid_endowment": true,
+      "sensor_foraging": true,
+      "spent": 55.97249621339142,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 47.77699279785156,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 41.90932083129883,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 36.019287109375,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 400.0,
+          "energy": 29.9929141998291,
+          "food": 0.0
+        },
+        {
+          "age": 500.0,
+          "energy": 24.031476974487305,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 17.997650146484375,
+          "food": 0.0
+        },
+        {
+          "age": 700.0,
+          "energy": 12.079171180725098,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 800.0,
+          "energy": 6.19113826751709,
+          "food": 0.0
+        },
+        {
+          "age": 900.0,
+          "energy": 0.369934618473053,
+          "food": 0.0
+        },
+        {
+          "age": 907.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 69.53215789794922,
+      "energy_ledger_residual": 0.0006263554096221924,
+      "final_age": 1384.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.0,
+      "ingested": 0.0,
+      "matured": false,
+      "packet_size_each": 40.0,
+      "retain_paid_endowment": true,
+      "sensor_foraging": false,
+      "spent": 69.5315315425396,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 64.50621032714844,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 59.48107147216797,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 54.455970764160156,
+          "food": 0.0
+        },
+        {
+          "age": 400.0,
+          "energy": 49.430870056152344,
+          "food": 0.0
+        },
+        {
+          "age": 500.0,
+          "energy": 44.40576934814453,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 39.38066864013672,
+          "food": 0.0
+        },
+        {
+          "age": 700.0,
+          "energy": 34.355567932128906,
+          "food": 0.0
+        },
+        {
+          "age": 800.0,
+          "energy": 29.330570220947266,
+          "food": 0.0
+        },
+        {
+          "age": 900.0,
+          "energy": 24.305660247802734,
+          "food": 0.0
+        },
+        {
+          "age": 1000.0,
+          "energy": 19.280750274658203,
+          "food": 0.0
+        },
+        {
+          "age": 1100.0,
+          "energy": 14.255806922912598,
+          "food": 0.0
+        },
+        {
+          "age": 1200.0,
+          "energy": 9.230801582336426,
+          "food": 0.0
+        },
+        {
+          "age": 1300.0,
+          "energy": 4.205783843994141,
+          "food": 0.0
+        },
+        {
+          "age": 1384.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 69.53215789794922,
+      "energy_ledger_residual": 0.0009908182546496391,
+      "final_age": 1214.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.7200000328011811,
+      "ingested": 0.7169999870238826,
+      "matured": false,
+      "packet_size_each": 40.0,
+      "retain_paid_endowment": true,
+      "sensor_foraging": true,
+      "spent": 75.26716697588563,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 63.44828796386719,
+          "food": 0.032999999821186066
+        },
+        {
+          "age": 200.0,
+          "energy": 57.404632568359375,
+          "food": 0.05499996244907379
+        },
+        {
+          "age": 300.0,
+          "energy": 51.95460891723633,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 400.0,
+          "energy": 45.92811965942383,
+          "food": 0.0
+        },
+        {
+          "age": 500.0,
+          "energy": 39.96623229980469,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 33.93204879760742,
+          "food": 0.0
+        },
+        {
+          "age": 700.0,
+          "energy": 28.0135440826416,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 800.0,
+          "energy": 22.125656127929688,
+          "food": 0.0
+        },
+        {
+          "age": 900.0,
+          "energy": 16.304588317871094,
+          "food": 0.0
+        },
+        {
+          "age": 1000.0,
+          "energy": 10.660962104797363,
+          "food": 0.0
+        },
+        {
+          "age": 1100.0,
+          "energy": 5.3979411125183105,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 1200.0,
+          "energy": 0.6383100152015686,
+          "food": 0.0020000000949949026
+        },
+        {
+          "age": 1214.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": false,
+      "birth_energy": 85.47169494628906,
+      "energy_ledger_residual": 0.00209948793053627,
+      "final_age": 1701.0,
+      "final_energy": 0.0,
+      "final_food": 0.0,
+      "gathered": 0.0,
+      "ingested": 0.0,
+      "matured": false,
+      "packet_size_each": 48.0,
+      "retain_paid_endowment": true,
+      "sensor_foraging": false,
+      "spent": 85.46959545835853,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 80.44572448730469,
+          "food": 0.0
+        },
+        {
+          "age": 200.0,
+          "energy": 75.42024230957031,
+          "food": 0.0
+        },
+        {
+          "age": 300.0,
+          "energy": 70.39476013183594,
+          "food": 0.0
+        },
+        {
+          "age": 400.0,
+          "energy": 65.36927795410156,
+          "food": 0.0
+        },
+        {
+          "age": 500.0,
+          "energy": 60.34407424926758,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 55.318973541259766,
+          "food": 0.0
+        },
+        {
+          "age": 700.0,
+          "energy": 50.29387283325195,
+          "food": 0.0
+        },
+        {
+          "age": 800.0,
+          "energy": 45.26877212524414,
+          "food": 0.0
+        },
+        {
+          "age": 900.0,
+          "energy": 40.24367141723633,
+          "food": 0.0
+        },
+        {
+          "age": 1000.0,
+          "energy": 35.218570709228516,
+          "food": 0.0
+        },
+        {
+          "age": 1100.0,
+          "energy": 30.193538665771484,
+          "food": 0.0
+        },
+        {
+          "age": 1200.0,
+          "energy": 25.168628692626953,
+          "food": 0.0
+        },
+        {
+          "age": 1300.0,
+          "energy": 20.143718719482422,
+          "food": 0.0
+        },
+        {
+          "age": 1400.0,
+          "energy": 15.118791580200195,
+          "food": 0.0
+        },
+        {
+          "age": 1500.0,
+          "energy": 10.093786239624023,
+          "food": 0.0
+        },
+        {
+          "age": 1600.0,
+          "energy": 5.068779945373535,
+          "food": 0.0
+        },
+        {
+          "age": 1700.0,
+          "energy": 0.043761245906353,
+          "food": 0.0
+        },
+        {
+          "age": 1701.0,
+          "energy": 0.0,
+          "food": 0.0
+        }
+      ]
+    },
+    {
+      "alive": true,
+      "birth_energy": 85.47169494628906,
+      "energy_ledger_residual": 0.0011616628617048264,
+      "final_age": 1800.0,
+      "final_energy": 26.71687126159668,
+      "final_food": 0.02500000037252903,
+      "gathered": 6.725000322679989,
+      "ingested": 6.700000377139077,
+      "matured": true,
+      "packet_size_each": 48.0,
+      "retain_paid_endowment": true,
+      "sensor_foraging": true,
+      "spent": 112.35366503894329,
+      "trajectory": [
+        {
+          "age": 100.0,
+          "energy": 79.3878173828125,
+          "food": 0.032999999821186066
+        },
+        {
+          "age": 200.0,
+          "energy": 73.34415435791016,
+          "food": 0.05499996244907379
+        },
+        {
+          "age": 300.0,
+          "energy": 67.20628356933594,
+          "food": 0.08699999749660492
+        },
+        {
+          "age": 400.0,
+          "energy": 60.9879035949707,
+          "food": 0.11000004410743713
+        },
+        {
+          "age": 500.0,
+          "energy": 55.9060173034668,
+          "food": 0.0
+        },
+        {
+          "age": 600.0,
+          "energy": 49.87183380126953,
+          "food": 0.0
+        },
+        {
+          "age": 700.0,
+          "energy": 43.953060150146484,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 800.0,
+          "energy": 38.06477737426758,
+          "food": 0.0
+        },
+        {
+          "age": 900.0,
+          "energy": 32.24334716796875,
+          "food": 0.0
+        },
+        {
+          "age": 1000.0,
+          "energy": 26.59984016418457,
+          "food": 0.0
+        },
+        {
+          "age": 1100.0,
+          "energy": 21.336952209472656,
+          "food": 0.0010000000474974513
+        },
+        {
+          "age": 1200.0,
+          "energy": 16.577552795410156,
+          "food": 0.0020000000949949026
+        },
+        {
+          "age": 1300.0,
+          "energy": 12.66222858428955,
+          "food": 0.004000000189989805
+        },
+        {
+          "age": 1400.0,
+          "energy": 10.137974739074707,
+          "food": 0.006000000052154064
+        },
+        {
+          "age": 1500.0,
+          "energy": 9.425195693969727,
+          "food": 0.00800000037997961
+        },
+        {
+          "age": 1600.0,
+          "energy": 11.363375663757324,
+          "food": 0.013000000268220901
+        },
+        {
+          "age": 1700.0,
+          "energy": 16.96002960205078,
+          "food": 0.018000001087784767
+        },
+        {
+          "age": 1800.0,
+          "energy": 26.71687126159668,
+          "food": 0.02500000037252903
+        }
+      ]
+    }
+  ],
+  "scope": "Predeclared seed91 selected natural corridor; actual fusion of two initialized packets, no reserve edits after fusion, no food painting or climate/cost/gathering changes. One-unit controlled readout; no transfer/donors. Foragers use existing real-region sensor controller, rest controls neither gather nor move. Tests investment consequences, not normal adult funding or evolution. C retains energy paid into packets after normal decay and fixed fusion loss, even above the normal digestion ceiling; B clips birth energy to48."
+}

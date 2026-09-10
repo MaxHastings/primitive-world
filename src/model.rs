@@ -1,7 +1,7 @@
 //! primitive-world: body-relative sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
 /// Persistence accepts only this model's controller and lifetime-state layout.
-pub const MODEL_ID: &str = "primitive-v42-climate-care";
+pub const MODEL_ID: &str = "primitive-v44-open-investment";
 pub const FOUNDER_BANK_VERSION: u32 = 21;
 pub const CHECKPOINT_VERSION: u32 = 58;
 pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD058";
@@ -256,6 +256,7 @@ pub struct SimParams {
     pub resource_grid_size: u32,
     pub agent_count: u32,
     pub tick: u32,
+    /// Former padding: nonzero enables fractional request rounding; preserves GPU layout.
     pub world_padding: u32,
     pub time_and_costs: [f32; 4],
     pub resource_and_noise: [f32; 4],
@@ -297,6 +298,9 @@ fn no_environment_rotation(rotation: &u32) -> bool {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SimSettings {
+    /// Unbiased fractional harvest requests. Absent in historical saves: retain truncation.
+    #[serde(default)]
+    pub fractional_gathering: bool,
     /// Condition the starting climate keyframes only. Missing in older saves.
     #[serde(default)]
     pub flourishing_start: bool,
@@ -342,12 +346,13 @@ pub struct SimSettings {
 impl Default for SimSettings {
     fn default() -> Self {
         Self {
+            fractional_gathering: true,
             flourishing_start: true,
             habitat_width: WORLD_SIZE,
             habitat_height: WORLD_SIZE,
             environment_rotation: 0,
             habitat_contrast: 1.0,
-            population: 4096,
+            population: 8192,
             resource_regeneration: 0.01,
             movement_energy_cost: 0.01,
             metabolic_cost: 0.05,

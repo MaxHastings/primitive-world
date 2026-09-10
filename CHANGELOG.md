@@ -1,3 +1,37 @@
+## 0.9.1 — open investment experiment candidate
+
+- Retain paid packet reserves after decay and fusion loss; digestion cannot clip them.
+- Fund selected manufacture from actual energy at the full inherited packet cost.
+  Output 8 controls transfer amount only.
+- Start fresh worlds with 8,192 mature founders for more encounter opportunities.
+- Preserve fractional gathering through stochastic rounding and add read-only
+  diagnostic tools for connected life histories and opportunity bottlenecks.
+- Model `primitive-v44-open-investment` rejects old model saves without changing them.
+  Checkpoint layout remains 58. Unassisted maturation and reproduction are unproven;
+  this candidate is frozen for the owner's long experiment.
+
+## Paid offspring endowment (unreleased)
+
+- Fusion retains all paid packet energy remaining after decay and the fixed
+  construction loss. The newborn digestion ceiling no longer discards reserves.
+  Packet costs, juvenile gathering, maintenance, cognition and transfer are unchanged.
+- Model `primitive-v43-paid-endowment` rejects older model saves without modifying
+  them. Checkpoint layout remains 58. Unassisted life-cycle success remains unproven.
+
+## Continuous climate and life-cycle validation (unreleased)
+
+- Restores the original presentation, sensing, recurrent controller, plasticity,
+  packet physics and hereditary reservoir while replacing world-age ramps with
+  continuous climate and permanent juvenile dependence. See `docs/recovery.md`.
+- Fractional gathering requests use reproducible stochastic rounding. This
+  preserves the intended gathering curve in expectation instead of truncating
+  low requests to zero. Existing saves without the new setting retain truncation;
+  fresh worlds enable the repair. No extra RNG state or stored food credit is added.
+- Test-only sensor-limited controllers demonstrate an ordinary-reserve,
+  care-dependent closed life cycle. Random bootstrap and unassisted reservoir
+  evolution have separate evidence requirements; scripted success is not an
+  evolutionary success claim. Production rules remain frozen during validation.
+
 ## Packet contact physics
 
 - Checkpoint validation accepts finite passive packet velocity from contact

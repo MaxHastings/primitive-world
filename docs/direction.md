@@ -6,6 +6,8 @@ The goal is **not to make agents intelligent, cooperative, efficient, human-like
 
 The goal is to build a world with enough expressive freedom that evolution can discover its own strategies, while minimizing the amount of strategy we implicitly author into the simulator.
 
+See [release acceptance and stopping rules](north-star.md).
+
 ## North star
 
 **We define a broad, reachable space of possibilities.
@@ -20,9 +22,10 @@ simple test controllers while designing the world. Such tests never become
 founder policies, behavioral rewards, online difficulty adjustments or selection
 rules. Longer survival alone is not evidence that the search space is viable.
 
-The simulator should provide possibilities, not preferred solutions. Juvenile dependence
-is permanent physical physiology. Ongoing climate alternates abundance and drought,
-independent of population success. Preserving the game's presentation, controls, scale,
+The simulator should provide possibilities, not preferred solutions. Development
+has fixed physical costs; paid reproductive investment, gathering and received food
+can meet them in different combinations. Dependence is a consequence of those budgets,
+not a required social strategy. Climate varies independently of population success. Preserving the game's presentation, controls, scale,
 sensing, cognition and interaction capabilities is an explicit requirement.
 
 A good primitive supports many incompatible strategies. Movement may be used to flee, hunt, explore, migrate, follow, orbit, or remain still. Signals may become communication, deception, coordination, noise, or be ignored. Memory and plasticity may become useful, useless, or actively selected against.

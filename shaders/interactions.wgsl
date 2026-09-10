@@ -79,7 +79,7 @@ fn production(@builtin(global_invocation_id) id:vec3<u32>){
  let i=id.x;if(i>=params.agent_count){return;}let a=agents[i];let d=decisions[i];
  if(a.alive!=ORGANISM||d.selected_action!=PRODUCE_PACKET){return;}
  counter_add(20,1u);
- let mature=a.age>=params.sensor_and_padding.y;let funded=a.energy*d.amount>=a.packet_size;
+ let mature=a.age>=params.sensor_and_padding.y;let funded=a.energy>=a.packet_size;
  counter_add(16,u32(!mature));counter_add(17,u32(!funded));
  births[i]=u32(mature&&funded);counter_add(21,births[i]);
 }

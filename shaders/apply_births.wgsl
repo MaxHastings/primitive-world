@@ -31,7 +31,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  let rank=id.x;if(rank>=min(free_prefix[INVALID-1u],birth_prefix[INVALID-1u])){return;}
  let parent_rank=(rank+hash_u32(params.tick)%birth_prefix[INVALID-1u])%birth_prefix[INVALID-1u];
  let pi=parents[parent_rank];let ci=free_indices[rank];var p=agents[pi];let d=decisions[pi];
- if(p.alive!=ORGANISM||agents[ci].alive!=0u||d.selected_action!=PRODUCE_PACKET||p.energy*d.amount<p.packet_size){return;}
+ if(p.alive!=ORGANISM||agents[ci].alive!=0u||d.selected_action!=PRODUCE_PACKET||p.energy<p.packet_size){return;}
  var packet=fresh(p,pi,ci);packet.alive=PACKET;packet.energy=p.packet_size;
  packet.position=wrap_world(p.position+body_to_world(d.placement,p.heading)*2.0,params.world_size.xy);
  // Deposited packets have no propulsion or inherited body velocity.
@@ -54,7 +54,7 @@ fn fusion(@builtin(global_invocation_id) id:vec3<u32>){
  agents[pi]=p;agents[qi]=q;
  // Physical fusion can exhaust its reserves without constructing a body.
  if(energy<=params.sensor_and_padding.w){counter_add(38,1u);return;}
- child.alive=ORGANISM;child.energy=min(energy-params.sensor_and_padding.w,reserve_capacity(0.0,params.sensor_and_padding.y));
+ child.alive=ORGANISM;child.energy=energy-params.sensor_and_padding.w;
  child.heading=6.283185307*random01(child.rng);
  child.parent_lineage=p.parent_lineage;
  child.ancestry_depth=max(p.ancestry_depth,q.ancestry_depth)+1u;

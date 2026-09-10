@@ -54,7 +54,7 @@ it without adding food. Manual food additions are saved as part of the experimen
 The live Metabolism slider adjusts global agent upkeep from 0.00 to 0.20 energy per tick (default 0.05).
 
 The ecology, reproduction and juvenile ramp switches have been removed. Juvenile
-dependence and packet costs/range are constant; ongoing climate supplies abundance
+physiology and packet costs/range are constant; ongoing climate supplies abundance
 and drought without observing population success. The existing overlay, lenses,
 inspection, brush controls, speed controls and save library are retained.
 

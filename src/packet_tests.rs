@@ -345,7 +345,7 @@ fn packets_fuse_only_locally_and_only_between_different_producers() {
             let c = after.iter().find(|a| a.alive == 1).unwrap();
             near(
                 c.energy,
-                (2.0 * (energy - decay(energy)) - s.settings.fusion_loss).min(48.0),
+                2.0 * (energy - decay(energy)) - s.settings.fusion_loss,
             );
             assert_eq!(c.hidden, [0.0; HIDDEN]);
             assert_eq!(c.ancestry_depth, 1);

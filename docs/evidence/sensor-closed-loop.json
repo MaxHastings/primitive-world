@@ -1,0 +1,96 @@
+{
+  "scope": "Production unchanged. Selected seed91 location; adults start35 energy/zero food. Care fixtures place at initialization an actual age0 newborn created by ordinary size16 packet fusion; no reserve/food edits after initialization. Closed trial starts only two adults and all births are in-world fusion. Controller reads actual raw food/occupancy/pressure region inputs and own energy/food/age; command-memory estimates spin. All organisms use same age-conditional policy, updated every tick, with no identity/position/heading/recipient info. Adult .35 speed, young body-following, adult cohesion when distant, generic transfer above the recorded donor_min_energy and .01food and local pressure>.75; production above85energy/.3food every200ticks. No transfer targeting changes. Observers reconstruct pre-interaction inventory from exact digestion/collection and use post-motion geometry (no force); nearest ties use iteration order rather than GPU priority and are a limitation. Opportunity counts are unique child-ticks; blocking/diversion counts are donor-child offers. Birth ancestry attribution follows one recorded producer branch; positive descendant reproduction is conservative. Sensor-only hand controller, not heritable implementation or random-founder cohort.",
+  "tick": 7000,
+  "donor_min_energy": 25.0,
+  "body_directed_packets": true,
+  "react_to_occupancy": true,
+  "funnel": {
+    "adult_descendant_gathered_milli": 20560,
+    "all_harvested_milli": 182023,
+    "births": 3,
+    "births_involving_descendant_parents": 2,
+    "compatible_packet_coexist_ticks": 8,
+    "founder_food_seen_ticks": 14000,
+    "founder_harvest_ticks": 8382,
+    "individuals": {
+      "16387": {
+        "adult_gather_tick": 4655,
+        "adult_gathered_milli": 20560,
+        "adult_packets": 2,
+        "birth_energy": 21.619022369384766,
+        "birth_tick": 2854,
+        "closed_depth_at_birth": 0,
+        "dead": false,
+        "generation": 3,
+        "juvenile_gathered_milli": 4048,
+        "juvenile_received_milli": 11440,
+        "lineage": 16387,
+        "maturity_tick": 4654,
+        "parents": [
+          1,
+          2
+        ],
+        "qualified_packet_tick": 5834
+      },
+      "16396": {
+        "adult_gather_tick": null,
+        "adult_gathered_milli": 0,
+        "adult_packets": 0,
+        "birth_energy": 23.081192016601562,
+        "birth_tick": 5267,
+        "closed_depth_at_birth": 1,
+        "dead": true,
+        "death_age": 840.0,
+        "death_tick": 6107,
+        "generation": 3,
+        "juvenile_received_milli": 3315,
+        "lineage": 16396,
+        "maturity_tick": null,
+        "parents": [
+          1,
+          16387
+        ],
+        "qualified_packet_tick": null
+      },
+      "16400": {
+        "adult_gather_tick": null,
+        "adult_gathered_milli": 0,
+        "adult_packets": 0,
+        "birth_energy": 23.081192016601562,
+        "birth_tick": 5835,
+        "closed_depth_at_birth": 1,
+        "dead": true,
+        "death_age": 475.0,
+        "death_tick": 6310,
+        "generation": 10,
+        "juvenile_received_milli": 602,
+        "lineage": 16400,
+        "maturity_tick": null,
+        "parents": [
+          16387,
+          2
+        ],
+        "qualified_packet_tick": null
+      }
+    },
+    "juvenile_gathered_milli": 4328,
+    "juvenile_received_milli": 15357,
+    "juvenile_transfer_ticks": 661,
+    "juveniles_matured": 1,
+    "matured_descendant_packets": 2,
+    "matured_descendants_gathered": 1,
+    "matured_descendants_produced_packets": 1,
+    "maximum_closed_life_cycle_depth": 1,
+    "maximum_genealogical_depth": 2,
+    "packets_produced": 15,
+    "scope": "Per-tick test-only observer. Compatible coexistence means positive-energy packets from different producers exist simultaneously before fusion anywhere in the world; it does not require proximity or sufficient combined energy. Both fusion parents retained. Closed depth counts consecutive non-founder links that matured, gathered as adults, produced a subsequent packet and contributed to a birth; founders start at depth0 and a merely born child does not close a loop. Signal association is observational, not a causal effect or success requirement. Event ticks are completed one-based ticks. Overflow fails explicitly.",
+    "signals": {
+      "actual_packet_productions_with_exposure_within_16_ticks": 0,
+      "emissions": 0,
+      "nonzero_aggregate_exposure_ticks": 0,
+      "reproduction_selected_during_exposure": 0,
+      "transfer_selected_during_exposure": 0
+    }
+  },
+  "limitations": "Selected seed91 placement; hand-written sensor-only policy, not an evolved genome. One-unit founder bodies and real inherited costs. No reserves or resource injections after initialization. No claim of indefinitely sustained population."
+}

@@ -10,7 +10,16 @@
 fn demand(i:u32)->u32 {
  let a=agents[i];let d=decisions[i];
  if(a.alive!=ORGANISM || d.invalid!=0u){return 0u;}
- return min(u32(params.resource_and_noise.x*clamp(d.outputs[1],0.0,1.0)*gathering_fraction(a.age,params.sensor_and_padding.y,params.world_size.z)),u32(max(0.0,inventory_capacity(a.age,params.sensor_and_padding.y)-a.food)*1000.0));
+ let exact=params.resource_and_noise.x*clamp(d.outputs[1],0.0,1.0)*gathering_fraction(a.age,params.sensor_and_padding.y,params.world_size.z);
+ var requested=u32(exact);
+ if(params.world_padding!=0u){
+  // Stateless, reproducible rounding: no additional RNG-state consumption or
+  // stored effort credit. Both demand passes see the same draw. The curve is
+  // preserved in expectation; only food actually debited is ever collected.
+  let draw=f32(hash_u32(a.rng ^ hash_u32(params.tick) ^ 0x9e3779b9u)&0x00ffffffu)/16777216.0;
+  requested+=u32(draw<fract(exact));
+ }
+ return min(requested,u32(max(0.0,inventory_capacity(a.age,params.sensor_and_padding.y)-a.food)*1000.0));
 }
 // Exact floor(stock * request / total), without u64 or floating rounding.
 // request <= 8000, total <= 16384*8000, stock <= total. The bounded

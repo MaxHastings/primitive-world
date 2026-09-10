@@ -71,7 +71,7 @@ Inspector metadata is not visible to the controller.
 | 1 | Independent gathering effort, clamp to [0,1] |
 | 6 | Turn effort, tanh, torque up to 0.0375 radians/tick² |
 | 7 | Signed forward thrust effort, tanh(output * motor gain) |
-| 8 | Transfer amount or fraction of reserves available for packet manufacture, sigmoid [0,1] |
+| 8 | Transfer amount, sigmoid [0,1] |
 | 9 | Signal scalar, tanh [-1,1] |
 | 10-11 | Body-relative contact impulse, radial tanh, magnitude at most 3 |
 | 12-13 | Body-relative packet placement, radial tanh, distance at most 2 |
@@ -124,11 +124,11 @@ are permitted. See [evolution.md](evolution.md) for continuity and provenance.
 ## Reproductive packets
 
 Action 5 requests manufacture of one packet. After physical upkeep, learning and
-body interactions, the organism must be mature (age 1,800) and its spending budget
-`energy * sigmoid(output 8)` must cover its inherited `packet_size`. Manufacturing
+body interactions, the organism must be mature (age 1,800) and its available
+energy must cover its inherited `packet_size`. Manufacturing
 debits exactly that size in energy. It neither needs a partner present nor causes
 a birth. Output 12/13 places the packet within two body-relative world units of
-the producer. Output 8 limits spending; it does not determine packet size.
+the producer. Output 8 controls food transfer; it does not gate manufacture or determine packet size.
 
 Packet size is a heritable scalar bounded to [1,48], initially uniform. It is
 blindly inherited from either packet at fusion and, during the existing parameter
@@ -192,26 +192,29 @@ Default maturity is 1,800 ticks. With `x = clamp(age / maturity, 0, 1)`,
 gathering yield is multiplied by `0.01 + 0.99*x^6`. This is permanent physiology:
 world age, climate phase and population success do not change the curve.
 Gathering effort still pays
-its ordinary cost. The resource ledger rounds down to millifood, so very small
-requests can yield zero. Movement, cognition, signalling and automatic digestion
+its ordinary cost. New worlds round fractional millifood requests stochastically,
+using a reproducible draw from existing body RNG state and the tick. The expected
+request follows the same curve, including below one millifood; only actual food
+removed from the ground enters inventory. No effort credit accumulates on empty
+ground. Existing saves missing `fractional_gathering` retain historical truncation.
+Scarcity sharing and inventory headroom still round down to whole millifood.
+Movement, cognition, signalling and automatic digestion
 retain their ordinary mechanisms; there is no feeding quota or care action.
 
-Energy storage grows linearly from 48 to 100 and food inventory from 1 to 8.
+The digestion ceiling grows linearly from 48 to 100 and food inventory from 1 to 8.
 Digestion retains its ordinary throughput and conversion efficiency but stops at
-the current energy capacity. Gathering and generic transfers respect inventory
-capacity. Fusion retains remaining packet energy after construction loss up to
-the newborn's 48-energy capacity; excess is dissipated during construction.
-Larger packets improve birth reserves until that physical saturation, while
-smaller packets remain cheaper to manufacture. Packet upkeep still rewards larger
-packets with a longer viability window. No packet size buys juvenile independence.
+that ceiling. Stored energy above it is retained, with digestion paused until
+there is headroom. Gathering and generic transfers respect inventory capacity.
+Fusion retains all remaining packet energy after the fixed construction loss.
+Larger packets continuously increase birth reserves; smaller packets remain
+cheaper to manufacture. No extra energy is supplied at birth.
 
-At default upkeep, a stationary body needs at least 90 energy to mature, before
-cognition or effort. Maximum birth reserves are 48; one full newborn inventory
-adds only 8. At every world age, a GPU regression supplies unlimited ground food and maximal
-gathering effort: the early deficit still kills that unprovisioned juvenile.
-A separate controlled fixture survives through ordinary repeated food transfers.
-These are physical feasibility checks, not behaviors installed in founders.
-Custom metabolism, conversion or maturity settings can change these bounds.
+Two fresh maximum-size packets retain approximately 85.47 energy after one tick
+of decay and construction. Default basal upkeep alone costs 90 through maturity,
+before cognition or effort, so investment does not guarantee independence.
+Ordinary gathering and received food can supplement those reserves. Low-investment
+juveniles retain the same costs and reserves, and repeated transfers can support
+development. Whether unassisted evolution discovers a full life cycle remains open.
 
 The initial population consists of mature bodies with 35 energy and unchanged
 seed-specific random controllers. This supplies the bootstrap generation for a
@@ -223,4 +226,4 @@ ticks; interaction pairs are disjoint) and `juvenile_received_milli`. Existing
 `births_to_descendant_parents` distinguish mortality, maturation and reproductive
 continuity. These counters cover descendants, including terminal ticks, and are
 observer-only: no controller can read them. The model ID is now
-`primitive-v42-climate-care`; old model checkpoints are rejected.
+`primitive-v44-open-investment`; old model checkpoints are rejected.

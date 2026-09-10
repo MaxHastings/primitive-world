@@ -1,10 +1,12 @@
-# Preservation contract: climate and permanent juvenile care
+# Preservation contract: climate and developmental costs
 
 The old Primitive World is the baseline for presentation, controls, world scale,
 sensing, brain richness and interaction capabilities. Preserving it is a
-requirement. This recovery makes only two intended biological changes:
+requirement. The historical recovery introduced the following changes; the later
+[paid-endowment revision](north-star.md) retains excess paid birth reserves and
+permits development without social provisioning.
 
-1. Remove world-age assistance. Juvenile dependence is permanent physiology;
+1. Remove world-age assistance. Juvenile gathering follows fixed age-based physiology;
    ordinary food transfer can support maturation. No care policy is installed.
 2. Replace opening ecology assistance with ongoing environmental variation:
    smooth climate variation and local refuges over millions of ticks, independent
@@ -96,7 +98,7 @@ the normal world palette, fine patch edges and bright agents; retain the compact
 overlay, lenses, inspection, menus, painting and camera behavior. Source parity
 with the original UI is required except for removal of obsolete ramp controls.
 
-Biology: exercise permanent juvenile dependence and transfer-supported maturation
+Biology: exercise fixed developmental costs and transfer-supported maturation
 at ticks 0, 100,000 and 3,000,000. Verify constant packet physics and checkpoint
 continuation. Sample climate across 24 million ticks, including smooth late-run
 boundaries. Exercise the actual GPU food shader under abundance and drought,

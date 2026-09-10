@@ -35,6 +35,18 @@ would produce. Private learning and failed births never enter the pool. This is
 rolling replacement, not a uniform sample of all historical births: older records
 can be overwritten, and more births naturally contribute more records.
 
+Admission occurs at birth, before juvenile survival or maturation is known.
+The pool record is not removed if that juvenile dies, and additional feeding,
+longevity or maturation does not refresh it. A juvenile that later reproduces
+can contribute additional descendant records through those actual births.
+Thus partial care can extend physical opportunities without directly increasing
+cross-world representation until it changes subsequent reproduction. This is
+the production A rule. The direct re-entry audit establishes a developmental
+bypass: a dead juvenile record can return as an adult founder. A test-only
+mature-parent admission comparison is documented in
+[evolutionary-accessibility-audit.md](evolutionary-accessibility-audit.md).
+The physical care gradient remains frozen while that comparison runs.
+
 Natural extinction starts a newly seeded world. Fresh bodies sample unchanged
 pool records uniformly with replacement, using a separate saved RNG. Their
 position, age, reserves and lifetime state are freshly initialized. There are no

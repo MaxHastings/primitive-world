@@ -1077,6 +1077,7 @@ pub fn prepare_console(args: &[String]) {
                 | "--install-startup"
                 | "--uninstall-startup"
                 | "--stop-wallpaper"
+                | "--prune-saves"
         )
     });
     if !console_command {

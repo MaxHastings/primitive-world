@@ -1,0 +1,24 @@
+{
+  "model": "primitive-v43-paid-endowment",
+  "application_version": "0.9.0",
+  "base_commit": "2c80a5d7deae9ad42edbdc477d6a9eef0eca3dc1",
+  "uncommitted_changes": true,
+  "executable_sha256": "9A2A4F24E045544197047352B98E9C3461778FE7C4890EA0574F356FB4969E73",
+  "full_suite": {
+    "failed": 0,
+    "ignored": 25,
+    "log": "reports/paid-endowment-reviewed-suite.log",
+    "passed": 160
+  },
+  "clippy": "passed",
+  "python_tests": {
+    "log": "reports/paid-endowment-reviewed-python.log",
+    "passed": 12
+  },
+  "surplus_checkpoint_replay": "passed: exact newborn surplus save/load and 32-tick continuation",
+  "play_script_version_command": "passed",
+  "wallpaper_visual_validation": "pending",
+  "unassisted_life_cycle": "pending",
+  "merge_and_push": "pending",
+  "scope": "Engineering validation only. This does not establish evolutionary closure, multi-day stability or desktop wallpaper behavior."
+}

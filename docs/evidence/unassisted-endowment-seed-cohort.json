@@ -1,0 +1,4027 @@
+{
+  "seeds_completed": 16,
+  "total_births": 154,
+  "matured": 0,
+  "maximum_birth_energy": 25.67028045654297,
+  "total_packets": 65800,
+  "packets_over_32": 197,
+  "certificates": 0,
+  "seeds": [
+    {
+      "seed": 4001,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 6,
+      "matured": 0,
+      "birth_energy": {
+        "count": 6,
+        "minimum": 0.9288225173950195,
+        "median": 2.166823387145996,
+        "maximum": 17.659746170043945
+      },
+      "packet_manufacture_energy": {
+        "count": 4286,
+        "minimum": 1.0430185794830322,
+        "median": 4.190045118331909,
+        "maximum": 47.341407775878906
+      },
+      "packets_over_32_energy": 11,
+      "packets_over_40_energy": 9,
+      "packets_participating_in_fusion_attempts": 34,
+      "fusion_initial_total_energy": {
+        "count": 17,
+        "minimum": 4.71339213848114,
+        "median": 16.870003700256348,
+        "maximum": 33.41037368774414
+      },
+      "successful_fusion_decay_loss": {
+        "count": 6,
+        "minimum": 0.7043533325195312,
+        "median": 5.7692461013793945,
+        "maximum": 12.447206497192383
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            16.598430633544922,
+            16.81194305419922
+          ],
+          "birth_energy": 17.659746170043945,
+          "decay_loss_before_successful_fusion": 5.750627517700195
+        },
+        {
+          "manufactured_energy": [
+            14.098694801330566,
+            12.45236587524414
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            6.266430854797363,
+            19.234859466552734
+          ],
+          "birth_energy": 9.162792205810547,
+          "decay_loss_before_successful_fusion": 6.338498115539551
+        },
+        {
+          "manufactured_energy": [
+            13.277081489562988,
+            10.098947525024414
+          ],
+          "birth_energy": 0.9288225173950195,
+          "decay_loss_before_successful_fusion": 12.447206497192383
+        },
+        {
+          "manufactured_energy": [
+            16.242645263671875,
+            6.48551607131958
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            8.27253532409668,
+            13.642755508422852
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            7.846980094909668,
+            11.976542472839355
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            6.686792373657227,
+            11.54219913482666
+          ],
+          "birth_energy": 2.441126823425293,
+          "decay_loss_before_successful_fusion": 5.787864685058594
+        },
+        {
+          "manufactured_energy": [
+            10.35725212097168,
+            6.512751579284668
+          ],
+          "birth_energy": 1.8925199508666992,
+          "decay_loss_before_successful_fusion": 4.977483749389648
+        },
+        {
+          "manufactured_energy": [
+            6.718484878540039,
+            5.65200138092041
+          ],
+          "birth_energy": 1.666132926940918,
+          "decay_loss_before_successful_fusion": 0.7043533325195312
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 5,
+          "matured": 0,
+          "death_age": {
+            "count": 5,
+            "minimum": 15.0,
+            "median": 31.0,
+            "maximum": 154.0
+          },
+          "received_food": {
+            "count": 5,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.046
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 1,
+          "matured": 0,
+          "death_age": {
+            "count": 1,
+            "minimum": 297.0,
+            "median": 297.0,
+            "maximum": 297.0
+          },
+          "received_food": {
+            "count": 1,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.0
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    },
+    {
+      "seed": 4002,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 10,
+      "matured": 0,
+      "birth_energy": {
+        "count": 10,
+        "minimum": 1.0540828704833984,
+        "median": 3.7945165634155273,
+        "maximum": 12.620716094970703
+      },
+      "packet_manufacture_energy": {
+        "count": 3643,
+        "minimum": 1.0757420063018799,
+        "median": 4.5963544845581055,
+        "maximum": 44.71635818481445
+      },
+      "packets_over_32_energy": 4,
+      "packets_over_40_energy": 1,
+      "packets_participating_in_fusion_attempts": 48,
+      "fusion_initial_total_energy": {
+        "count": 24,
+        "minimum": 7.230889558792114,
+        "median": 15.495363354682922,
+        "maximum": 33.25969886779785
+      },
+      "successful_fusion_decay_loss": {
+        "count": 10,
+        "minimum": 0.8388497829437256,
+        "median": 4.844564318656921,
+        "maximum": 16.777822494506836
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            14.567445755004883,
+            18.69225311279297
+          ],
+          "birth_energy": 6.869651794433594,
+          "decay_loss_before_successful_fusion": 16.390047073364258
+        },
+        {
+          "manufactured_energy": [
+            18.18608856201172,
+            10.361625671386719
+          ],
+          "birth_energy": 1.7698917388916016,
+          "decay_loss_before_successful_fusion": 16.777822494506836
+        },
+        {
+          "manufactured_energy": [
+            15.47130012512207,
+            10.565546035766602
+          ],
+          "birth_energy": 12.620716094970703,
+          "decay_loss_before_successful_fusion": 3.4161300659179688
+        },
+        {
+          "manufactured_energy": [
+            11.54456615447998,
+            13.457685470581055
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            4.944385528564453,
+            18.718149185180664
+          ],
+          "birth_energy": 6.969854354858398,
+          "decay_loss_before_successful_fusion": 6.692680358886719
+        },
+        {
+          "manufactured_energy": [
+            15.7927885055542,
+            7.785407543182373
+          ],
+          "birth_energy": 2.817678451538086,
+          "decay_loss_before_successful_fusion": 10.760517597198486
+        },
+        {
+          "manufactured_energy": [
+            10.891547203063965,
+            12.087604522705078
+          ],
+          "birth_energy": 9.700885772705078,
+          "decay_loss_before_successful_fusion": 3.278265953063965
+        },
+        {
+          "manufactured_energy": [
+            6.087314128875732,
+            14.02972412109375
+          ],
+          "birth_energy": 4.771354675292969,
+          "decay_loss_before_successful_fusion": 5.345683574676514
+        },
+        {
+          "manufactured_energy": [
+            10.400938034057617,
+            8.345573425292969
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            4.245832443237305,
+            14.328470230102539
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 10,
+          "matured": 0,
+          "death_age": {
+            "count": 10,
+            "minimum": 19.0,
+            "median": 64.5,
+            "maximum": 200.0
+          },
+          "received_food": {
+            "count": 10,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.059
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    },
+    {
+      "seed": 4003,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 7,
+      "matured": 0,
+      "birth_energy": {
+        "count": 7,
+        "minimum": 0.5391826629638672,
+        "median": 1.3769350051879883,
+        "maximum": 5.690813064575195
+      },
+      "packet_manufacture_energy": {
+        "count": 4364,
+        "minimum": 1.0692706108093262,
+        "median": 3.690272092819214,
+        "maximum": 43.22661209106445
+      },
+      "packets_over_32_energy": 18,
+      "packets_over_40_energy": 8,
+      "packets_participating_in_fusion_attempts": 28,
+      "fusion_initial_total_energy": {
+        "count": 14,
+        "minimum": 4.362066268920898,
+        "median": 16.59816038608551,
+        "maximum": 23.218491554260254
+      },
+      "successful_fusion_decay_loss": {
+        "count": 7,
+        "minimum": 3.6143293380737305,
+        "median": 6.385579586029053,
+        "maximum": 8.803932666778564
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            13.26334285736084,
+            9.955148696899414
+          ],
+          "birth_energy": 5.443026542663574,
+          "decay_loss_before_successful_fusion": 7.77546501159668
+        },
+        {
+          "manufactured_energy": [
+            16.092397689819336,
+            4.270277976989746
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            12.832193374633789,
+            6.977758884429932
+          ],
+          "birth_energy": 1.0060195922851562,
+          "decay_loss_before_successful_fusion": 8.803932666778564
+        },
+        {
+          "manufactured_energy": [
+            4.270277976989746,
+            15.03486442565918
+          ],
+          "birth_energy": 5.690813064575195,
+          "decay_loss_before_successful_fusion": 3.6143293380737305
+        },
+        {
+          "manufactured_energy": [
+            5.647373676300049,
+            13.035988807678223
+          ],
+          "birth_energy": 2.2977828979492188,
+          "decay_loss_before_successful_fusion": 6.385579586029053
+        },
+        {
+          "manufactured_energy": [
+            7.851005554199219,
+            10.653849601745605
+          ],
+          "birth_energy": 1.3769350051879883,
+          "decay_loss_before_successful_fusion": 7.127920150756836
+        },
+        {
+          "manufactured_energy": [
+            14.57063102722168,
+            3.4470865726470947
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            8.379258155822754,
+            6.799345016479492
+          ],
+          "birth_energy": 0.5391826629638672,
+          "decay_loss_before_successful_fusion": 4.639420509338379
+        },
+        {
+          "manufactured_energy": [
+            8.306048393249512,
+            6.862309455871582
+          ],
+          "birth_energy": 1.352285385131836,
+          "decay_loss_before_successful_fusion": 3.816072463989258
+        },
+        {
+          "manufactured_energy": [
+            5.113109588623047,
+            8.18184757232666
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 7,
+          "matured": 0,
+          "death_age": {
+            "count": 7,
+            "minimum": 8.0,
+            "median": 23.0,
+            "maximum": 102.0
+          },
+          "received_food": {
+            "count": 7,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.0
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    },
+    {
+      "seed": 4004,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 16,
+      "matured": 0,
+      "birth_energy": {
+        "count": 16,
+        "minimum": 0.5993232727050781,
+        "median": 3.3049120903015137,
+        "maximum": 13.93355941772461
+      },
+      "packet_manufacture_energy": {
+        "count": 3987,
+        "minimum": 1.0199460983276367,
+        "median": 3.4520366191864014,
+        "maximum": 37.36246871948242
+      },
+      "packets_over_32_energy": 2,
+      "packets_over_40_energy": 0,
+      "packets_participating_in_fusion_attempts": 66,
+      "fusion_initial_total_energy": {
+        "count": 33,
+        "minimum": 7.105424642562866,
+        "median": 16.521849155426025,
+        "maximum": 33.35701656341553
+      },
+      "successful_fusion_decay_loss": {
+        "count": 16,
+        "minimum": 0.20381879806518555,
+        "median": 4.864633560180664,
+        "maximum": 18.271573066711426
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            15.738404273986816,
+            17.61861228942871
+          ],
+          "birth_energy": 5.085443496704102,
+          "decay_loss_before_successful_fusion": 18.271573066711426
+        },
+        {
+          "manufactured_energy": [
+            12.866474151611328,
+            12.108970642089844
+          ],
+          "birth_energy": 10.367504119873047,
+          "decay_loss_before_successful_fusion": 4.607940673828125
+        },
+        {
+          "manufactured_energy": [
+            10.99820613861084,
+            13.916244506835938
+          ],
+          "birth_energy": 4.530424118041992,
+          "decay_loss_before_successful_fusion": 10.384026527404785
+        },
+        {
+          "manufactured_energy": [
+            12.857625007629395,
+            11.560304641723633
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            5.875972270965576,
+            18.26140594482422
+          ],
+          "birth_energy": 13.93355941772461,
+          "decay_loss_before_successful_fusion": 0.20381879806518555
+        },
+        {
+          "manufactured_energy": [
+            5.003310680389404,
+            19.109920501708984
+          ],
+          "birth_energy": 7.497550964355469,
+          "decay_loss_before_successful_fusion": 6.61568021774292
+        },
+        {
+          "manufactured_energy": [
+            4.989213943481445,
+            18.05025291442871
+          ],
+          "birth_energy": 4.060240745544434,
+          "decay_loss_before_successful_fusion": 8.979226112365723
+        },
+        {
+          "manufactured_energy": [
+            7.586602210998535,
+            14.231420516967773
+          ],
+          "birth_energy": 2.423788070678711,
+          "decay_loss_before_successful_fusion": 9.394234657287598
+        },
+        {
+          "manufactured_energy": [
+            1.6527836322784424,
+            19.860057830810547
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            3.725754737854004,
+            16.761404037475586
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 16,
+          "matured": 0,
+          "death_age": {
+            "count": 16,
+            "minimum": 10.0,
+            "median": 53.5,
+            "maximum": 204.0
+          },
+          "received_food": {
+            "count": 16,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.0
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    },
+    {
+      "seed": 4005,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 9,
+      "matured": 0,
+      "birth_energy": {
+        "count": 9,
+        "minimum": 0.27994537353515625,
+        "median": 1.873117446899414,
+        "maximum": 5.771742820739746
+      },
+      "packet_manufacture_energy": {
+        "count": 3507,
+        "minimum": 1.0559667348861694,
+        "median": 4.125239849090576,
+        "maximum": 43.89543151855469
+      },
+      "packets_over_32_energy": 6,
+      "packets_over_40_energy": 2,
+      "packets_participating_in_fusion_attempts": 24,
+      "fusion_initial_total_energy": {
+        "count": 12,
+        "minimum": 11.016412258148193,
+        "median": 18.05916666984558,
+        "maximum": 24.07091236114502
+      },
+      "successful_fusion_decay_loss": {
+        "count": 9,
+        "minimum": 0.3461275100708008,
+        "median": 2.241102695465088,
+        "maximum": 9.106711387634277
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            12.551023483276367,
+            11.519888877868652
+          ],
+          "birth_energy": 5.771742820739746,
+          "decay_loss_before_successful_fusion": 8.299169540405273
+        },
+        {
+          "manufactured_energy": [
+            16.708744049072266,
+            5.780118942260742
+          ],
+          "birth_energy": 3.3821516036987305,
+          "decay_loss_before_successful_fusion": 9.106711387634277
+        },
+        {
+          "manufactured_energy": [
+            12.71768856048584,
+            7.062807083129883
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            14.210978507995605,
+            4.53730583190918
+          ],
+          "birth_energy": 2.7768497467041016,
+          "decay_loss_before_successful_fusion": 5.971434593200684
+        },
+        {
+          "manufactured_energy": [
+            9.13041877746582,
+            9.18732738494873
+          ],
+          "birth_energy": 0.5212306976318359,
+          "decay_loss_before_successful_fusion": 7.796515464782715
+        },
+        {
+          "manufactured_energy": [
+            10.74658203125,
+            7.3838300704956055
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            10.870049476623535,
+            7.1178717613220215
+          ],
+          "birth_energy": 5.746818542480469,
+          "decay_loss_before_successful_fusion": 2.241102695465088
+        },
+        {
+          "manufactured_energy": [
+            10.138652801513672,
+            6.1122636795043945
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            3.2364141941070557,
+            9.16186809539795
+          ],
+          "birth_energy": 1.873117446899414,
+          "decay_loss_before_successful_fusion": 0.5251648426055908
+        },
+        {
+          "manufactured_energy": [
+            3.2364141941070557,
+            9.16186809539795
+          ],
+          "birth_energy": 1.873117446899414,
+          "decay_loss_before_successful_fusion": 0.5251648426055908
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 9,
+          "matured": 0,
+          "death_age": {
+            "count": 9,
+            "minimum": 5.0,
+            "median": 33.0,
+            "maximum": 97.0
+          },
+          "received_food": {
+            "count": 9,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.0
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    },
+    {
+      "seed": 4006,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 9,
+      "matured": 0,
+      "birth_energy": {
+        "count": 9,
+        "minimum": 0.9107580184936523,
+        "median": 5.908393859863281,
+        "maximum": 10.777376174926758
+      },
+      "packet_manufacture_energy": {
+        "count": 3723,
+        "minimum": 1.0713436603546143,
+        "median": 3.3704116344451904,
+        "maximum": 37.60082244873047
+      },
+      "packets_over_32_energy": 5,
+      "packets_over_40_energy": 0,
+      "packets_participating_in_fusion_attempts": 36,
+      "fusion_initial_total_energy": {
+        "count": 18,
+        "minimum": 6.410429954528809,
+        "median": 18.39787793159485,
+        "maximum": 30.603737831115723
+      },
+      "successful_fusion_decay_loss": {
+        "count": 9,
+        "minimum": 1.0637140274047852,
+        "median": 3.036400079727173,
+        "maximum": 7.85762882232666
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            14.020062446594238,
+            16.583675384521484
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            18.614822387695312,
+            5.381026268005371
+          ],
+          "birth_energy": 9.098915100097656,
+          "decay_loss_before_successful_fusion": 4.896933555603027
+        },
+        {
+          "manufactured_energy": [
+            3.715047836303711,
+            19.020801544189453
+          ],
+          "birth_energy": 10.777376174926758,
+          "decay_loss_before_successful_fusion": 1.9584732055664062
+        },
+        {
+          "manufactured_energy": [
+            13.060161590576172,
+            9.449029922485352
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            10.326593399047852,
+            12.15604305267334
+          ],
+          "birth_energy": 9.959060668945312,
+          "decay_loss_before_successful_fusion": 2.523575782775879
+        },
+        {
+          "manufactured_energy": [
+            11.433330535888672,
+            9.905692100524902
+          ],
+          "birth_energy": 3.763936996459961,
+          "decay_loss_before_successful_fusion": 7.575085639953613
+        },
+        {
+          "manufactured_energy": [
+            10.625527381896973,
+            9.508136749267578
+          ],
+          "birth_energy": 2.2760353088378906,
+          "decay_loss_before_successful_fusion": 7.85762882232666
+        },
+        {
+          "manufactured_energy": [
+            10.784695625305176,
+            8.102764129638672
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            11.316788673400879,
+            7.310211658477783
+          ],
+          "birth_energy": 5.908393859863281,
+          "decay_loss_before_successful_fusion": 2.718606472015381
+        },
+        {
+          "manufactured_energy": [
+            5.180352210998535,
+            12.9884033203125
+          ],
+          "birth_energy": 7.10504150390625,
+          "decay_loss_before_successful_fusion": 1.0637140274047852
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 9,
+          "matured": 0,
+          "death_age": {
+            "count": 9,
+            "minimum": 15.0,
+            "median": 95.0,
+            "maximum": 172.0
+          },
+          "received_food": {
+            "count": 9,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.0
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    },
+    {
+      "seed": 4007,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 11,
+      "matured": 0,
+      "birth_energy": {
+        "count": 11,
+        "minimum": 0.37136363983154297,
+        "median": 2.766347885131836,
+        "maximum": 25.67028045654297
+      },
+      "packet_manufacture_energy": {
+        "count": 4021,
+        "minimum": 1.0856001377105713,
+        "median": 4.35582160949707,
+        "maximum": 46.079917907714844
+      },
+      "packets_over_32_energy": 8,
+      "packets_over_40_energy": 1,
+      "packets_participating_in_fusion_attempts": 52,
+      "fusion_initial_total_energy": {
+        "count": 26,
+        "minimum": 3.7897337675094604,
+        "median": 12.677688598632812,
+        "maximum": 36.07122993469238
+      },
+      "successful_fusion_decay_loss": {
+        "count": 11,
+        "minimum": 0.40094947814941406,
+        "median": 0.8106799125671387,
+        "maximum": 4.607823848724365
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            20.202043533325195,
+            15.869186401367188
+          ],
+          "birth_energy": 25.67028045654297,
+          "decay_loss_before_successful_fusion": 0.40094947814941406
+        },
+        {
+          "manufactured_energy": [
+            14.575824737548828,
+            10.97098445892334
+          ],
+          "birth_energy": 14.73202133178711,
+          "decay_loss_before_successful_fusion": 0.8147878646850586
+        },
+        {
+          "manufactured_energy": [
+            1.912217378616333,
+            20.79767608642578
+          ],
+          "birth_energy": 11.048843383789062,
+          "decay_loss_before_successful_fusion": 1.6610500812530518
+        },
+        {
+          "manufactured_energy": [
+            17.257476806640625,
+            2.4104580879211426
+          ],
+          "birth_energy": 5.060111045837402,
+          "decay_loss_before_successful_fusion": 4.607823848724365
+        },
+        {
+          "manufactured_energy": [
+            6.104951858520508,
+            12.534016609191895
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            7.201878070831299,
+            10.978060722351074
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            9.507341384887695,
+            8.450209617614746
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            1.37604558467865,
+            14.338973045349121
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            5.713164806365967,
+            9.507341384887695
+          ],
+          "birth_energy": 0.6687250137329102,
+          "decay_loss_before_successful_fusion": 4.551781177520752
+        },
+        {
+          "manufactured_energy": [
+            11.161478042602539,
+            3.705324172973633
+          ],
+          "birth_energy": 2.6953134536743164,
+          "decay_loss_before_successful_fusion": 2.1714887619018555
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 10,
+          "matured": 0,
+          "death_age": {
+            "count": 10,
+            "minimum": 4.0,
+            "median": 39.5,
+            "maximum": 225.0
+          },
+          "received_food": {
+            "count": 10,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.015
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 1,
+          "matured": 0,
+          "death_age": {
+            "count": 1,
+            "minimum": 457.0,
+            "median": 457.0,
+            "maximum": 457.0
+          },
+          "received_food": {
+            "count": 1,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.0
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    },
+    {
+      "seed": 4008,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 13,
+      "matured": 0,
+      "birth_energy": {
+        "count": 13,
+        "minimum": 1.676614761352539,
+        "median": 10.422636032104492,
+        "maximum": 20.469745635986328
+      },
+      "packet_manufacture_energy": {
+        "count": 4191,
+        "minimum": 1.037583827972412,
+        "median": 3.475389242172241,
+        "maximum": 45.50689697265625
+      },
+      "packets_over_32_energy": 16,
+      "packets_over_40_energy": 9,
+      "packets_participating_in_fusion_attempts": 40,
+      "fusion_initial_total_energy": {
+        "count": 20,
+        "minimum": 7.992547512054443,
+        "median": 20.97659730911255,
+        "maximum": 31.728110313415527
+      },
+      "successful_fusion_decay_loss": {
+        "count": 13,
+        "minimum": 0.9832596778869629,
+        "median": 3.3789591789245605,
+        "maximum": 11.427742958068848
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            18.64668846130371,
+            13.081421852111816
+          ],
+          "birth_energy": 20.469745635986328,
+          "decay_loss_before_successful_fusion": 1.2583646774291992
+        },
+        {
+          "manufactured_energy": [
+            15.594696998596191,
+            13.93948745727539
+          ],
+          "birth_energy": 8.106441497802734,
+          "decay_loss_before_successful_fusion": 11.427742958068848
+        },
+        {
+          "manufactured_energy": [
+            9.036798477172852,
+            17.63184356689453
+          ],
+          "birth_energy": 10.422636032104492,
+          "decay_loss_before_successful_fusion": 6.246006011962891
+        },
+        {
+          "manufactured_energy": [
+            11.286575317382812,
+            15.115797996520996
+          ],
+          "birth_energy": 14.71978759765625,
+          "decay_loss_before_successful_fusion": 1.6825857162475586
+        },
+        {
+          "manufactured_energy": [
+            7.304866313934326,
+            17.710538864135742
+          ],
+          "birth_energy": 11.636445999145508,
+          "decay_loss_before_successful_fusion": 3.3789591789245605
+        },
+        {
+          "manufactured_energy": [
+            10.716436386108398,
+            14.13605785369873
+          ],
+          "birth_energy": 13.236574172973633,
+          "decay_loss_before_successful_fusion": 1.615920066833496
+        },
+        {
+          "manufactured_energy": [
+            21.09535789489746,
+            1.3808023929595947
+          ],
+          "birth_energy": 6.508018493652344,
+          "decay_loss_before_successful_fusion": 5.968141794204712
+        },
+        {
+          "manufactured_energy": [
+            11.91742992401123,
+            10.278084754943848
+          ],
+          "birth_energy": 2.573698043823242,
+          "decay_loss_before_successful_fusion": 9.621816635131836
+        },
+        {
+          "manufactured_energy": [
+            2.4498963356018066,
+            19.727794647216797
+          ],
+          "birth_energy": 11.19443130493164,
+          "decay_loss_before_successful_fusion": 0.9832596778869629
+        },
+        {
+          "manufactured_energy": [
+            18.77404022216797,
+            3.1243772506713867
+          ],
+          "birth_energy": 10.58419418334961,
+          "decay_loss_before_successful_fusion": 1.314223289489746
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 12,
+          "matured": 0,
+          "death_age": {
+            "count": 12,
+            "minimum": 16.0,
+            "median": 134.0,
+            "maximum": 227.0
+          },
+          "received_food": {
+            "count": 12,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.035
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 1,
+          "matured": 0,
+          "death_age": {
+            "count": 1,
+            "minimum": 330.0,
+            "median": 330.0,
+            "maximum": 330.0
+          },
+          "received_food": {
+            "count": 1,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.0
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    },
+    {
+      "seed": 4009,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 13,
+      "matured": 0,
+      "birth_energy": {
+        "count": 13,
+        "minimum": 0.2558164596557617,
+        "median": 3.1019554138183594,
+        "maximum": 18.17242431640625
+      },
+      "packet_manufacture_energy": {
+        "count": 4145,
+        "minimum": 1.0051462650299072,
+        "median": 3.611067533493042,
+        "maximum": 41.87564468383789
+      },
+      "packets_over_32_energy": 10,
+      "packets_over_40_energy": 3,
+      "packets_participating_in_fusion_attempts": 52,
+      "fusion_initial_total_energy": {
+        "count": 26,
+        "minimum": 3.7481775283813477,
+        "median": 14.194177627563477,
+        "maximum": 34.272871017456055
+      },
+      "successful_fusion_decay_loss": {
+        "count": 13,
+        "minimum": 0.11986970901489258,
+        "median": 1.698099136352539,
+        "maximum": 18.80326747894287
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            19.642547607421875,
+            14.63032341003418
+          ],
+          "birth_energy": 18.17242431640625,
+          "decay_loss_before_successful_fusion": 6.100446701049805
+        },
+        {
+          "manufactured_energy": [
+            14.362911224365234,
+            15.52927303314209
+          ],
+          "birth_energy": 1.0889167785644531,
+          "decay_loss_before_successful_fusion": 18.80326747894287
+        },
+        {
+          "manufactured_energy": [
+            10.887939453125,
+            17.909643173217773
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            15.78352165222168,
+            12.293722152709961
+          ],
+          "birth_energy": 2.2875194549560547,
+          "decay_loss_before_successful_fusion": 15.789724349975586
+        },
+        {
+          "manufactured_energy": [
+            14.79394245147705,
+            9.352445602416992
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            11.503665924072266,
+            9.879095077514648
+          ],
+          "birth_energy": 7.502737045288086,
+          "decay_loss_before_successful_fusion": 3.880023956298828
+        },
+        {
+          "manufactured_energy": [
+            15.733051300048828,
+            5.078985691070557
+          ],
+          "birth_energy": 9.60059928894043,
+          "decay_loss_before_successful_fusion": 1.211437702178955
+        },
+        {
+          "manufactured_energy": [
+            13.068585395812988,
+            6.943337917327881
+          ],
+          "birth_energy": 9.134880065917969,
+          "decay_loss_before_successful_fusion": 0.8770432472229004
+        },
+        {
+          "manufactured_energy": [
+            13.9215087890625,
+            2.9158143997192383
+          ],
+          "birth_energy": 3.2364330291748047,
+          "decay_loss_before_successful_fusion": 3.6008901596069336
+        },
+        {
+          "manufactured_energy": [
+            5.925302505493164,
+            10.664949417114258
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 12,
+          "matured": 0,
+          "death_age": {
+            "count": 12,
+            "minimum": 4.0,
+            "median": 37.0,
+            "maximum": 148.0
+          },
+          "received_food": {
+            "count": 12,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.0
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 1,
+          "matured": 0,
+          "death_age": {
+            "count": 1,
+            "minimum": 298.0,
+            "median": 298.0,
+            "maximum": 298.0
+          },
+          "received_food": {
+            "count": 1,
+            "minimum": 0.235,
+            "median": 0.235,
+            "maximum": 0.235
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    },
+    {
+      "seed": 4010,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 15,
+      "matured": 0,
+      "birth_energy": {
+        "count": 15,
+        "minimum": 0.91461181640625,
+        "median": 3.105097770690918,
+        "maximum": 15.67425537109375
+      },
+      "packet_manufacture_energy": {
+        "count": 4481,
+        "minimum": 1.0481059551239014,
+        "median": 3.4837374687194824,
+        "maximum": 27.8321475982666
+      },
+      "packets_over_32_energy": 0,
+      "packets_over_40_energy": 0,
+      "packets_participating_in_fusion_attempts": 62,
+      "fusion_initial_total_energy": {
+        "count": 31,
+        "minimum": 5.031367063522339,
+        "median": 16.37802743911743,
+        "maximum": 27.85218334197998
+      },
+      "successful_fusion_decay_loss": {
+        "count": 15,
+        "minimum": 1.1645028591156006,
+        "median": 5.124216079711914,
+        "maximum": 14.341373443603516
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            14.266763687133789,
+            13.585419654846191
+          ],
+          "birth_energy": 4.53802490234375,
+          "decay_loss_before_successful_fusion": 13.31415843963623
+        },
+        {
+          "manufactured_energy": [
+            13.920965194702148,
+            13.798705101013184
+          ],
+          "birth_energy": 12.526382446289062,
+          "decay_loss_before_successful_fusion": 5.1932878494262695
+        },
+        {
+          "manufactured_energy": [
+            10.142457008361816,
+            17.35394859313965
+          ],
+          "birth_energy": 15.67425537109375,
+          "decay_loss_before_successful_fusion": 1.8221502304077148
+        },
+        {
+          "manufactured_energy": [
+            14.80898666381836,
+            11.885257720947266
+          ],
+          "birth_energy": 2.3528709411621094,
+          "decay_loss_before_successful_fusion": 14.341373443603516
+        },
+        {
+          "manufactured_energy": [
+            15.6274995803833,
+            9.996429443359375
+          ],
+          "birth_energy": 9.585491180419922,
+          "decay_loss_before_successful_fusion": 6.038437843322754
+        },
+        {
+          "manufactured_energy": [
+            11.621123313903809,
+            13.189545631408691
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            7.698796272277832,
+            14.622061729431152
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            7.150575637817383,
+            13.608665466308594
+          ],
+          "birth_energy": 3.6223230361938477,
+          "decay_loss_before_successful_fusion": 7.136918067932129
+        },
+        {
+          "manufactured_energy": [
+            12.372365951538086,
+            8.282519340515137
+          ],
+          "birth_energy": 6.909337997436523,
+          "decay_loss_before_successful_fusion": 3.745547294616699
+        },
+        {
+          "manufactured_energy": [
+            7.079909801483154,
+            13.493372917175293
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 15,
+          "matured": 0,
+          "death_age": {
+            "count": 15,
+            "minimum": 16.0,
+            "median": 50.0,
+            "maximum": 271.0
+          },
+          "received_food": {
+            "count": 15,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.011
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    },
+    {
+      "seed": 4011,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 7,
+      "matured": 0,
+      "birth_energy": {
+        "count": 7,
+        "minimum": 2.7738418579101562,
+        "median": 3.729273796081543,
+        "maximum": 12.538984298706055
+      },
+      "packet_manufacture_energy": {
+        "count": 4481,
+        "minimum": 1.0403012037277222,
+        "median": 3.2999253273010254,
+        "maximum": 46.55245590209961
+      },
+      "packets_over_32_energy": 39,
+      "packets_over_40_energy": 20,
+      "packets_participating_in_fusion_attempts": 52,
+      "fusion_initial_total_energy": {
+        "count": 26,
+        "minimum": 5.929835081100464,
+        "median": 12.70186460018158,
+        "maximum": 26.39616584777832
+      },
+      "successful_fusion_decay_loss": {
+        "count": 7,
+        "minimum": 0.19216060638427734,
+        "median": 0.7127685546875,
+        "maximum": 4.434030532836914
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            10.960504531860352,
+            15.435661315917969
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            3.380037307739258,
+            19.903942108154297
+          ],
+          "birth_energy": 8.84994888305664,
+          "decay_loss_before_successful_fusion": 4.434030532836914
+        },
+        {
+          "manufactured_energy": [
+            4.213473320007324,
+            18.517671585083008
+          ],
+          "birth_energy": 12.538984298706055,
+          "decay_loss_before_successful_fusion": 0.19216060638427734
+        },
+        {
+          "manufactured_energy": [
+            2.5858829021453857,
+            16.91140365600586
+          ],
+          "birth_energy": 6.353113174438477,
+          "decay_loss_before_successful_fusion": 3.1441733837127686
+        },
+        {
+          "manufactured_energy": [
+            1.5543110370635986,
+            16.056241989135742
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            13.21341323852539,
+            4.329000949859619
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            14.937461853027344,
+            1.3490090370178223
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            8.085652351379395,
+            6.633946418762207
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            3.236288070678711,
+            11.205754280090332
+          ],
+          "birth_energy": 3.729273796081543,
+          "decay_loss_before_successful_fusion": 0.7127685546875
+        },
+        {
+          "manufactured_energy": [
+            11.205754280090332,
+            3.236288070678711
+          ],
+          "birth_energy": 3.641757011413574,
+          "decay_loss_before_successful_fusion": 0.8002853393554688
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 7,
+          "matured": 0,
+          "death_age": {
+            "count": 7,
+            "minimum": 46.0,
+            "median": 68.0,
+            "maximum": 194.0
+          },
+          "received_food": {
+            "count": 7,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.027
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    },
+    {
+      "seed": 4012,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 3,
+      "matured": 0,
+      "birth_energy": {
+        "count": 3,
+        "minimum": 2.083942413330078,
+        "median": 2.623748779296875,
+        "maximum": 11.93082046508789
+      },
+      "packet_manufacture_energy": {
+        "count": 3752,
+        "minimum": 1.013749361038208,
+        "median": 3.8320209980010986,
+        "maximum": 41.19297790527344
+      },
+      "packets_over_32_energy": 14,
+      "packets_over_40_energy": 12,
+      "packets_participating_in_fusion_attempts": 24,
+      "fusion_initial_total_energy": {
+        "count": 12,
+        "minimum": 8.969727039337158,
+        "median": 15.001621723175049,
+        "maximum": 24.06415843963623
+      },
+      "successful_fusion_decay_loss": {
+        "count": 3,
+        "minimum": 1.7318353652954102,
+        "median": 2.218752384185791,
+        "maximum": 3.0767998695373535
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            13.271632194519043,
+            10.792526245117188
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            15.036116600036621,
+            8.62653923034668
+          ],
+          "birth_energy": 11.93082046508789,
+          "decay_loss_before_successful_fusion": 1.7318353652954102
+        },
+        {
+          "manufactured_energy": [
+            19.2297306060791,
+            3.81223726272583
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            13.733028411865234,
+            7.777670383453369
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            4.554430961608887,
+            16.01142120361328
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            5.406580448150635,
+            10.293968200683594
+          ],
+          "birth_energy": 2.623748779296875,
+          "decay_loss_before_successful_fusion": 3.0767998695373535
+        },
+        {
+          "manufactured_energy": [
+            10.730342864990234,
+            3.5723519325256348
+          ],
+          "birth_energy": 2.083942413330078,
+          "decay_loss_before_successful_fusion": 2.218752384185791
+        },
+        {
+          "manufactured_energy": [
+            3.5723519325256348,
+            10.730342864990234
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            10.117798805236816,
+            3.1129894256591797
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            9.887401580810547,
+            2.595144271850586
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 3,
+          "matured": 0,
+          "death_age": {
+            "count": 3,
+            "minimum": 21.0,
+            "median": 45.0,
+            "maximum": 210.0
+          },
+          "received_food": {
+            "count": 3,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.0
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    },
+    {
+      "seed": 4013,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 13,
+      "matured": 0,
+      "birth_energy": {
+        "count": 13,
+        "minimum": 0.6461277008056641,
+        "median": 5.933393478393555,
+        "maximum": 18.27543067932129
+      },
+      "packet_manufacture_energy": {
+        "count": 4456,
+        "minimum": 1.0268292427062988,
+        "median": 3.7331392765045166,
+        "maximum": 43.571746826171875
+      },
+      "packets_over_32_energy": 20,
+      "packets_over_40_energy": 1,
+      "packets_participating_in_fusion_attempts": 52,
+      "fusion_initial_total_energy": {
+        "count": 26,
+        "minimum": 3.075145125389099,
+        "median": 17.426186561584473,
+        "maximum": 29.29970932006836
+      },
+      "successful_fusion_decay_loss": {
+        "count": 13,
+        "minimum": 0.27546072006225586,
+        "median": 4.229460716247559,
+        "maximum": 18.41787624359131
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            13.603438377380371,
+            15.696270942687988
+          ],
+          "birth_energy": 7.240882873535156,
+          "decay_loss_before_successful_fusion": 12.058826446533203
+        },
+        {
+          "manufactured_energy": [
+            10.505209922790527,
+            18.558794021606445
+          ],
+          "birth_energy": 0.6461277008056641,
+          "decay_loss_before_successful_fusion": 18.41787624359131
+        },
+        {
+          "manufactured_energy": [
+            17.78211212158203,
+            10.863933563232422
+          ],
+          "birth_energy": 18.27543067932129,
+          "decay_loss_before_successful_fusion": 0.37061500549316406
+        },
+        {
+          "manufactured_energy": [
+            9.083234786987305,
+            19.456716537475586
+          ],
+          "birth_energy": 17.149465560913086,
+          "decay_loss_before_successful_fusion": 1.3904857635498047
+        },
+        {
+          "manufactured_energy": [
+            11.826276779174805,
+            16.53313446044922
+          ],
+          "birth_energy": 3.9010400772094727,
+          "decay_loss_before_successful_fusion": 14.45837116241455
+        },
+        {
+          "manufactured_energy": [
+            11.057570457458496,
+            17.099496841430664
+          ],
+          "birth_energy": 17.461029052734375,
+          "decay_loss_before_successful_fusion": 0.6960382461547852
+        },
+        {
+          "manufactured_energy": [
+            19.665382385253906,
+            3.927241325378418
+          ],
+          "birth_energy": 2.6945648193359375,
+          "decay_loss_before_successful_fusion": 10.898058891296387
+        },
+        {
+          "manufactured_energy": [
+            5.710814476013184,
+            14.183889389038086
+          ],
+          "birth_energy": 5.665243148803711,
+          "decay_loss_before_successful_fusion": 4.229460716247559
+        },
+        {
+          "manufactured_energy": [
+            9.94566822052002,
+            9.86155891418457
+          ],
+          "birth_energy": 6.855735778808594,
+          "decay_loss_before_successful_fusion": 2.951491355895996
+        },
+        {
+          "manufactured_energy": [
+            9.86155891418457,
+            9.94566822052002
+          ],
+          "birth_energy": 5.933393478393555,
+          "decay_loss_before_successful_fusion": 3.873833656311035
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 10,
+          "matured": 0,
+          "death_age": {
+            "count": 10,
+            "minimum": 11.0,
+            "median": 73.5,
+            "maximum": 125.0
+          },
+          "received_food": {
+            "count": 10,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.094
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 3,
+          "matured": 0,
+          "death_age": {
+            "count": 3,
+            "minimum": 267.0,
+            "median": 270.0,
+            "maximum": 276.0
+          },
+          "received_food": {
+            "count": 3,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.0
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    },
+    {
+      "seed": 4014,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 5,
+      "matured": 0,
+      "birth_energy": {
+        "count": 5,
+        "minimum": 0.3679323196411133,
+        "median": 8.265401840209961,
+        "maximum": 13.817924499511719
+      },
+      "packet_manufacture_energy": {
+        "count": 3920,
+        "minimum": 1.0010757446289062,
+        "median": 3.611891269683838,
+        "maximum": 34.77174758911133
+      },
+      "packets_over_32_energy": 3,
+      "packets_over_40_energy": 0,
+      "packets_participating_in_fusion_attempts": 28,
+      "fusion_initial_total_energy": {
+        "count": 14,
+        "minimum": 3.0314570665359497,
+        "median": 15.642701387405396,
+        "maximum": 28.88142967224121
+      },
+      "successful_fusion_decay_loss": {
+        "count": 5,
+        "minimum": 0.8443365097045898,
+        "median": 2.514143466949463,
+        "maximum": 8.151407241821289
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            14.786432266235352,
+            14.09499740600586
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            17.46686553955078,
+            8.949943542480469
+          ],
+          "birth_energy": 8.265401840209961,
+          "decay_loss_before_successful_fusion": 8.151407241821289
+        },
+        {
+          "manufactured_energy": [
+            11.91748046875,
+            12.744780540466309
+          ],
+          "birth_energy": 13.817924499511719,
+          "decay_loss_before_successful_fusion": 0.8443365097045898
+        },
+        {
+          "manufactured_energy": [
+            7.3064045906066895,
+            16.685077667236328
+          ],
+          "birth_energy": 10.435930252075195,
+          "decay_loss_before_successful_fusion": 3.5555520057678223
+        },
+        {
+          "manufactured_energy": [
+            10.543871879577637,
+            9.989084243774414
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            3.0478339195251465,
+            14.450194358825684
+          ],
+          "birth_energy": 4.983884811401367,
+          "decay_loss_before_successful_fusion": 2.514143466949463
+        },
+        {
+          "manufactured_energy": [
+            5.158226490020752,
+            11.658226013183594
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            5.582943916320801,
+            8.886006355285645
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            5.158226490020752,
+            9.071586608886719
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            11.176260948181152,
+            1.039320707321167
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 5,
+          "matured": 0,
+          "death_age": {
+            "count": 5,
+            "minimum": 6.0,
+            "median": 131.0,
+            "maximum": 202.0
+          },
+          "received_food": {
+            "count": 5,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.003
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    },
+    {
+      "seed": 4015,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 9,
+      "matured": 0,
+      "birth_energy": {
+        "count": 9,
+        "minimum": 0.11050987243652344,
+        "median": 6.344699859619141,
+        "maximum": 10.828842163085938
+      },
+      "packet_manufacture_energy": {
+        "count": 4035,
+        "minimum": 1.0104044675827026,
+        "median": 4.484190940856934,
+        "maximum": 44.658203125
+      },
+      "packets_over_32_energy": 19,
+      "packets_over_40_energy": 10,
+      "packets_participating_in_fusion_attempts": 46,
+      "fusion_initial_total_energy": {
+        "count": 23,
+        "minimum": 5.84948205947876,
+        "median": 12.143073081970215,
+        "maximum": 27.66531467437744
+      },
+      "successful_fusion_decay_loss": {
+        "count": 9,
+        "minimum": 0.18858718872070312,
+        "median": 5.999048233032227,
+        "maximum": 11.161408424377441
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            15.38854694366455,
+            12.27676773071289
+          ],
+          "birth_energy": 6.50390625,
+          "decay_loss_before_successful_fusion": 11.161408424377441
+        },
+        {
+          "manufactured_energy": [
+            9.359855651855469,
+            15.704891204833984
+          ],
+          "birth_energy": 9.065698623657227,
+          "decay_loss_before_successful_fusion": 5.999048233032227
+        },
+        {
+          "manufactured_energy": [
+            6.870512008666992,
+            17.538753509521484
+          ],
+          "birth_energy": 5.2639923095703125,
+          "decay_loss_before_successful_fusion": 9.145273208618164
+        },
+        {
+          "manufactured_energy": [
+            13.6685791015625,
+            10.653275489807129
+          ],
+          "birth_energy": 10.828842163085938,
+          "decay_loss_before_successful_fusion": 3.4930124282836914
+        },
+        {
+          "manufactured_energy": [
+            11.418233871459961,
+            11.418233871459961
+          ],
+          "birth_energy": 3.4049911499023438,
+          "decay_loss_before_successful_fusion": 9.431476593017578
+        },
+        {
+          "manufactured_energy": [
+            8.720756530761719,
+            12.567846298217773
+          ],
+          "birth_energy": 6.344699859619141,
+          "decay_loss_before_successful_fusion": 4.943902969360352
+        },
+        {
+          "manufactured_energy": [
+            12.80103588104248,
+            7.871764183044434
+          ],
+          "birth_energy": 10.484212875366211,
+          "decay_loss_before_successful_fusion": 0.18858718872070312
+        },
+        {
+          "manufactured_energy": [
+            2.382906198501587,
+            16.882396697998047
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            8.012207984924316,
+            9.579051971435547
+          ],
+          "birth_energy": 0.11050987243652344,
+          "decay_loss_before_successful_fusion": 7.48075008392334
+        },
+        {
+          "manufactured_energy": [
+            4.207649230957031,
+            12.59509563446045
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 9,
+          "matured": 0,
+          "death_age": {
+            "count": 9,
+            "minimum": 2.0,
+            "median": 96.0,
+            "maximum": 185.0
+          },
+          "received_food": {
+            "count": 9,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.0
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    },
+    {
+      "seed": 4016,
+      "completion": {
+        "complete_horizon": true,
+        "elapsed_ticks": 10000,
+        "unassisted_descendant_reproduction": false
+      },
+      "elapsed_ticks_reported": 10000,
+      "worlds_reported": 2,
+      "births": 8,
+      "matured": 0,
+      "birth_energy": {
+        "count": 8,
+        "minimum": 0.18578147888183594,
+        "median": 3.3987998962402344,
+        "maximum": 12.012130737304688
+      },
+      "packet_manufacture_energy": {
+        "count": 4808,
+        "minimum": 1.0224729776382446,
+        "median": 3.521660327911377,
+        "maximum": 44.55183792114258
+      },
+      "packets_over_32_energy": 22,
+      "packets_over_40_energy": 13,
+      "packets_participating_in_fusion_attempts": 54,
+      "fusion_initial_total_energy": {
+        "count": 27,
+        "minimum": 3.13960862159729,
+        "median": 14.692197799682617,
+        "maximum": 34.441527366638184
+      },
+      "successful_fusion_decay_loss": {
+        "count": 8,
+        "minimum": 0.1347358226776123,
+        "median": 4.617899537086487,
+        "maximum": 14.030981063842773
+      },
+      "largest_initial_investment_fusions": [
+        {
+          "manufactured_energy": [
+            15.913809776306152,
+            18.52771759033203
+          ],
+          "birth_energy": 12.012130737304688,
+          "decay_loss_before_successful_fusion": 12.429396629333496
+        },
+        {
+          "manufactured_energy": [
+            16.102069854736328,
+            14.106760025024414
+          ],
+          "birth_energy": 6.177848815917969,
+          "decay_loss_before_successful_fusion": 14.030981063842773
+        },
+        {
+          "manufactured_energy": [
+            16.464031219482422,
+            7.846150875091553
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            7.846150875091553,
+            14.719626426696777
+          ],
+          "birth_energy": 2.9780807495117188,
+          "decay_loss_before_successful_fusion": 9.587696552276611
+        },
+        {
+          "manufactured_energy": [
+            7.165823459625244,
+            14.10048770904541
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            4.629674434661865,
+            15.778257369995117
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        },
+        {
+          "manufactured_energy": [
+            11.728771209716797,
+            6.90383768081665
+          ],
+          "birth_energy": 7.402299880981445,
+          "decay_loss_before_successful_fusion": 1.230309009552002
+        },
+        {
+          "manufactured_energy": [
+            1.3512613773345947,
+            15.55736255645752
+          ],
+          "birth_energy": 3.81951904296875,
+          "decay_loss_before_successful_fusion": 3.0891048908233643
+        },
+        {
+          "manufactured_energy": [
+            6.095438003540039,
+            10.237037658691406
+          ],
+          "birth_energy": 0.18578147888183594,
+          "decay_loss_before_successful_fusion": 6.146694183349609
+        },
+        {
+          "manufactured_energy": [
+            10.237037658691406,
+            6.095438003540039
+          ],
+          "birth_energy": null,
+          "decay_loss_before_successful_fusion": null
+        }
+      ],
+      "offspring_by_endowment": [
+        {
+          "birth_energy_interval": [
+            0,
+            16
+          ],
+          "lower_exclusive": true,
+          "offspring": 8,
+          "matured": 0,
+          "death_age": {
+            "count": 8,
+            "minimum": 4.0,
+            "median": 57.5,
+            "maximum": 168.0
+          },
+          "received_food": {
+            "count": 8,
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.004
+          }
+        },
+        {
+          "birth_energy_interval": [
+            16,
+            32
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            32,
+            48
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            48,
+            64
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            64,
+            80
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        },
+        {
+          "birth_energy_interval": [
+            80,
+            1000
+          ],
+          "lower_exclusive": true,
+          "offspring": 0,
+          "matured": 0,
+          "death_age": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          },
+          "received_food": {
+            "count": 0,
+            "minimum": null,
+            "median": null,
+            "maximum": null
+          }
+        }
+      ],
+      "actual_life_cycle_certificates": [],
+      "scope": "Only complete reported segments. Energy intervals include the upper boundary. Manufacture energy is recorded before first packet decay. Certificates require a descendant birth record, recorded maturity and subsequent actual dual-parent fusion birth; reservoir founders never count."
+    }
+  ]
+}

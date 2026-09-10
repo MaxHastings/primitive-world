@@ -1,0 +1,75 @@
+{
+  "observed_worlds": 110,
+  "world_range": [
+    1,
+    110
+  ],
+  "completed_batch": true,
+  "censored_worlds": 1,
+  "total_ticks": 1000000,
+  "funnel": {
+    "packets_produced": 342314,
+    "births": 1115,
+    "juvenile_transfer_ticks": 1097,
+    "juvenile_received_milli": 6148,
+    "juveniles_matured": 0,
+    "matured_descendants_gathered": 0,
+    "matured_descendant_packets": 0,
+    "births_involving_descendant_parents": 0
+  },
+  "closed_worlds": [],
+  "maximum_closed_depth": 0,
+  "first_milestones": {
+    "fed_juvenile": {
+      "world": 1,
+      "lineage": 17110,
+      "world_tick": 15,
+      "cumulative_tick": 15
+    },
+    "maturation": null,
+    "matured_descendant_reproduction": null
+  },
+  "natural_world_durations": {
+    "minimum": 8775,
+    "maximum": 9347,
+    "median": 9144,
+    "first_quarter_median": 9160,
+    "last_quarter_median": 9172,
+    "worlds_over_10000": 0,
+    "worlds_over_20000": 0
+  },
+  "births_per_completed_world": {
+    "first_quarter_mean": 5.518518518518518,
+    "last_quarter_mean": 17.333333333333332,
+    "scope": "Descriptive time comparison within one chain, not a causal estimate of selection or a replicated trend."
+  },
+  "offspring_ever_received": 147,
+  "maximum_offspring_death_age": 403.0,
+  "pool_distinct_genomes_initial": 2580,
+  "pool_distinct_genomes_final": 3064,
+  "pool_changed_record_slots_summed": 1112,
+  "scope": "One consecutive reservoir sequence, not independent seeds. Changed slots underestimate intervening replacements. A completed batch is not evidence of closure; inspect closed_worlds. An in-progress file may require retry if its final line is being written.",
+  "provenance": [
+    {
+      "base_commit": "2c80a5d7deae9ad42edbdc477d6a9eef0eca3dc1",
+      "test_executable_sha256": "E5E33132C1672C8F2026B00A9BC641904C0AED2EC2A56D6845A5C3B54E3B9FA4",
+      "production_executable_sha256": "74B61905600D6BC7C71A438E1C9F4688E24835F4B86DE1CF06F2DC917CEE1603",
+      "observer_shader_sha256": "9D1C15F3DCA392EE66FDA41E38F1F9F88337ED765757BCD2E4780E09403EADCA",
+      "initial_seed": 3001,
+      "completed_world_budget": 100,
+      "world_censor_ticks": 200000,
+      "population": 4096,
+      "intervention": false
+    },
+    {
+      "base_commit": "2c80a5d7deae9ad42edbdc477d6a9eef0eca3dc1",
+      "test_executable_sha256": "C9B842038EED03FB647B961F67D87B50612E6880877FC4320BFE4DDF139447DF",
+      "input_checkpoint_sha256": "161338EC414E00B6DE6BB970629015C42770F633CE78FF7728D2CF5E6DE622AF",
+      "input_journal_sha256": "A868A5A7992EA77768B0CDA641300C10D8C44CA703B4131D1A0A2129824A0DDB",
+      "observer_shader_sha256": "9D1C15F3DCA392EE66FDA41E38F1F9F88337ED765757BCD2E4780E09403EADCA",
+      "cumulative_tick_horizon": 1000000,
+      "world_count_limit": null,
+      "intervention": false
+    }
+  ]
+}

@@ -616,7 +616,7 @@ fn draw_new(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
                         egui::Slider::new(&mut state.ui.setup.metabolic_cost, 0.0..=0.2)
                             .text("Body upkeep"),
                     );
-                    ui.small("Juvenile dependence is permanent. Long abundant climate periods alternate with shorter droughts and local refuges. No world-age assistance.");
+                    ui.small("Offspring develop using packet reserves, gathered food and received food. Climate and local food supply vary over time.");
                     ui.add(egui::Slider::new(&mut state.ui.setup.habitat_contrast, 0.0..=1.0).text("Habitat contrast"));
                     ui.checkbox(&mut state.ui.setup.evolving_landscape, "Evolving geography");
                     ui.checkbox(

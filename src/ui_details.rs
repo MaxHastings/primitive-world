@@ -195,7 +195,7 @@ pub fn events(ui: &mut egui::Ui, state: &mut AppState, command: &mut controls::C
 
 pub fn stats(ui: &mut egui::Ui, state: &mut AppState) {
     let reproduction_tick = state.simulation.tick;
-    ui.small("Permanent juvenile dependence · ongoing abundance and drought · no opening ramps");
+    ui.small("Paid birth reserves and juvenile development · ongoing abundance and drought · no opening ramps");
     ui.small(format!(
         "Packet fusion radius: {:.2} · packet upkeep: {:.4} × size^(2/3)",
         simulation::packet_fusion_radius(reproduction_tick),

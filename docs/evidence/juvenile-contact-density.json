@@ -1,0 +1,1302 @@
+{
+  "completed_arms": 8,
+  "arms": [
+    {
+      "arm": "seed-4201-pop-4096",
+      "population": 4096,
+      "stages": {
+        "births": 6,
+        "ever_near_organism": 4,
+        "ever_near_food_with_headroom": 3,
+        "ever_near_funded_transfer_intent": 1,
+        "ever_received_food": 1,
+        "matured": 0
+      },
+      "near_food_ticks": {
+        "count": 6,
+        "minimum": 0,
+        "median": 4.5,
+        "maximum": 71
+      },
+      "near_intent_ticks": {
+        "count": 6,
+        "minimum": 0,
+        "median": 0.0,
+        "maximum": 11
+      },
+      "received_food": {
+        "count": 6,
+        "minimum": 0.0,
+        "median": 0.0,
+        "maximum": 0.065
+      },
+      "highest_contact_lives": [
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 11.698345184326172,
+          "birth_tick": 2,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 71,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 115,
+            "observed_ticks": 201
+          },
+          "dead": true,
+          "death_age": 202.0,
+          "death_tick": 204,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 16881,
+          "maturity_tick": null,
+          "parents": [
+            1646,
+            1276
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 4.818414688110352,
+          "birth_tick": 45,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 17,
+            "nearby_funded_transfer_intent_ticks": 11,
+            "nearby_organism_ticks": 18,
+            "observed_ticks": 91
+          },
+          "dead": true,
+          "death_age": 92.0,
+          "death_tick": 137,
+          "generation": 3,
+          "juvenile_received_milli": 65,
+          "lineage": 18046,
+          "maturity_tick": null,
+          "parents": [
+            2397,
+            1395
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 11.041919708251953,
+          "birth_tick": 2,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 9,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 11,
+            "observed_ticks": 183
+          },
+          "dead": true,
+          "death_age": 184.0,
+          "death_tick": 186,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 16880,
+          "maturity_tick": null,
+          "parents": [
+            3264,
+            674
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 5.050479888916016,
+          "birth_tick": 29,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 0,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 0,
+            "observed_ticks": 83
+          },
+          "dead": true,
+          "death_age": 84.0,
+          "death_tick": 113,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 17898,
+          "maturity_tick": null,
+          "parents": [
+            1744,
+            2830
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 6.141544342041016,
+          "birth_tick": 54,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 0,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 0,
+            "observed_ticks": 93
+          },
+          "dead": true,
+          "death_age": 94.0,
+          "death_tick": 148,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 18074,
+          "maturity_tick": null,
+          "parents": [
+            740,
+            400
+          ],
+          "qualified_packet_tick": null
+        }
+      ]
+    },
+    {
+      "arm": "seed-4201-pop-8192",
+      "population": 8192,
+      "stages": {
+        "births": 51,
+        "ever_near_organism": 42,
+        "ever_near_food_with_headroom": 35,
+        "ever_near_funded_transfer_intent": 12,
+        "ever_received_food": 9,
+        "matured": 0
+      },
+      "near_food_ticks": {
+        "count": 51,
+        "minimum": 0,
+        "median": 3,
+        "maximum": 76
+      },
+      "near_intent_ticks": {
+        "count": 51,
+        "minimum": 0,
+        "median": 0,
+        "maximum": 14
+      },
+      "received_food": {
+        "count": 51,
+        "minimum": 0.0,
+        "median": 0.0,
+        "maximum": 0.113
+      },
+      "highest_contact_lives": [
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 11.698345184326172,
+          "birth_tick": 2,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 76,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 87,
+            "observed_ticks": 159
+          },
+          "dead": true,
+          "death_age": 160.0,
+          "death_tick": 162,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 17364,
+          "maturity_tick": null,
+          "parents": [
+            1646,
+            1276
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 18.0732421875,
+          "birth_tick": 20,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 47,
+            "nearby_funded_transfer_intent_ticks": 10,
+            "nearby_organism_ticks": 103,
+            "observed_ticks": 290
+          },
+          "dead": true,
+          "death_age": 291.0,
+          "death_tick": 311,
+          "generation": 3,
+          "juvenile_received_milli": 20,
+          "lineage": 19272,
+          "maturity_tick": null,
+          "parents": [
+            2994,
+            6090
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 18.291061401367188,
+          "birth_tick": 46,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 34,
+            "nearby_funded_transfer_intent_ticks": 14,
+            "nearby_organism_ticks": 123,
+            "observed_ticks": 314
+          },
+          "dead": true,
+          "death_age": 315.0,
+          "death_tick": 361,
+          "generation": 3,
+          "juvenile_received_milli": 113,
+          "lineage": 19948,
+          "maturity_tick": null,
+          "parents": [
+            2837,
+            3429
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 5.27197265625,
+          "birth_tick": 13,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 28,
+            "nearby_funded_transfer_intent_ticks": 9,
+            "nearby_organism_ticks": 76,
+            "observed_ticks": 76
+          },
+          "dead": true,
+          "death_age": 77.0,
+          "death_tick": 90,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 18850,
+          "maturity_tick": null,
+          "parents": [
+            6629,
+            3360
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 1.6683521270751953,
+          "birth_tick": 3,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 28,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 28,
+            "observed_ticks": 28
+          },
+          "dead": true,
+          "death_age": 29.0,
+          "death_tick": 32,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 17647,
+          "maturity_tick": null,
+          "parents": [
+            5197,
+            1748
+          ],
+          "qualified_packet_tick": null
+        }
+      ]
+    },
+    {
+      "arm": "seed-4202-pop-4096",
+      "population": 4096,
+      "stages": {
+        "births": 5,
+        "ever_near_organism": 4,
+        "ever_near_food_with_headroom": 3,
+        "ever_near_funded_transfer_intent": 1,
+        "ever_received_food": 1,
+        "matured": 0
+      },
+      "near_food_ticks": {
+        "count": 5,
+        "minimum": 0,
+        "median": 1,
+        "maximum": 18
+      },
+      "near_intent_ticks": {
+        "count": 5,
+        "minimum": 0,
+        "median": 0,
+        "maximum": 2
+      },
+      "received_food": {
+        "count": 5,
+        "minimum": 0.0,
+        "median": 0.0,
+        "maximum": 0.006
+      },
+      "highest_contact_lives": [
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 7.292036056518555,
+          "birth_tick": 8,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 18,
+            "nearby_funded_transfer_intent_ticks": 2,
+            "nearby_organism_ticks": 18,
+            "observed_ticks": 119
+          },
+          "dead": true,
+          "death_age": 120.0,
+          "death_tick": 128,
+          "generation": 3,
+          "juvenile_received_milli": 6,
+          "lineage": 17353,
+          "maturity_tick": null,
+          "parents": [
+            1652,
+            3119
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 11.563817977905273,
+          "birth_tick": 20,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 3,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 14,
+            "observed_ticks": 146
+          },
+          "dead": true,
+          "death_age": 147.0,
+          "death_tick": 167,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 17707,
+          "maturity_tick": null,
+          "parents": [
+            3192,
+            3490
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 5.226057052612305,
+          "birth_tick": 23,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 1,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 11,
+            "observed_ticks": 69
+          },
+          "dead": true,
+          "death_age": 70.0,
+          "death_tick": 93,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 17735,
+          "maturity_tick": null,
+          "parents": [
+            3172,
+            1422
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 7.371120452880859,
+          "birth_tick": 25,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 0,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 14,
+            "observed_ticks": 114
+          },
+          "dead": true,
+          "death_age": 115.0,
+          "death_tick": 140,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 17755,
+          "maturity_tick": null,
+          "parents": [
+            1351,
+            3209
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 1.2858085632324219,
+          "birth_tick": 255,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 0,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 0,
+            "observed_ticks": 22
+          },
+          "dead": true,
+          "death_age": 23.0,
+          "death_tick": 278,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 18188,
+          "maturity_tick": null,
+          "parents": [
+            3263,
+            2878
+          ],
+          "qualified_packet_tick": null
+        }
+      ]
+    },
+    {
+      "arm": "seed-4202-pop-8192",
+      "population": 8192,
+      "stages": {
+        "births": 41,
+        "ever_near_organism": 32,
+        "ever_near_food_with_headroom": 24,
+        "ever_near_funded_transfer_intent": 13,
+        "ever_received_food": 12,
+        "matured": 0
+      },
+      "near_food_ticks": {
+        "count": 41,
+        "minimum": 0,
+        "median": 2,
+        "maximum": 47
+      },
+      "near_intent_ticks": {
+        "count": 41,
+        "minimum": 0,
+        "median": 0,
+        "maximum": 17
+      },
+      "received_food": {
+        "count": 41,
+        "minimum": 0.0,
+        "median": 0.0,
+        "maximum": 0.068
+      },
+      "highest_contact_lives": [
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 16.800228118896484,
+          "birth_tick": 12,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 47,
+            "nearby_funded_transfer_intent_ticks": 12,
+            "nearby_organism_ticks": 66,
+            "observed_ticks": 261
+          },
+          "dead": true,
+          "death_age": 262.0,
+          "death_tick": 274,
+          "generation": 3,
+          "juvenile_received_milli": 57,
+          "lineage": 18911,
+          "maturity_tick": null,
+          "parents": [
+            5735,
+            949
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 7.3040771484375,
+          "birth_tick": 25,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 28,
+            "nearby_funded_transfer_intent_ticks": 10,
+            "nearby_organism_ticks": 43,
+            "observed_ticks": 127
+          },
+          "dead": true,
+          "death_age": 128.0,
+          "death_tick": 153,
+          "generation": 3,
+          "juvenile_received_milli": 45,
+          "lineage": 19560,
+          "maturity_tick": null,
+          "parents": [
+            3209,
+            1351
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 13.57673454284668,
+          "birth_tick": 107,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 24,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 39,
+            "observed_ticks": 175
+          },
+          "dead": true,
+          "death_age": 176.0,
+          "death_tick": 283,
+          "generation": 4,
+          "juvenile_received_milli": 0,
+          "lineage": 20566,
+          "maturity_tick": null,
+          "parents": [
+            1765,
+            5558
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 2.567342758178711,
+          "birth_tick": 83,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 19,
+            "nearby_funded_transfer_intent_ticks": 17,
+            "nearby_organism_ticks": 24,
+            "observed_ticks": 34
+          },
+          "dead": true,
+          "death_age": 35.0,
+          "death_tick": 118,
+          "generation": 3,
+          "juvenile_received_milli": 50,
+          "lineage": 20395,
+          "maturity_tick": null,
+          "parents": [
+            5528,
+            7987
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 12.325908660888672,
+          "birth_tick": 2,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 17,
+            "nearby_funded_transfer_intent_ticks": 15,
+            "nearby_organism_ticks": 18,
+            "observed_ticks": 163
+          },
+          "dead": true,
+          "death_age": 164.0,
+          "death_tick": 166,
+          "generation": 3,
+          "juvenile_received_milli": 15,
+          "lineage": 17440,
+          "maturity_tick": null,
+          "parents": [
+            6995,
+            2706
+          ],
+          "qualified_packet_tick": null
+        }
+      ]
+    },
+    {
+      "arm": "seed-4203-pop-4096",
+      "population": 4096,
+      "stages": {
+        "births": 7,
+        "ever_near_organism": 2,
+        "ever_near_food_with_headroom": 1,
+        "ever_near_funded_transfer_intent": 1,
+        "ever_received_food": 1,
+        "matured": 0
+      },
+      "near_food_ticks": {
+        "count": 7,
+        "minimum": 0,
+        "median": 0,
+        "maximum": 10
+      },
+      "near_intent_ticks": {
+        "count": 7,
+        "minimum": 0,
+        "median": 0,
+        "maximum": 5
+      },
+      "received_food": {
+        "count": 7,
+        "minimum": 0.0,
+        "median": 0.0,
+        "maximum": 0.016
+      },
+      "highest_contact_lives": [
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 10.570411682128906,
+          "birth_tick": 32,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 10,
+            "nearby_funded_transfer_intent_ticks": 5,
+            "nearby_organism_ticks": 20,
+            "observed_ticks": 176
+          },
+          "dead": true,
+          "death_age": 177.0,
+          "death_tick": 209,
+          "generation": 3,
+          "juvenile_received_milli": 16,
+          "lineage": 18054,
+          "maturity_tick": null,
+          "parents": [
+            3575,
+            1835
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 0.3476896286010742,
+          "birth_tick": 51,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 0,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 0,
+            "observed_ticks": 5
+          },
+          "dead": true,
+          "death_age": 6.0,
+          "death_tick": 57,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 18190,
+          "maturity_tick": null,
+          "parents": [
+            2772,
+            1933
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 3.020885467529297,
+          "birth_tick": 64,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 0,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 0,
+            "observed_ticks": 45
+          },
+          "dead": true,
+          "death_age": 46.0,
+          "death_tick": 110,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 18257,
+          "maturity_tick": null,
+          "parents": [
+            2226,
+            2068
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 0.88201904296875,
+          "birth_tick": 64,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 0,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 0,
+            "observed_ticks": 11
+          },
+          "dead": true,
+          "death_age": 12.0,
+          "death_tick": 76,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 18285,
+          "maturity_tick": null,
+          "parents": [
+            932,
+            1812
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 2.141298294067383,
+          "birth_tick": 65,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 0,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 0,
+            "observed_ticks": 36
+          },
+          "dead": true,
+          "death_age": 37.0,
+          "death_tick": 102,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 18291,
+          "maturity_tick": null,
+          "parents": [
+            2747,
+            659
+          ],
+          "qualified_packet_tick": null
+        }
+      ]
+    },
+    {
+      "arm": "seed-4203-pop-8192",
+      "population": 8192,
+      "stages": {
+        "births": 54,
+        "ever_near_organism": 46,
+        "ever_near_food_with_headroom": 39,
+        "ever_near_funded_transfer_intent": 14,
+        "ever_received_food": 11,
+        "matured": 0
+      },
+      "near_food_ticks": {
+        "count": 54,
+        "minimum": 0,
+        "median": 3.5,
+        "maximum": 102
+      },
+      "near_intent_ticks": {
+        "count": 54,
+        "minimum": 0,
+        "median": 0.0,
+        "maximum": 20
+      },
+      "received_food": {
+        "count": 54,
+        "minimum": 0.0,
+        "median": 0.0,
+        "maximum": 0.117
+      },
+      "highest_contact_lives": [
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 20.46921157836914,
+          "birth_tick": 13,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 102,
+            "nearby_funded_transfer_intent_ticks": 7,
+            "nearby_organism_ticks": 128,
+            "observed_ticks": 332
+          },
+          "dead": true,
+          "death_age": 333.0,
+          "death_tick": 346,
+          "generation": 3,
+          "juvenile_received_milli": 109,
+          "lineage": 18869,
+          "maturity_tick": null,
+          "parents": [
+            2438,
+            7162
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 12.577190399169922,
+          "birth_tick": 20,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 34,
+            "nearby_funded_transfer_intent_ticks": 20,
+            "nearby_organism_ticks": 50,
+            "observed_ticks": 216
+          },
+          "dead": true,
+          "death_age": 217.0,
+          "death_tick": 237,
+          "generation": 3,
+          "juvenile_received_milli": 117,
+          "lineage": 19348,
+          "maturity_tick": null,
+          "parents": [
+            2771,
+            4981
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 12.844581604003906,
+          "birth_tick": 17,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 26,
+            "nearby_funded_transfer_intent_ticks": 6,
+            "nearby_organism_ticks": 70,
+            "observed_ticks": 215
+          },
+          "dead": true,
+          "death_age": 216.0,
+          "death_tick": 233,
+          "generation": 3,
+          "juvenile_received_milli": 46,
+          "lineage": 19333,
+          "maturity_tick": null,
+          "parents": [
+            5871,
+            7661
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 9.815984725952148,
+          "birth_tick": 27,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 26,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 51,
+            "observed_ticks": 157
+          },
+          "dead": true,
+          "death_age": 158.0,
+          "death_tick": 185,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 19632,
+          "maturity_tick": null,
+          "parents": [
+            1932,
+            936
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 12.431777954101562,
+          "birth_tick": 31,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 23,
+            "nearby_funded_transfer_intent_ticks": 8,
+            "nearby_organism_ticks": 62,
+            "observed_ticks": 180
+          },
+          "dead": true,
+          "death_age": 181.0,
+          "death_tick": 212,
+          "generation": 3,
+          "juvenile_received_milli": 30,
+          "lineage": 19716,
+          "maturity_tick": null,
+          "parents": [
+            7964,
+            6477
+          ],
+          "qualified_packet_tick": null
+        }
+      ]
+    },
+    {
+      "arm": "seed-4204-pop-4096",
+      "population": 4096,
+      "stages": {
+        "births": 14,
+        "ever_near_organism": 11,
+        "ever_near_food_with_headroom": 7,
+        "ever_near_funded_transfer_intent": 3,
+        "ever_received_food": 3,
+        "matured": 0
+      },
+      "near_food_ticks": {
+        "count": 14,
+        "minimum": 0,
+        "median": 1.5,
+        "maximum": 26
+      },
+      "near_intent_ticks": {
+        "count": 14,
+        "minimum": 0,
+        "median": 0.0,
+        "maximum": 7
+      },
+      "received_food": {
+        "count": 14,
+        "minimum": 0.0,
+        "median": 0.0,
+        "maximum": 0.073
+      },
+      "highest_contact_lives": [
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 5.810342788696289,
+          "birth_tick": 24,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 26,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 42,
+            "observed_ticks": 99
+          },
+          "dead": true,
+          "death_age": 100.0,
+          "death_tick": 124,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 17995,
+          "maturity_tick": null,
+          "parents": [
+            2125,
+            2088
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 7.214170455932617,
+          "birth_tick": 77,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 12,
+            "nearby_funded_transfer_intent_ticks": 7,
+            "nearby_organism_ticks": 32,
+            "observed_ticks": 130
+          },
+          "dead": true,
+          "death_age": 131.0,
+          "death_tick": 208,
+          "generation": 3,
+          "juvenile_received_milli": 73,
+          "lineage": 18094,
+          "maturity_tick": null,
+          "parents": [
+            3784,
+            2257
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 9.010051727294922,
+          "birth_tick": 21,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 11,
+            "nearby_funded_transfer_intent_ticks": 2,
+            "nearby_organism_ticks": 46,
+            "observed_ticks": 153
+          },
+          "dead": true,
+          "death_age": 154.0,
+          "death_tick": 175,
+          "generation": 3,
+          "juvenile_received_milli": 3,
+          "lineage": 17934,
+          "maturity_tick": null,
+          "parents": [
+            890,
+            2182
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 5.9950714111328125,
+          "birth_tick": 27,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 11,
+            "nearby_funded_transfer_intent_ticks": 4,
+            "nearby_organism_ticks": 102,
+            "observed_ticks": 102
+          },
+          "dead": true,
+          "death_age": 103.0,
+          "death_tick": 130,
+          "generation": 3,
+          "juvenile_received_milli": 5,
+          "lineage": 18055,
+          "maturity_tick": null,
+          "parents": [
+            1291,
+            1592
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 2.2308311462402344,
+          "birth_tick": 81,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 7,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 7,
+            "observed_ticks": 30
+          },
+          "dead": true,
+          "death_age": 31.0,
+          "death_tick": 112,
+          "generation": 4,
+          "juvenile_received_milli": 0,
+          "lineage": 18103,
+          "maturity_tick": null,
+          "parents": [
+            1606,
+            511
+          ],
+          "qualified_packet_tick": null
+        }
+      ]
+    },
+    {
+      "arm": "seed-4204-pop-8192",
+      "population": 8192,
+      "stages": {
+        "births": 56,
+        "ever_near_organism": 43,
+        "ever_near_food_with_headroom": 33,
+        "ever_near_funded_transfer_intent": 14,
+        "ever_received_food": 12,
+        "matured": 0
+      },
+      "near_food_ticks": {
+        "count": 56,
+        "minimum": 0,
+        "median": 2.5,
+        "maximum": 77
+      },
+      "near_intent_ticks": {
+        "count": 56,
+        "minimum": 0,
+        "median": 0.0,
+        "maximum": 25
+      },
+      "received_food": {
+        "count": 56,
+        "minimum": 0.0,
+        "median": 0.0,
+        "maximum": 0.09
+      },
+      "highest_contact_lives": [
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 16.598424911499023,
+          "birth_tick": 2,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 77,
+            "nearby_funded_transfer_intent_ticks": 7,
+            "nearby_organism_ticks": 110,
+            "observed_ticks": 300
+          },
+          "dead": true,
+          "death_age": 301.0,
+          "death_tick": 303,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 17378,
+          "maturity_tick": null,
+          "parents": [
+            1093,
+            810
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 4.761613845825195,
+          "birth_tick": 33,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 47,
+            "nearby_funded_transfer_intent_ticks": 0,
+            "nearby_organism_ticks": 56,
+            "observed_ticks": 82
+          },
+          "dead": true,
+          "death_age": 83.0,
+          "death_tick": 116,
+          "generation": 3,
+          "juvenile_received_milli": 0,
+          "lineage": 20118,
+          "maturity_tick": null,
+          "parents": [
+            2570,
+            8136
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 14.862495422363281,
+          "birth_tick": 17,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 47,
+            "nearby_funded_transfer_intent_ticks": 4,
+            "nearby_organism_ticks": 55,
+            "observed_ticks": 235
+          },
+          "dead": true,
+          "death_age": 236.0,
+          "death_tick": 253,
+          "generation": 3,
+          "juvenile_received_milli": 18,
+          "lineage": 19317,
+          "maturity_tick": null,
+          "parents": [
+            7408,
+            3552
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 12.05270004272461,
+          "birth_tick": 39,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 35,
+            "nearby_funded_transfer_intent_ticks": 25,
+            "nearby_organism_ticks": 57,
+            "observed_ticks": 174
+          },
+          "dead": true,
+          "death_age": 175.0,
+          "death_tick": 214,
+          "generation": 3,
+          "juvenile_received_milli": 50,
+          "lineage": 20024,
+          "maturity_tick": null,
+          "parents": [
+            7464,
+            5178
+          ],
+          "qualified_packet_tick": null
+        },
+        {
+          "adult_gather_tick": null,
+          "adult_gathered_milli": 0,
+          "adult_packets": 0,
+          "birth_energy": 10.29507827758789,
+          "birth_tick": 56,
+          "closed_depth_at_birth": 0,
+          "contact_opportunity": {
+            "nearby_food_ticks": 31,
+            "nearby_funded_transfer_intent_ticks": 19,
+            "nearby_organism_ticks": 75,
+            "observed_ticks": 154
+          },
+          "dead": true,
+          "death_age": 155.0,
+          "death_tick": 211,
+          "generation": 3,
+          "juvenile_received_milli": 81,
+          "lineage": 20572,
+          "maturity_tick": null,
+          "parents": [
+            3183,
+            4873
+          ],
+          "qualified_packet_tick": null
+        }
+      ]
+    }
+  ],
+  "scope": "Per-child evidence, not a product of unrelated aggregate rates. Contact is measured before arbitration and does not imply the child is the chosen receiver. Nearby food counts require receiver headroom. A juvenile dying during body upkeep has no contact phase on that terminal tick. Births alive at the horizon are censored."
+}

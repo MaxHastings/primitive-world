@@ -18,7 +18,7 @@ try {
     & (Join-Path $PSScriptRoot 'Build.ps1')
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     $commandLine = ($playArguments | ForEach-Object { ConvertTo-NativeArgument $_ }) -join ' '
-    $consoleOptions = @('--headless', '--help', '--version', '--install-startup', '--uninstall-startup', '--stop-wallpaper')
+    $consoleOptions = @('--headless', '--help', '--version', '--install-startup', '--uninstall-startup', '--stop-wallpaper', '--prune-saves')
     $consoleMode = @($playArguments | Where-Object { $_ -in $consoleOptions }).Count -gt 0
     if ($consoleMode) {
         $process = Start-Process -FilePath $playExecutable -ArgumentList $commandLine -NoNewWindow -Wait -PassThru

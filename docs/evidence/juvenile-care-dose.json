@@ -1,0 +1,327 @@
+{
+  "protocol": {
+    "delivery_tick_caps": [
+      0,
+      1,
+      5,
+      20,
+      50,
+      100,
+      200,
+      400,
+      4294967295
+    ],
+    "unlimited_sentinel": 4294967295,
+    "seed": 91,
+    "adults": 2,
+    "adult_initial_energy": 35,
+    "adult_initial_food": 0,
+    "donor_policy_energy_threshold": 25,
+    "horizon": "maturity/death or2200ticks",
+    "scope": "Separate controlled diagnostic after the unchanged1M chain. Same selected two-adult sensor-care fixture, genuine newborn from ordinary packet fusion at initialization, naturally foraging adults. Only the external test-policy transfer-enable flag changes when the specified number of actual juvenile delivery ticks is reached. No production parameter changes or reserve injections after initialization. Multiple donors in one recipient tick count as one delivery tick; actual food and energy trajectories are recorded. This is a physical dose-response, not a measurement of evolutionary selection."
+  },
+  "rows": [
+    {
+      "delivery_cap": 0,
+      "age_reached": 359.0,
+      "matured": false,
+      "received_food": 0.0,
+      "delivery_ticks": 0,
+      "gathered_food": 0.04500000213738531,
+      "ingested_food": 0.04500000213738531,
+      "spent_energy": 22.106127629056573,
+      "birth_energy": 21.746015548706055,
+      "final_energy": 0.0,
+      "energy_balance_residual": -0.00011206325143575668,
+      "nearby_adult_ticks": 295,
+      "available_food_ticks": 206,
+      "full_nearest_offers": 0,
+      "other_target_offers": 0,
+      "adult_gathered": [
+        2.799000050057657,
+        3.462000062922016
+      ]
+    },
+    {
+      "delivery_cap": 1,
+      "age_reached": 362.0,
+      "matured": false,
+      "received_food": 0.02500000037252903,
+      "delivery_ticks": 1,
+      "gathered_food": 0.04500000213738531,
+      "ingested_food": 0.07000000250991434,
+      "spent_energy": 22.30613496620208,
+      "birth_energy": 21.746015548706055,
+      "final_energy": 0.0,
+      "energy_balance_residual": -0.00011939741671085358,
+      "nearby_adult_ticks": 298,
+      "available_food_ticks": 209,
+      "full_nearest_offers": 0,
+      "other_target_offers": 4,
+      "adult_gathered": [
+        2.874000051175244,
+        3.462000062922016
+      ]
+    },
+    {
+      "delivery_cap": 5,
+      "age_reached": 375.0,
+      "matured": false,
+      "received_food": 0.12500000186264515,
+      "delivery_ticks": 5,
+      "gathered_food": 0.050000002374872565,
+      "ingested_food": 0.17500000435393304,
+      "spent_energy": 23.146134870126843,
+      "birth_energy": 21.746015548706055,
+      "final_energy": 0.0,
+      "energy_balance_residual": -0.00011928658932447433,
+      "nearby_adult_ticks": 311,
+      "available_food_ticks": 222,
+      "full_nearest_offers": 0,
+      "other_target_offers": 14,
+      "adult_gathered": [
+        3.040000053937547,
+        3.589000064879656
+      ]
+    },
+    {
+      "delivery_cap": 20,
+      "age_reached": 420.0,
+      "matured": false,
+      "received_food": 0.4580000079004094,
+      "delivery_ticks": 20,
+      "gathered_food": 0.05600000265985727,
+      "ingested_food": 0.514000011025928,
+      "spent_energy": 25.858176759444177,
+      "birth_energy": 21.746015548706055,
+      "final_energy": 0.0,
+      "energy_balance_residual": -0.00016112253069877625,
+      "nearby_adult_ticks": 356,
+      "available_food_ticks": 258,
+      "full_nearest_offers": 0,
+      "other_target_offers": 14,
+      "adult_gathered": [
+        3.622000064351596,
+        3.9240000701975077
+      ]
+    },
+    {
+      "delivery_cap": 50,
+      "age_reached": 507.0,
+      "matured": false,
+      "received_food": 1.117000021156855,
+      "delivery_ticks": 50,
+      "gathered_food": 0.06900000327732414,
+      "ingested_food": 1.1850000254344195,
+      "spent_energy": 31.226335622370243,
+      "birth_energy": 21.746015548706055,
+      "final_energy": 0.0,
+      "energy_balance_residual": -0.000319870188832283,
+      "nearby_adult_ticks": 443,
+      "available_food_ticks": 328,
+      "full_nearest_offers": 0,
+      "other_target_offers": 16,
+      "adult_gathered": [
+        4.978000086732209,
+        4.632000084151514
+      ]
+    },
+    {
+      "delivery_cap": 100,
+      "age_reached": 646.0,
+      "matured": false,
+      "received_food": 2.170000037876889,
+      "delivery_ticks": 100,
+      "gathered_food": 0.09600000455975533,
+      "ingested_food": 2.2650000443682075,
+      "spent_energy": 39.866427939385176,
+      "birth_energy": 21.746015548706055,
+      "final_energy": 0.0,
+      "energy_balance_residual": -0.00041203573346138,
+      "nearby_adult_ticks": 582,
+      "available_food_ticks": 447,
+      "full_nearest_offers": 0,
+      "other_target_offers": 40,
+      "adult_gathered": [
+        6.638000116101466,
+        6.364000113331713
+      ]
+    },
+    {
+      "delivery_cap": 200,
+      "age_reached": 954.0,
+      "matured": false,
+      "received_food": 4.486000076634809,
+      "delivery_ticks": 200,
+      "gathered_food": 0.17500000831205398,
+      "ingested_food": 4.6610000897198915,
+      "spent_energy": 59.034396681934595,
+      "birth_energy": 21.746015548706055,
+      "final_energy": 0.0,
+      "energy_balance_residual": -0.0003804154694080353,
+      "nearby_adult_ticks": 890,
+      "available_food_ticks": 683,
+      "full_nearest_offers": 0,
+      "other_target_offers": 79,
+      "adult_gathered": [
+        9.878000171622261,
+        9.40200016356539
+      ]
+    },
+    {
+      "delivery_cap": 400,
+      "age_reached": 1695.0,
+      "matured": false,
+      "received_food": 9.205000156420283,
+      "delivery_ticks": 400,
+      "gathered_food": 1.1880000481614843,
+      "ingested_food": 10.392000222345814,
+      "spent_energy": 104.88231715280563,
+      "birth_energy": 21.746015548706055,
+      "final_energy": 0.0,
+      "energy_balance_residual": -0.0002998253330588341,
+      "nearby_adult_ticks": 1631,
+      "available_food_ticks": 1219,
+      "full_nearest_offers": 0,
+      "other_target_offers": 84,
+      "adult_gathered": [
+        15.314000269863755,
+        17.29500029515475
+      ]
+    },
+    {
+      "delivery_cap": null,
+      "age_reached": 1800.0,
+      "matured": true,
+      "received_food": 9.926000169827603,
+      "delivery_ticks": 430,
+      "gathered_food": 1.4550000546732917,
+      "ingested_food": 11.356000245199539,
+      "spent_energy": 111.57332014292479,
+      "birth_energy": 21.746015548706055,
+      "final_energy": 1.0209718942642212,
+      "energy_balance_residual": -0.0002745268866419792,
+      "nearby_adult_ticks": 1736,
+      "available_food_ticks": 1299,
+      "full_nearest_offers": 0,
+      "other_target_offers": 84,
+      "adult_gathered": [
+        16.17100028472487,
+        18.045000309473835
+      ]
+    }
+  ],
+  "maintenance": {
+    "rows": [
+      {
+        "active_units": 1,
+        "basal_body_cost": 0.05000000074505806,
+        "energy_debit": 0.05024909973144531,
+        "initial_age": 0.0,
+        "spent": 0.05025000125169754,
+        "unit_upkeep": 0.0002500000118743628
+      },
+      {
+        "active_units": 1,
+        "basal_body_cost": 0.05000000074505806,
+        "energy_debit": 0.05024909973144531,
+        "initial_age": 450.0,
+        "spent": 0.05025000125169754,
+        "unit_upkeep": 0.0002500000118743628
+      },
+      {
+        "active_units": 1,
+        "basal_body_cost": 0.05000000074505806,
+        "energy_debit": 0.05024909973144531,
+        "initial_age": 900.0,
+        "spent": 0.05025000125169754,
+        "unit_upkeep": 0.0002500000118743628
+      },
+      {
+        "active_units": 1,
+        "basal_body_cost": 0.05000000074505806,
+        "energy_debit": 0.05024909973144531,
+        "initial_age": 1350.0,
+        "spent": 0.05025000125169754,
+        "unit_upkeep": 0.0002500000118743628
+      },
+      {
+        "active_units": 1,
+        "basal_body_cost": 0.05000000074505806,
+        "energy_debit": 0.05024909973144531,
+        "initial_age": 1800.0,
+        "spent": 0.05025000125169754,
+        "unit_upkeep": 0.0002500000118743628
+      },
+      {
+        "active_units": 16,
+        "basal_body_cost": 0.05000000074505806,
+        "energy_debit": 0.05399894714355469,
+        "initial_age": 0.0,
+        "spent": 0.05400000140070915,
+        "unit_upkeep": 0.004000000189989805
+      },
+      {
+        "active_units": 16,
+        "basal_body_cost": 0.05000000074505806,
+        "energy_debit": 0.05399894714355469,
+        "initial_age": 450.0,
+        "spent": 0.05400000140070915,
+        "unit_upkeep": 0.004000000189989805
+      },
+      {
+        "active_units": 16,
+        "basal_body_cost": 0.05000000074505806,
+        "energy_debit": 0.05399894714355469,
+        "initial_age": 900.0,
+        "spent": 0.05400000140070915,
+        "unit_upkeep": 0.004000000189989805
+      },
+      {
+        "active_units": 16,
+        "basal_body_cost": 0.05000000074505806,
+        "energy_debit": 0.05399894714355469,
+        "initial_age": 1350.0,
+        "spent": 0.05400000140070915,
+        "unit_upkeep": 0.004000000189989805
+      },
+      {
+        "active_units": 16,
+        "basal_body_cost": 0.05000000074505806,
+        "energy_debit": 0.05399894714355469,
+        "initial_age": 1800.0,
+        "spent": 0.05400000140070915,
+        "unit_upkeep": 0.004000000189989805
+      }
+    ],
+    "scope": "One actual GPU body-update pass for matched resting organisms at five developmental ages, with one or sixteen active units. Ordinary production costs; zero decision/request buffers imply no movement or gathering, with no carried inventory. Initialization only; no physiology overrides. Inspected before separate lifetime-learning charges: this isolates basal and expressed-unit upkeep, not the complete cost of moving, learning, foraging or care.",
+    "settings": {
+      "active_unit_upkeep": 0.0002500000118743628,
+      "communication_enabled": true,
+      "consume_amount": 25.0,
+      "conversion_efficiency": 8.0,
+      "evolving_landscape": true,
+      "flourishing_start": true,
+      "force_enabled": true,
+      "founder_genomes": [],
+      "founder_name": "primitive-world-random",
+      "founder_traits": [],
+      "fractional_gathering": true,
+      "fusion_loss": 10.0,
+      "habitat_contrast": 1.0,
+      "habitat_height": 2048.0,
+      "habitat_width": 2048.0,
+      "heterogeneity": 0.8500000238418579,
+      "maturity_age": 1800.0,
+      "memory_write_energy": 9.999999747378752e-05,
+      "metabolic_cost": 0.05000000074505806,
+      "motor_response_gain": 4.0,
+      "movement_energy_cost": 0.009999999776482582,
+      "population": 0,
+      "resource_regeneration": 0.009999999776482582,
+      "sensor_radius": 24.0,
+      "social_actions_enabled": true
+    }
+  },
+  "limitations": "One selected location, same sensor-limited controlled policy with externally capped transfers. This shows a continuous physical payoff in this fixture, not a heritable incremental strategy or a causal evolutionary advantage."
+}

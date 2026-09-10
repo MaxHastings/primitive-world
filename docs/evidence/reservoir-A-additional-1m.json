@@ -1,0 +1,47 @@
+{
+  "observed_worlds": 110,
+  "elapsed_ticks": 1000000,
+  "completion": {
+    "candidate_before_maturity": false,
+    "complete_horizon": true,
+    "elapsed_ticks": 1000000,
+    "scope": "B is exactly equivalent to continuation-only admission while no newly born organism reaches maturity. A positive candidate pauses the live world before that point; its continuation requires exact successful-transmission admission, not the no-admission simplification. Founders already in the initial pool are not newly admitted records."
+  },
+  "natural_extinctions": 109,
+  "funnel": {
+    "packets_produced": 692808,
+    "births": 8146,
+    "juvenile_transfer_ticks": 3801,
+    "juvenile_received_milli": 21897,
+    "juveniles_matured": 0,
+    "matured_descendants_gathered": 0,
+    "matured_descendant_packets": 0,
+    "births_involving_descendant_parents": 0
+  },
+  "closed_worlds": [],
+  "maximum_closed_depth": 0,
+  "first_milestones": {
+    "fed_juvenile": {
+      "world": 111,
+      "lineage": 19585,
+      "world_tick": 44,
+      "ticks_since_fork": 6988
+    },
+    "maturation": null,
+    "matured_descendant_reproduction": null
+  },
+  "offspring_ever_received": 607,
+  "offspring_dead": 8146,
+  "offspring_with_repeated_deliveries": 470,
+  "maximum_delivery_ticks_to_one_offspring": 68,
+  "maximum_food_milli_to_one_offspring": 478,
+  "maximum_offspring_death_age": 515.0,
+  "natural_world_duration_median": 9163.5,
+  "natural_world_duration_maximum": 9294,
+  "first_quarter_mean_births": 24.74074074074074,
+  "last_quarter_mean_births": 146.55555555555554,
+  "pool_distinct_genomes_initial": 3064,
+  "pool_distinct_genomes_final": 4033,
+  "pool_changed_record_slots_summed": 7940,
+  "scope": "Funnel counts only events after the shared fork. Duration/quarter summaries exclude the partially shared first world and censored last world. Changed slots underestimate intervening replacements. Single paired fork, not replicated causal confidence."
+}

@@ -1,0 +1,33 @@
+{
+  "application_version": "0.9.1",
+  "model": "primitive-v44-open-investment",
+  "executable_sha256": "D70BA4EB9D3A7979C22B29E0BF1CF010206D1F662EAE46BEE5D6EB843B6A1D38",
+  "full_serial_release_suite": {
+    "passed": 163,
+    "failed": 0,
+    "ignored": 25,
+    "seconds": 157.29
+  },
+  "strict_clippy": "passed",
+  "formatting": "passed",
+  "python_tests": {
+    "passed": 12
+  },
+  "wallpaper_smoke": {
+    "habitat": [
+      3440,
+      1440
+    ],
+    "seed": 4401,
+    "initial_founders": 8192,
+    "save_stop_tick": 2604,
+    "resumed_save_stop_tick": 3073,
+    "same_experiment": true,
+    "processes_closed": true
+  },
+  "viewer_smoke": "Wallpaper save loaded and rendered; pause UI verified; closed. Final rebuild changes a descriptive label only.",
+  "wallpaper_framebuffer": "Not inspected: embedded surface absent from computer-use window inventory.",
+  "multi_day_stability": "unverified",
+  "unassisted_descendant_maturation_and_reproduction": "unproven",
+  "scope": "Frozen experiment candidate for owner-run 20\u201350 million ticks. No long experiment started for this handoff. Prior scientific evidence files identify earlier models; no claim that time guarantees evolutionary success."
+}

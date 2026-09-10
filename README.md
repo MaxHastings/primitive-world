@@ -102,7 +102,7 @@ The game keeps running at storage capacity. Requests for packets that cannot fit
 are skipped without charge, while fusion reuses a consumed packet slot. Bodies
 and packets are counted separately in the statistics panel.
 
-All modes use `primitive-v42-climate-care`, checkpoint format 58 and founder
+All modes use `primitive-v44-open-investment`, checkpoint format 58 and founder
 bank format 21. Other biological layouts are rejected. The current freeze status,
 validation evidence and remaining operational checks are recorded in the
 [finish-line checklist](docs/implementation-checklist.md).
@@ -126,7 +126,7 @@ Gathering can compose with movement, reproduction and other actions; it remains
 controlled by the organism. Brains receive body state, changes in their own body
 state, movement, local fields, and nearby signals—not labels such as “collected,”
 “successful,” or “received.” Body upkeep defaults to .05 per tick and can be adjusted live. Each new
-world begins with 4,096 mature founders in the original fine-grained habitat.
+world begins with 8,192 mature founders in the original fine-grained habitat.
 There is no scheduled ecology, reproduction or juvenile assistance. Smooth,
 seeded climate forcing varies across local, regional and global timescales up
 to millions of ticks. Stored water, mineral, detritus and persistent substrate
