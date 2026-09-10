@@ -19,8 +19,11 @@ if(a.alive==0u){destination[i]=a;return;}if(a.alive==PACKET){
  let d=decisions[i];a.lived_ticks++;
  counter_add(24u+d.selected_action,1u);counter_add(31,d.invalid);
  a.physical_previous[0]=bitcast<u32>(a.energy);a.physical_previous[1]=bitcast<u32>(a.food);
- a.collected=f32(requests[i])/1000.0;a.ingested=0.0;a.spent=0.0;a.received=0.0;a.food+=a.collected;
+ a.collected=f32(requests[i])/1000.0;a.ingested=0.0;a.spent=0.0;a.received=0.0;
+ // Assimilate only inventory carried into this tick. Newly collected material
+ // remains physical inventory for contact, and can be digested next tick.
  let amount=min(min(a.food,0.1),max(0.0,reserve_capacity(a.age,params.sensor_and_padding.y)-a.energy)/params.resource_and_noise.y);a.food-=amount;a.energy+=amount*params.resource_and_noise.y;a.ingested=amount;
+ a.food+=a.collected;
  let food_units=u32(round(amount*1000.0));let food_before=counter_add(0,food_units);if(food_before>0xffffffffu-food_units){counter_add(14,1u);}
  let gather_effort=select(0.0,clamp(d.outputs[1],0.0,1.0),d.invalid==0u);let gather_cost=min(a.energy,gather_effort*GATHER_EFFORT_COST);a.energy-=gather_cost;a.spent+=gather_cost;
  let juvenile=0.6+0.4*clamp(a.age/max(params.sensor_and_padding.y,1.0),0.0,1.0);

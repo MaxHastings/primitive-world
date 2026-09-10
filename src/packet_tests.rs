@@ -43,6 +43,14 @@ fn organism_pushes_packet_with_passive_drift_and_intact_snapshot_accounting() {
         assert_eq!(m.events[4], 0);
         near(m.force_energy_spent as f32, 0.1 * impulse * impulse);
         near(m.packet_energy as f32, pushed.energy);
+        // A passive packet may carry contact-induced velocity in a valid save.
+        let checkpoint = temp(&format!("pushed-packet-{packet_slot}.checkpoint"));
+        s.save_checkpoint(&d, &q, &checkpoint).unwrap();
+        s.load_checkpoint(&q, &checkpoint).unwrap();
+        let restored = s.agent_snapshot(&d, &q).unwrap()[packet_slot];
+        assert_eq!(restored.velocity, pushed.velocity);
+        assert_eq!(restored.position, pushed.position);
+        std::fs::remove_file(checkpoint).unwrap();
         s.write_genome_slot(&q, actor_slot, &fixed(0, [0.0; 2]));
         step(&mut s, &d, &q, 1);
         let drifted = s.agent_snapshot(&d, &q).unwrap()[packet_slot];

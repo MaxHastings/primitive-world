@@ -1,9 +1,25 @@
 ## Packet contact physics
 
+- Checkpoint validation accepts finite passive packet velocity from contact
+  impulses; pushed packets retain their motion when saved and resumed.
 - Organisms can push reproductive packets through the ordinary paid contact
   impulse. Packets drift and damp passively; no damage or new action is added.
 - Transfers remain organism-only and fusion remains compatible-packet-only.
   Genome snapshots, save formats, and current experiment compatibility are unchanged.
+
+## Food assimilation timing
+
+- Newly gathered food remains carried inventory through contact and becomes
+  digestible next tick. Ordinary transfer can use intake below full energy reserves.
+- The delay applies to all organisms and actions; unused intake is retained and
+  dead inventory is released normally. No action, reward, or controller field is added.
+- Current checkpoints remain loadable with unchanged layouts and identifiers;
+  resumed worlds use the new assimilation timing.
+
+## Visible juvenile growth
+
+- Newborns render at half adult width and height, smoothly reaching adult size
+  at configured maturity. This changes appearance only, across all view lenses.
 
 ## Turning energy cost
 

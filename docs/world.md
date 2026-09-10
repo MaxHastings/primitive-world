@@ -17,7 +17,8 @@ headings use continuous relative geometry.
 1. Reserve slots dead at tick start; update ecology and pre-action spatial indexing.
 2. Sample the same pre-action world; evaluate controllers and read-only observers.
 3. Gather at pre-movement positions using proportional sharing within each food cell.
-4. Organisms digest, pay gathering effort, turn, damp velocity, apply thrust and
+4. Organisms digest inventory carried into the tick, add newly gathered food to
+   inventory, pay gathering effort, turn, damp velocity, apply thrust and
    integrate; pay body/cognitive upkeep, age, check death and emit. Packets consume
    their reserves for viability without running a controller.
 5. Apply paid local plasticity; rebuild post-movement contact indexing.
@@ -54,6 +55,14 @@ share, using exact integer arithmetic. Unallocated milli-food remains in that
 cell; it is not awarded by thread timing or body-slot order. The maximum rounding
 remainder is less than one milli-food per requester per stock type. Gathering
 charges effort independently of action amount and available stock.
+
+Newly gathered food becomes digestible on the following tick. It remains carried
+material through this tick's contact phase, so an organism can transfer its intake
+without first filling its own energy reserves. The same delay applies to every
+organism and action. Untransferred food is retained for next tick's digestion;
+death releases it normally. Fresh intake cannot rescue an organism that exhausts
+its reserves this tick. This is an explicit assimilation delay, not a cooperation
+reward or a conditional change to metabolism.
 
 Transfer moves existing inventory to the nearest available physical contact,
 limited by sender stock and receiver capacity. Contact ties and conflicting pair

@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "transfer_probe.rs"]
+mod transfer_probe;
+
 #[test]
 #[ignore = "read-only validation of the user's current experiment library"]
 fn current_experiment_library_loads_without_rewriting_saves() {
@@ -2107,7 +2110,9 @@ fn family_diagnostics_count_juvenile_feeding_maturity_and_terminal_flow() {
     juvenile.age = s.settings.maturity_age - 1.0;
     juvenile.ancestry_depth = 1;
     juvenile.energy = 0.01;
-    juvenile.food = 0.0;
+    // Previously carried food bridges this last juvenile tick; fresh collection
+    // is observed separately and is only digestible on the following tick.
+    juvenile.food = 0.025;
     // This injected fixture was born before the measured window, not a new birth.
     juvenile.birth_tick = u32::MAX;
     put(&s, &q, 0, juvenile, &fixed(1, [0.0; 2]));
@@ -2331,6 +2336,103 @@ mod performance;
 
 #[path = "packet_tests.rs"]
 mod packets;
+
+#[test]
+fn transfer_from_fresh_gathering_does_not_require_reserve_saturation() {
+    let (d, q) = gpu();
+    for initial_energy in [20.0, 80.0, 100.0] {
+        let mut s = scene(&d, &q);
+        s.tick = 100_000;
+        let mut donor = body([602.0, 902.0]);
+        donor.energy = initial_energy;
+        donor.food = 0.0;
+        let mut recipient = body([607.0, 902.0]);
+        recipient.energy = 20.0;
+        recipient.food = 0.0;
+        recipient.lineage_id = 2;
+        let mut genes = fixed(2, [0.0; 2]);
+        genes[OUTPUT_BIAS + 1] = 1.0;
+        put(&s, &q, 0, donor, &genes);
+        put(&s, &q, 1, recipient, &fixed(0, [0.0; 2]));
+        // A stationary, willing donor, uncontested rich food, and a recipient
+        // continuously in contact isolate inventory physiology from behavior.
+        let cell = (902 / 4 * 512 + 602 / 4) as u64;
+        q.write_buffer(&s.resource_buffer, cell * 4, bytemuck::bytes_of(&8000u32));
+        step(&mut s, &d, &q, 100);
+        let a = s.agent_snapshot(&d, &q).unwrap();
+        let m = s.metrics(&d, &q).unwrap();
+        assert_eq!(m.action_ticks[2], 100);
+        assert_eq!(a[0].alive, 1);
+        assert_eq!(a[1].alive, 1);
+        assert_eq!(m.events[4], 100);
+        // Giving away intake means the donor pays upkeep from its own reserves.
+        near(a[0].energy, initial_energy - 100.0 * (0.005 + 0.06));
+        near(a[0].food, 0.0);
+        near(a[1].energy, 20.0 + 99.0 * 0.025 * 8.0 - 100.0 * 0.06);
+        near(a[1].food, 0.025);
+        near(m.food_ingested as f32, 99.0 * 0.025);
+    }
+}
+
+#[test]
+fn fresh_food_waits_one_tick_for_digestion_even_when_transfer_cannot_happen() {
+    let (d, q) = gpu();
+    for case in ["none", "distant", "disabled", "full"] {
+        let mut s = scene(&d, &q);
+        s.tick = 100_000;
+        s.settings.social_actions_enabled = case != "disabled";
+        let mut donor = body([602.0, 902.0]);
+        donor.energy = 20.0;
+        donor.food = 0.0;
+        let mut recipient = body([if case == "distant" { 620.0 } else { 607.0 }, 902.0]);
+        recipient.energy = 100.0;
+        recipient.food = if case == "full" { 8.0 } else { 0.0 };
+        recipient.lineage_id = 2;
+        let mut genes = fixed(if case == "none" { 0 } else { 2 }, [0.0; 2]);
+        genes[OUTPUT_BIAS + 1] = 1.0;
+        put(&s, &q, 0, donor, &genes);
+        put(&s, &q, 1, recipient, &fixed(0, [0.0; 2]));
+        let cell = (902 / 4 * 512 + 602 / 4) as u64;
+        q.write_buffer(&s.resource_buffer, cell * 4, bytemuck::bytes_of(&8000u32));
+        step(&mut s, &d, &q, 1);
+        let a = s.agent_snapshot(&d, &q).unwrap()[0];
+        near(a.collected, 0.025);
+        near(a.ingested, 0.0);
+        near(a.food, 0.025);
+        near(a.energy + a.spent, donor.energy);
+        assert_eq!(s.metrics(&d, &q).unwrap().events[4], 0, "{case}");
+        s.write_genome_slot(&q, 0, &fixed(0, [0.0; 2]));
+        step(&mut s, &d, &q, 1);
+        let b = s.agent_snapshot(&d, &q).unwrap()[0];
+        near(b.collected, 0.0);
+        near(b.ingested, 0.025);
+        near(b.food, 0.0);
+        near(b.energy + b.spent, a.energy + 0.025 * 8.0);
+    }
+}
+
+#[test]
+fn fresh_food_cannot_bypass_starvation_and_is_released_on_death() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.tick = 100_000;
+    let mut a = body([602.0, 902.0]);
+    a.energy = 0.01;
+    a.food = 0.0;
+    let mut genes = fixed(0, [0.0; 2]);
+    genes[OUTPUT_BIAS + 1] = 1.0;
+    put(&s, &q, 0, a, &genes);
+    let cell = (902 / 4 * 512 + 602 / 4) as u64;
+    q.write_buffer(&s.resource_buffer, cell * 4, bytemuck::bytes_of(&8000u32));
+    step(&mut s, &d, &q, 1);
+    let after = s.agent_snapshot(&d, &q).unwrap()[0];
+    assert_eq!(after.alive, 0);
+    near(after.ingested, 0.0);
+    near(after.energy, 0.0);
+    near(after.food, 0.0);
+    near(after.spent, a.energy);
+    near(s.metrics(&d, &q).unwrap().dropped_food as f32, 0.025);
+}
 
 #[test]
 fn juvenile_physiology_requires_external_food_but_generic_repeated_transfer_reaches_maturity() {

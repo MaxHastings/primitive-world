@@ -6,6 +6,7 @@ struct Camera {
 @group(1) @binding(0) var<storage, read> agents: array<Agent>;
 @group(1) @binding(1) var<storage, read> perceptions: array<Perception>;
 @group(1) @binding(2) var<storage, read> occupancy: array<atomic<u32>>;
+@group(1) @binding(3) var<uniform> params: SimParams;
 
 struct VertexOutput {
   @builtin(position) position: vec4<f32>,
@@ -44,7 +45,10 @@ fn vs(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: u32) -
   var corners = array<vec2<f32>, 6>(
     vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0),
     vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0));
-  let pixel = camera.point_size * select(2.0,0.6+0.08*sqrt(agent.energy),agent.alive==PACKET) * camera.zoom / camera.world_size.y;
+  // Display growth only; contact geometry and physiology are unchanged.
+  let growth = smoothstep(0.0, 1.0, growth_fraction(agent.age, params.sensor_and_padding.y));
+  let body_size = 1.0 + growth;
+  let pixel = camera.point_size * select(body_size,0.6+0.08*sqrt(agent.energy),agent.alive==PACKET) * camera.zoom / camera.world_size.y;
   let corner_offset = corners[vertex] * vec2<f32>(pixel / camera.aspect, pixel);
   return VertexOutput(vec4<f32>(ndc + corner_offset, 0.0, 1.0), vec4<f32>(color, 0.90));
 }

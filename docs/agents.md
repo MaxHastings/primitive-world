@@ -82,6 +82,12 @@ Movement and gathering can accompany any primary action. Transfer, impulse,
 emission, and reproduction share one primary effector. Impossible intentions are
 not replaced with useful ones. There are no controller target slots.
 
+Digestion uses inventory carried into the tick. Newly gathered food remains in
+inventory through contact and becomes digestible next tick, just like received
+food. Transfer can therefore allocate intake without requiring full energy
+reserves. This timing applies regardless of selected action; failed or unselected
+transfers leave food available for later digestion. No sharing policy is imposed.
+
 Turn output applies torque: `angular_velocity = 0.85*angular_velocity +
 0.0375*turn_effort`, then heading integrates angular velocity and wraps. Applied
 turn effort costs `0.02*abs(turn_effort)` energy; effort scales down when energy

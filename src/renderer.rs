@@ -162,6 +162,7 @@ impl Renderer {
                 storage_entry(0, wgpu::ShaderStages::VERTEX, true),
                 storage_entry(1, wgpu::ShaderStages::VERTEX, true),
                 storage_entry(2, wgpu::ShaderStages::VERTEX, true),
+                uniform_entry(3, wgpu::ShaderStages::VERTEX),
             ],
         });
         let agent_bind_groups = [
@@ -171,6 +172,7 @@ impl Renderer {
                 &simulation.agent_buffers[0],
                 &simulation.perception_buffer,
                 &simulation.occupancy_buffer,
+                &simulation.params_buffer,
             ),
             make_agent_group(
                 device,
@@ -178,6 +180,7 @@ impl Renderer {
                 &simulation.agent_buffers[1],
                 &simulation.perception_buffer,
                 &simulation.occupancy_buffer,
+                &simulation.params_buffer,
             ),
         ];
 
@@ -333,6 +336,7 @@ fn make_agent_group(
     agents: &wgpu::Buffer,
     perceptions: &wgpu::Buffer,
     occupancy: &wgpu::Buffer,
+    params: &wgpu::Buffer,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("agent render bind group"),
@@ -349,6 +353,10 @@ fn make_agent_group(
             wgpu::BindGroupEntry {
                 binding: 2,
                 resource: occupancy.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: params.as_entire_binding(),
             },
         ],
     })

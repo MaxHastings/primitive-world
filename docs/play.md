@@ -146,3 +146,7 @@ checkpoints 57, founder banks 21. Noncurrent data is rejected without conversion
 or deletion.
 Exports require new paths. See [headless observation](observing.md),
 [performance limits](performance.md), and the [implementation checklist](implementation-checklist.md).
+
+Juveniles appear at half adult width and height at birth, smoothly growing to
+full display size at maturity. This applies in every lens and is visual only;
+contact range and movement physics are unchanged. Packet sizing is unchanged.

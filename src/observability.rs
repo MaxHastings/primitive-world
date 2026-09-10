@@ -592,7 +592,6 @@ impl Simulation {
                 || (a.alive == 2
                     && (a.energy > a.packet_size + 0.001
                         || a.food != 0.0
-                        || a.velocity != [0.0; 2]
                         || a.hidden != [0.0; HIDDEN]))
                 || a.age < 0.0
                 || a.max_age < 1.0
