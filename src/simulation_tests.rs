@@ -335,13 +335,14 @@ fn environment_rotation_preserves_body_traits_and_is_not_a_controller_input() {
             assert_eq!(bytemuck::bytes_of(&expected), bytemuck::bytes_of(&b));
         }
         let params = params_for(10, 50_010, &settings, 1201);
+        assert_eq!(params.lifecycle[1], 50_010 / 47_003);
         assert_eq!(params.lifecycle[2], turns);
         assert_eq!(params.lifecycle[3], 50_010);
         assert_eq!(params.mutation[2], 1.0);
-        assert_eq!(
-            params.environment,
-            [1.0, 1.0, 1.0, settings.memory_write_energy]
-        );
+        assert_eq!(params.environment[0].to_bits(), 50_010 % 47_003);
+        assert_eq!(params.environment[1].to_bits(), 50_010 / 997);
+        assert_eq!(params.environment[2].to_bits(), 50_010 % 997);
+        assert_eq!(params.environment[3], settings.memory_write_energy);
         near(params.time_and_costs[3], 0.05);
     }
     for shader in [
@@ -1742,13 +1743,6 @@ fn contrast_preserves_mean_and_invalid_environment_settings_are_rejected() {
 }
 
 #[test]
-fn ecology_process_speed_is_independent_of_world_age() {
-    for age in [0, 50_000, 150_000, 375_000, 625_000, 750_000, u32::MAX] {
-        assert_eq!(ecological_pressures(age), [1.0, 1.0, 1.0, 0.0]);
-    }
-}
-
-#[test]
 fn fragmentation_preserves_habitat_mean() {
     let before = build_habitat_at(42, 30, 1.0);
     let mut after = before.clone();
@@ -2628,7 +2622,10 @@ fn ramp_settings_are_absent_and_old_ramp_state_is_rejected() {
     }
     for tick in [0, 50_000, 100_000, 3_000_000] {
         let p = params_for(tick, tick, &settings, 91);
-        near(p.environment[0], 1.0);
+        assert_eq!(p.lifecycle[1], tick / 47_003);
+        assert_eq!(p.environment[0].to_bits(), tick % 47_003);
+        assert_eq!(p.environment[1].to_bits(), tick / 997);
+        assert_eq!(p.environment[2].to_bits(), tick % 997);
         near(p.physical[3], 2.0);
         near(p.sensor_and_padding[2], 0.02);
         near(p.world_size[2], 0.01);

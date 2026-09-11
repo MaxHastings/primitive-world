@@ -226,6 +226,195 @@ fn install_linked_spatial(s: &mut Simulation, d: &wgpu::Device, linked: bool) {
     }
 }
 
+fn install_perception_inner_loops(s: &mut Simulation, d: &wgpu::Device, hoisted_rotation: bool) {
+    let source = live_source(include_str!("../shaders/perceive.wgsl"), 8).replace(
+        "HOISTED_ROTATION:bool=true",
+        &format!("HOISTED_ROTATION:bool={hoisted_rotation}"),
+    );
+    s.passes.insert(
+        "perceive_live".into(),
+        Compute::new(
+            d,
+            "perception inner-loop probe",
+            &source,
+            "main",
+            "rrwrrrwur",
+            pair(|bank| {
+                vec![
+                    &s.agent_buffers[bank],
+                    &s.resource_buffer,
+                    &s.ground_buffer,
+                    &s.occupancy_buffer,
+                    &s.audit_cell_offsets,
+                    &s.audit_indices,
+                    &s.perception_buffer,
+                    &s.params_buffer,
+                    &s.active_indices,
+                ]
+            }),
+        ),
+    );
+}
+
+fn install_hoisted_weather(s: &mut Simulation, d: &wgpu::Device, hoisted: bool) {
+    let source = include_str!("../shaders/resource_update.wgsl").replace(
+        "HOISTED_WEATHER:bool=true",
+        &format!("HOISTED_WEATHER:bool={hoisted}"),
+    );
+    let compute = s.passes.get_mut("resource").unwrap();
+    let layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("weather interpolation probe"),
+        bind_group_layouts: &[&compute.pipeline.get_bind_group_layout(0)],
+        push_constant_ranges: &[],
+    });
+    let shader = d.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("weather interpolation probe"),
+        source: wgpu::ShaderSource::Wgsl(shader_source(&source).into()),
+    });
+    compute.pipeline = d.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("weather interpolation probe"),
+        layout: Some(&layout),
+        module: &shader,
+        entry_point: Some("main"),
+        compilation_options: Default::default(),
+        cache: None,
+    });
+}
+
+#[test]
+fn hoisted_weather_preserves_tick_state() {
+    let (d, q) = gpu();
+    let mut s = Simulation::new(&d, &q, 42);
+    s.settings.population = 32;
+    let mut expected = Vec::new();
+    for (seed, tick) in [(42, 0), (91, 996), (3137, 47_002), (42, 999_998)] {
+        for hoisted in [false, true] {
+            install_hoisted_weather(&mut s, &d, hoisted);
+            s.seed = seed;
+            s.reset(&q);
+            s.tick = tick;
+            s.environment_start_age = 0;
+            s.update_params(&q);
+            step(&mut s, &d, &q, 2);
+            for (index, buffer) in [
+                &s.agent_buffers[s.current_buffer],
+                &s.resource_buffer,
+                &s.fertility_buffer,
+                &s.ground_buffer,
+                &s.ecology_buffer,
+                &s.death_stats_buffer,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let bytes = observability::read_buffer(&d, &q, buffer).unwrap();
+                if hoisted {
+                    assert!(
+                        bytes == expected[index],
+                        "weather interpolation changed seed={seed} tick={tick} buffer={index}"
+                    );
+                } else if expected.len() <= index {
+                    expected.push(bytes);
+                } else {
+                    expected[index] = bytes;
+                }
+            }
+        }
+    }
+}
+
+fn install_retained_inner_loops(s: &mut Simulation, d: &wgpu::Device, optimized: bool) {
+    install_neural_inner_loops(s, d, true, optimized, optimized);
+    install_perception_inner_loops(s, d, optimized);
+    install_hoisted_weather(s, d, optimized);
+}
+
+#[test]
+fn retained_inner_loops_preserve_tick_state() {
+    let (d, q) = gpu();
+    let mut s = Simulation::new(&d, &q, 42);
+    s.settings.population = 32;
+    let mut expected = Vec::new();
+    for optimized in [false, true] {
+        install_retained_inner_loops(&mut s, &d, optimized);
+        s.reset(&q);
+        step(&mut s, &d, &q, 32);
+        for (index, buffer) in [
+            &s.agent_buffers[s.current_buffer],
+            &s.perception_buffer,
+            &s.decision_buffer,
+            &s.fast_weight_buffers[0],
+            &s.fast_weight_buffers[1],
+            &s.trace_buffer,
+            &s.resource_buffer,
+            &s.fertility_buffer,
+            &s.ground_buffer,
+            &s.ecology_buffer,
+            &s.death_stats_buffer,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let bytes = observability::read_buffer(&d, &q, buffer).unwrap();
+            if optimized {
+                assert!(
+                    bytes == expected[index],
+                    "retained inner loop changed buffer {index}"
+                );
+            } else {
+                expected.push(bytes);
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "manual paired retained inner-loop throughput probe"]
+fn profile_retained_inner_loops() {
+    let (d, q) = gpu();
+    let mut s = Simulation::new(&d, &q, 42);
+    let (mut saves, _) = crate::experiments::list(&crate::experiments::save_root()).unwrap();
+    saves.sort_by_key(|saved| std::cmp::Reverse(saved.record.saved_at_ms));
+    let saved = &saves[0];
+    eprintln!(
+        "Saved world={} tick={} living={}",
+        saved.record.world, saved.record.tick, saved.record.living
+    );
+    for population in [1000, 4096, 0] {
+        for repeat in 0..5 {
+            let modes = if repeat % 2 == 0 {
+                [false, true]
+            } else {
+                [true, false]
+            };
+            for optimized in modes {
+                install_retained_inner_loops(&mut s, &d, optimized);
+                if population == 0 {
+                    s.load_game_checkpoint(
+                        &q,
+                        std::fs::File::open(saved.checkpoint()).unwrap(),
+                        (saved.record.seed, saved.record.tick, saved.record.living),
+                        saved.record.world,
+                    )
+                    .unwrap();
+                } else {
+                    s.settings.population = population;
+                    s.reset(&q);
+                }
+                step(&mut s, &d, &q, 32);
+                let start = std::time::Instant::now();
+                for _ in 0..16 {
+                    step(&mut s, &d, &q, 32);
+                }
+                eprintln!(
+                    "population={population} repeat={repeat} optimized={optimized}: {:.1} ticks/s",
+                    512.0 / start.elapsed().as_secs_f64()
+                );
+            }
+        }
+    }
+}
+
 #[test]
 #[ignore = "manual paired linked spatial benchmark"]
 fn profile_linked_spatial() {
@@ -443,10 +632,28 @@ fn profile_playback_optimizations() {
 }
 
 fn install_neural_input_layout(s: &mut Simulation, d: &wgpu::Device, coalesced: bool) {
+    install_neural_inner_loops(s, d, coalesced, true, true);
+}
+
+fn install_neural_inner_loops(
+    s: &mut Simulation,
+    d: &wgpu::Device,
+    coalesced: bool,
+    specialized: bool,
+    row_wise: bool,
+) {
     let source = |text: &str| {
         text.replace(
             "COALESCED_INPUTS:bool=true",
             &format!("COALESCED_INPUTS:bool={coalesced}"),
+        )
+        .replace(
+            "SPECIALIZED_BANKS:bool=true",
+            &format!("SPECIALIZED_BANKS:bool={specialized}"),
+        )
+        .replace(
+            "ROW_WISE_INPUTS:bool=true",
+            &format!("ROW_WISE_INPUTS:bool={row_wise}"),
         )
     };
     s.passes.insert(

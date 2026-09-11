@@ -1,3 +1,13 @@
+## GPU inner-loop reductions (unreleased)
+
+- Remove repeated neural bank division/remainder operations and stage sensory
+  weights by active row while preserving accumulation and learning-cost order.
+- Reuse one body-frame rotation per organism and pass weather epochs/remainders
+  through unused tick-parameter lanes, leaving ecological interpolation unchanged.
+- Add byte-exact state comparisons and a paired benchmark. Under a competing
+  Wallpaper workload, medians improved 1.5–8.7% on fresh populations and 2.6%
+  on a saved running world; see `docs/gpu-tick-performance.md`.
+
 ## Spatial indexing and tick submission (unreleased)
 
 - Rebuild spatial cells with heads and per-slot links, removing ten dispatches per

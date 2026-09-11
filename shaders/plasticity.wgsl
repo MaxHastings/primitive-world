@@ -20,11 +20,19 @@ fn update_fast(slot:u32,index:u32,pre:f32,post:f32,rate:f32,retention:f32,change
  let next=clamp(retention*old+rate*pre*post,-1.0,1.0);
  (*change)+=abs(next-old);set_fast(slot,index,next);
 }
+fn update_fast1(slot:u32,index:u32,pre:f32,post:f32,rate:f32,retention:f32,change:ptr<function,f32>){
+ if(!SPECIALIZED_BANKS){update_fast(slot,index,pre,post,rate,retention,change);return;}
+ let at=slot*FAST_BANK_STRIDE+index-FAST_BANK_STRIDE;let old=fast1[at];
+ let next=clamp(retention*old+rate*pre*post,-1.0,1.0);
+ (*change)+=abs(next-old);fast1[at]=next;
+}
 
 @group(0) @binding(8) var<storage,read> live_slots:array<u32>;
 // Stage input deltas contiguously, then preserve each unit's write-cost order.
 const COALESCED_INPUTS:bool=true;
 const DIRECT_ACCOUNTING:bool=true;
+const SPECIALIZED_BANKS:bool=true;
+const ROW_WISE_INPUTS:bool=true;
 var<workgroup> learned_inputs:array<f32,HIDDEN_COUNT*INPUT_COUNT>;
 var<workgroup> changes:array<f32,32>;
 // Every active unit uses the same presynaptic traces and output activations.
@@ -43,7 +51,14 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
   for(var k=h;k<TRACE_COUNT;k+=32u){let value=traces[trace_base+k];if(finite(value)){change+=abs(value);}traces[trace_base+k]=0.0;}
   if(unit_active(mask,h)&&finite(before[i].hidden[h])){change+=abs(before[i].hidden[h]);}
  }else{
-  if(COALESCED_INPUTS){for(var at=h;at<HIDDEN_COUNT*INPUT_COUNT;at+=32u){if(unit_active(mask,at/INPUT_COUNT)){learned_inputs[at]=fast_value(i,at);}}}
+  if(COALESCED_INPUTS){
+   if(ROW_WISE_INPUTS){
+    for(var unit=0u;unit<HIDDEN_COUNT;unit++){
+     if(!unit_active(mask,unit)){continue;}
+     for(var k=h;k<INPUT_COUNT;k+=32u){let at=unit*INPUT_COUNT+k;learned_inputs[at]=fast_value(i,at);}
+    }
+   }else{for(var at=h;at<HIDDEN_COUNT*INPUT_COUNT;at+=32u){if(unit_active(mask,at/INPUT_COUNT)){learned_inputs[at]=fast_value(i,at);}}}
+  }
   let retention=after[i].trace_retention;
   for(var k=h;k<INPUT_COUNT;k+=32u){let at=trace_base+k;let old=traces[at];let value=clamp(retention*old+(1.0-retention)*decisions[i].inputs[k],-1.0,1.0);change+=abs(value-old);traces[at]=value;input_traces[k]=value;}
   if(unit_active(mask,h)){let at=trace_base+INPUT_COUNT+h;let old=traces[at];let value=clamp(retention*old+(1.0-retention)*decisions[i].hidden[h],-1.0,1.0);change+=abs(value-old);traces[at]=value;hidden_traces[h]=value;}
@@ -59,14 +74,21 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
   }
   for(var k=0u;k<HIDDEN_COUNT;k++){if(unit_active(mask,k)){
    let pre=hidden_traces[k];
-   update_fast(i,fast_recurrent(h,k),pre,candidate,rate,retention,&change);
-   update_fast(i,fast_gate(h,k),pre,decisions[i].update_gates[h],rate,retention,&change);
+   update_fast1(i,fast_recurrent(h,k),pre,candidate,rate,retention,&change);
+   update_fast1(i,fast_gate(h,k),pre,decisions[i].update_gates[h],rate,retention,&change);
   }}
-  for(var o=0u;o<OUTPUT_COUNT;o++){update_fast(i,fast_output(o,h),hidden_traces[h],output_activity[o],rate,retention,&change);}
+  for(var o=0u;o<OUTPUT_COUNT;o++){update_fast1(i,fast_output(o,h),hidden_traces[h],output_activity[o],rate,retention,&change);}
   change+=abs(decisions[i].hidden[h]-before[i].hidden[h]);
  }
  changes[h]=change;workgroupBarrier();
- if(COALESCED_INPUTS && decisions[i].invalid==0u){for(var at=h;at<HIDDEN_COUNT*INPUT_COUNT;at+=32u){if(unit_active(mask,at/INPUT_COUNT)){set_fast(i,at,learned_inputs[at]);}}}
+ if(COALESCED_INPUTS && decisions[i].invalid==0u){
+  if(ROW_WISE_INPUTS){
+   for(var unit=0u;unit<HIDDEN_COUNT;unit++){
+    if(!unit_active(mask,unit)){continue;}
+    for(var k=h;k<INPUT_COUNT;k+=32u){let at=unit*INPUT_COUNT+k;set_fast(i,at,learned_inputs[at]);}
+   }
+  }else{for(var at=h;at<HIDDEN_COUNT*INPUT_COUNT;at+=32u){if(unit_active(mask,at/INPUT_COUNT)){set_fast(i,at,learned_inputs[at]);}}}
+ }
 
  if(h==0u){var total=0.0;for(var k=0u;k<32u;k++){total+=changes[k];}let cost=total*params.environment.w;
   // Accounting changes only three fields; avoid copying the full body record.
@@ -81,8 +103,8 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
   }
  }
 }
-fn fast_value(slot:u32,index:u32)->f32 {let at=slot*FAST_BANK_STRIDE+index%FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){return fast0[at];}return fast1[at];}
-fn set_fast(slot:u32,index:u32,value:f32) {let at=slot*FAST_BANK_STRIDE+index%FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){fast0[at]=value;}else{fast1[at]=value;}}
+fn fast_value(slot:u32,index:u32)->f32 {if(!SPECIALIZED_BANKS){let at=slot*FAST_BANK_STRIDE+index%FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){return fast0[at];}return fast1[at];}let base=slot*FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){return fast0[base+index];}return fast1[base+index-FAST_BANK_STRIDE];}
+fn set_fast(slot:u32,index:u32,value:f32) {if(!SPECIALIZED_BANKS){let at=slot*FAST_BANK_STRIDE+index%FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){fast0[at]=value;}else{fast1[at]=value;}return;}let base=slot*FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){fast0[base+index]=value;}else{fast1[base+index-FAST_BANK_STRIDE]=value;}}
 
 // Accounting horizons are explicit engine limits, never ecological extinction.
 // Food low-word counter 0 has the explicitly maintained high word at 14.

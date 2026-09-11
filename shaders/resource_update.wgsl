@@ -5,6 +5,7 @@
 @group(0) @binding(4) var<storage, read> terrain: array<vec4<f32>>;
 @group(0) @binding(5) var<storage, read_write> ecology: array<vec4<f32>>;
 const GRID:u32=512u;
+const HOISTED_WEATHER:bool=true;
 fn climate_corner(p:vec2<u32>, epoch:u32, salt:u32)->f32 {
   return f32(hash_u32(params.lifecycle.x ^ salt ^ p.x*1973u ^ p.y*9277u ^ epoch*26699u)&65535u)/65535.0;
 }
@@ -14,9 +15,10 @@ fn spatial(uv:vec2<f32>, scale:u32, epoch:u32, salt:u32)->f32 {
   return mix(mix(climate_corner(lo,epoch,salt),climate_corner(vec2<u32>(hi.x,lo.y),epoch,salt),t.x),
     mix(climate_corner(vec2<u32>(lo.x,hi.y),epoch,salt),climate_corner(hi,epoch,salt),t.x),t.y);
 }
-fn weather(uv:vec2<f32>, scale:u32, period:u32, salt:u32)->f32 {
-  let epoch=params.lifecycle.w/period;
-  let t=f32(params.lifecycle.w%period)/f32(period);
+fn weather(uv:vec2<f32>, scale:u32, period:u32, salt:u32, cached_epoch:u32, cached_remainder:u32)->f32 {
+  var epoch=cached_epoch;var remainder=cached_remainder;
+  if(!HOISTED_WEATHER){epoch=params.lifecycle.w/period;remainder=params.lifecycle.w%period;}
+  let t=f32(remainder)/f32(period);
   let blend=t*t*t*(t*(t*6.0-15.0)+10.0);
   return mix(spatial(uv,scale,epoch,salt),spatial(uv,scale,epoch+1u,salt),blend);
 }
@@ -38,8 +40,9 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
   let elevation=spatial(uv,7u,0u,173u);
   let retention=0.25+0.65*spatial(uv,11u,0u,3137u);
   let permeability=0.1+0.8*spatial(uv,9u,0u,712u);
-  let regional=weather(uv,5u,47003u,119u);
-  let local=weather(uv,23u,997u,197u);
+  // environment.xyz carry raw u32 bits, not numeric floats; see SimParams.
+  let regional=weather(uv,5u,47003u,119u,params.lifecycle.y,bitcast<u32>(params.environment.x));
+  let local=weather(uv,23u,997u,197u,bitcast<u32>(params.environment.y),bitcast<u32>(params.environment.z));
   let rainfall=params.time_and_costs.x*exp(1.5*(regional-0.5)+0.6*(local-0.5));
   let temperature=clamp(params.world_size.w+0.2*(regional-0.5)+0.08*(local-0.5)-0.12*(elevation-0.5),0.0,1.0);
   var pools=ecology[index]; // water, mineral, detritus, reserved

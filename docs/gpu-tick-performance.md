@@ -200,3 +200,48 @@ normal presentation refresh policy.
 Validation: 169 release tests passed, 31 manual diagnostics ignored; formatting,
 Clippy with warnings denied, and 12 Python checks passed. The release wallpaper
 build was also exercised in the paired playback runs above.
+
+## Neural, sensing, and weather inner loops
+
+The decision and plasticity kernels now avoid integer division and remainder for
+two-bank addressing. Biases and the recurrent, gate, and output regions use
+bank-specific accessors, while sensory weight staging walks active rows so it no
+longer divides every flattened connection index by the input count. Per-unit
+accumulation and learning-cost order are unchanged.
+
+Perception calculates the body-frame sine and cosine once per organism rather
+than once per accepted food cell or neighboring body. Ecology receives the two
+weather epochs and remainders in otherwise-unused tick-parameter lanes, removing
+four uniform integer division/remainder operations from each of 262,144 cells.
+The interpolation arithmetic remains on the GPU in its original order.
+
+A September 11, 2026 paired release probe ran with the Wallpaper experiment still
+active. Each mode warmed for 32 ticks and measured 512 ticks in batches of 32;
+five pairs alternated order. The saved-world rows repeatedly loaded one isolated
+snapshot and did not rewrite it.
+
+| Workload | Previous inner loops (ticks/s) | Retained inner loops (ticks/s) | Change |
+| --- | ---: | ---: | ---: |
+| 1,000 starting bodies | 1,072.0 | 1,087.9 | +1.5% |
+| 4,096 starting bodies | 610.6 | 663.7 | +8.7% |
+| Saved world 289, tick 91,609, 930 living | 944.7 | 969.5 | +2.6% |
+
+These are medians under a competing GPU workload, so small differences remain
+workload-sensitive and should not be added to earlier percentages. Full-state
+comparisons cover bodies, perception, decisions, learned weights, traces,
+resources, fertility, ground, ecology, and counters. Weather parity also spans
+both weather-period boundaries and a terrain epoch boundary.
+
+Larger 16- and 32-thread live workgroups, ordinary read-only ground loads, fast
+single-wrap grid indexing, and comparison-based sensory sectors were measured and
+removed. They were neutral or slower on the fresh and saved workloads; the sector
+prototype also differed from `atan2` at exact angular boundaries.
+
+Reproduce the retained comparison with:
+
+```sh
+cargo test --release profile_retained_inner_loops -- --ignored --nocapture --test-threads=1
+```
+
+Validation: 170 release tests passed and 32 manual diagnostics were ignored;
+formatting, Clippy with warnings denied, and 12 Python checks passed.

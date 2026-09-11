@@ -7,6 +7,12 @@ resolution, biological cadence and save formats are unchanged. See the
 [paired wallpaper measurements](gpu-tick-performance.md#spatial-links-and-dynamic-tick-parameters)
 for workload and validation details.
 
+Additional exact inner-loop changes remove repeated neural bank division, hoist
+body-frame rotation, and precompute weather integer indices. Paired headless
+medians improved about 1.5% at 1,000 starting bodies, 8.7% at 4,096, and 2.6% on
+a saved running world under a competing Wallpaper workload. See the
+[inner-loop measurements](gpu-tick-performance.md#neural-sensing-and-weather-inner-loops).
+
 The model has 16 potential recurrent units, with 1–16 expressed per organism.
 Decisions and local plasticity use a cooperative GPU workgroup per living body.
 Each lane evaluates a unit or output, sharing intermediate activities through

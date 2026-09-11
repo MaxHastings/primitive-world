@@ -63,6 +63,16 @@ pub const GENOME_BANK_STRIDE: usize = GENOME_SIZE.div_ceil(GENOME_BANK_COUNT);
 /// connections; biases remain inherited-only.
 pub const CONNECTION_COUNT: usize = HIDDEN * INPUTS + 2 * HIDDEN * HIDDEN + OUTPUTS * HIDDEN;
 pub const FAST_BANK_STRIDE: usize = CONNECTION_COUNT / 2;
+// Bank-specific shader accessors require biases in bank 0 and all recurrent,
+// gate, and output connections in bank 1. Fail compilation if the layout drifts.
+const _: () = {
+    assert!(GENOME_BANK_COUNT == 2);
+    assert!(INPUT_BASE <= GENOME_BANK_STRIDE);
+    assert!(RECURRENT_BASE >= GENOME_BANK_STRIDE);
+    assert!(GENOME_SIZE <= 2 * GENOME_BANK_STRIDE);
+    assert!(HIDDEN * INPUTS >= FAST_BANK_STRIDE);
+    assert!(CONNECTION_COUNT == 2 * FAST_BANK_STRIDE);
+};
 pub const TRACE_COUNT: usize = INPUTS + HIDDEN + OUTPUTS;
 pub const ACTIVE_MASK_ALL: u32 = (1u32 << HIDDEN) - 1;
 #[repr(C)]
@@ -265,7 +275,9 @@ pub struct SimParams {
     pub physical: [f32; 4],
     pub lifecycle: [u32; 4],
     pub mutation: [f32; 4],
-    /// Capped ecological pressure: extended mobility, fragmentation, seasons.
+    /// Weather u32 payloads stored with from_bits (never float arithmetic):
+    /// [regional remainder, local epoch, local remainder, memory-write cost].
+    /// The regional epoch lives in lifecycle[1]; WGSL decodes with bitcast<u32>.
     pub environment: [f32; 4],
 }
 #[repr(C)]

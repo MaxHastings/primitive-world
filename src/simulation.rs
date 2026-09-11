@@ -1901,16 +1901,14 @@ impl Simulation {
         Some(result)
     }
 }
-/// Environmental processes use ordinary speed from the first tick.
-pub(crate) fn ecological_pressures(_age: u32) -> [f32; 4] {
-    [1.0, 1.0, 1.0, 0.0]
-}
 fn configured_ecology_time(tick: u32, _s: &SimSettings) -> u32 {
     tick
 }
 
 fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> SimParams {
     let climate = crate::climate::at(environment_tick, seed, s.flourishing_start);
+    let regional_epoch = environment_tick / 47_003;
+    let local_epoch = environment_tick / 997;
     SimParams {
         world_size: [
             s.habitat_width,
@@ -1946,18 +1944,24 @@ fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> S
             s.motor_response_gain,
             packet_fusion_radius(tick),
         ],
-        lifecycle: [seed, 0, s.environment_rotation, environment_tick],
+        lifecycle: [
+            seed,
+            regional_epoch,
+            s.environment_rotation,
+            environment_tick,
+        ],
         mutation: [
             BASE_MUTATION_PROBABILITY,
             BASE_MUTATION_MAGNITUDE,
             f32::from(s.evolving_landscape),
             s.active_unit_upkeep,
         ],
-        environment: {
-            let mut pressure = ecological_pressures(tick);
-            pressure[3] = s.memory_write_energy;
-            pressure
-        },
+        environment: [
+            f32::from_bits(environment_tick % 47_003),
+            f32::from_bits(local_epoch),
+            f32::from_bits(environment_tick % 997),
+            s.memory_write_energy,
+        ],
     }
 }
 #[cfg(test)]

@@ -6,8 +6,14 @@
 @group(0) @binding(5) var<storage,read> genomes1:array<f32>;
 @group(0) @binding(6) var<storage,read> fast0:array<f32>;
 @group(0) @binding(7) var<storage,read> fast1:array<f32>;
-fn gene(slot:u32,index:u32)->f32 { let bank=index/GENOME_BANK_STRIDE;let local=index%GENOME_BANK_STRIDE;let at=slot*GENOME_BANK_STRIDE+local; if(bank==0u){return genomes0[at];} return genomes1[at]; }
+// These constants retain exact reference paths for paired performance probes.
+const SPECIALIZED_BANKS:bool=true;
+const ROW_WISE_INPUTS:bool=true;
+fn gene(slot:u32,index:u32)->f32 {if(!SPECIALIZED_BANKS){let bank=index/GENOME_BANK_STRIDE;let local=index%GENOME_BANK_STRIDE;let at=slot*GENOME_BANK_STRIDE+local;if(bank==0u){return genomes0[at];}return genomes1[at];}let base=slot*GENOME_BANK_STRIDE;if(index<GENOME_BANK_STRIDE){return genomes0[base+index];}return genomes1[base+index-GENOME_BANK_STRIDE];}
+fn gene0(slot:u32,index:u32)->f32 {if(SPECIALIZED_BANKS){return genomes0[slot*GENOME_BANK_STRIDE+index];}return gene(slot,index);}
+fn gene1(slot:u32,index:u32)->f32 {if(SPECIALIZED_BANKS){return genomes1[slot*GENOME_BANK_STRIDE+index-GENOME_BANK_STRIDE];}return gene(slot,index);}
 fn effective(genome:f32,slot:u32,index:u32)->f32{return clamp(genome+fast_value(slot,index),-4.0,4.0);}
+fn effective1(genome:f32,slot:u32,index:u32)->f32{if(SPECIALIZED_BANKS){return clamp(genome+fast1[slot*FAST_BANK_STRIDE+index-FAST_BANK_STRIDE],-4.0,4.0);}return effective(genome,slot,index);}
 fn fast_input(h:u32,k:u32)->u32{return h*INPUT_COUNT+k;}
 fn fast_recurrent(h:u32,k:u32)->u32{return HIDDEN_COUNT*INPUT_COUNT+h*HIDDEN_COUNT+k;}
 fn fast_gate(h:u32,k:u32)->u32{return HIDDEN_COUNT*INPUT_COUNT+HIDDEN_COUNT*HIDDEN_COUNT+h*HIDDEN_COUNT+k;}
@@ -48,26 +54,31 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
  for(var k=h;k<INPUT_COUNT;k+=32u){if(!finite(x[k])){atomicStore(&fault,1u);x[k]=0.0;}x[k]=clamp(x[k],-8.0,8.0);}
  workgroupBarrier();
  if(COALESCED_INPUTS){
-  for(var at=h;at<HIDDEN_COUNT*INPUT_COUNT;at+=32u){
-   if(unit_active(mask,at/INPUT_COUNT)){input_weights[at]=effective(gene(i,INPUT_BASE+at),i,at);}
+  if(ROW_WISE_INPUTS){
+   for(var unit=0u;unit<HIDDEN_COUNT;unit++){
+    if(!unit_active(mask,unit)){continue;}
+    for(var k=h;k<INPUT_COUNT;k+=32u){let at=unit*INPUT_COUNT+k;input_weights[at]=effective(gene(i,INPUT_BASE+at),i,at);}
+   }
+  }else{
+   for(var at=h;at<HIDDEN_COUNT*INPUT_COUNT;at+=32u){if(unit_active(mask,at/INPUT_COUNT)){input_weights[at]=effective(gene(i,INPUT_BASE+at),i,at);}}
   }
   workgroupBarrier();
  }
  if(unit_active(mask,h)){
-  var sum=gene(i,NODE_BIAS+h);
+  var sum=gene0(i,NODE_BIAS+h);
   for(var k=0u;k<INPUT_COUNT;k++){var weight=0.0;if(COALESCED_INPUTS){weight=input_weights[h*INPUT_COUNT+k];}else{weight=effective(gene(i,INPUT_BASE+h*INPUT_COUNT+k),i,fast_input(h,k));}sum+=weight*x[k];}
-  for(var k=0u;k<HIDDEN_COUNT;k++){if(unit_active(mask,k)){sum+=effective(gene(i,RECURRENT_BASE+h*HIDDEN_COUNT+k),i,fast_recurrent(h,k))*agents[i].hidden[k];}}
+  for(var k=0u;k<HIDDEN_COUNT;k++){if(unit_active(mask,k)){sum+=effective1(gene1(i,RECURRENT_BASE+h*HIDDEN_COUNT+k),i,fast_recurrent(h,k))*agents[i].hidden[k];}}
   if(!finite(sum)){atomicStore(&fault,1u);sum=0.0;}candidates[h]=tanh(sum);
  }
  workgroupBarrier();
  if(unit_active(mask,h)){
-  var sum=gene(i,GATE_BIAS+h);
-  for(var k=0u;k<HIDDEN_COUNT;k++){if(unit_active(mask,k)){sum+=effective(gene(i,GATE_BASE+h*HIDDEN_COUNT+k),i,fast_gate(h,k))*candidates[k];}}
+  var sum=gene0(i,GATE_BIAS+h);
+  for(var k=0u;k<HIDDEN_COUNT;k++){if(unit_active(mask,k)){sum+=effective1(gene1(i,GATE_BASE+h*HIDDEN_COUNT+k),i,fast_gate(h,k))*candidates[k];}}
   if(!finite(sum)){atomicStore(&fault,1u);sum=0.0;}let gate=clamp(sum,0.0,1.0);gates[h]=gate;
   states[h]=(1.0-gate)*agents[i].hidden[h]+gate*candidates[h];if(!finite(states[h])){atomicStore(&fault,1u);states[h]=0.0;}
  }
  workgroupBarrier();
- if(h<OUTPUT_COUNT){var value=gene(i,OUTPUT_BIAS+h);for(var k=0u;k<HIDDEN_COUNT;k++){if(unit_active(mask,k)){value+=effective(gene(i,OUTPUT_BASE+h*HIDDEN_COUNT+k),i,fast_output(h,k))*states[k];}}if(!finite(value)){atomicStore(&fault,1u);value=0.0;}outputs[h]=value;}
+ if(h<OUTPUT_COUNT){var value=gene0(i,OUTPUT_BIAS+h);for(var k=0u;k<HIDDEN_COUNT;k++){if(unit_active(mask,k)){value+=effective1(gene1(i,OUTPUT_BASE+h*HIDDEN_COUNT+k),i,fast_output(h,k))*states[k];}}if(!finite(value)){atomicStore(&fault,1u);value=0.0;}outputs[h]=value;}
  workgroupBarrier();
  if(h==0u){let p=perceptions[i];var d:Decision;d.evaluated=1u;d.invalid=atomicLoad(&fault);
  if(!COOPERATIVE_OUTPUTS){for(var k=0u;k<INPUT_COUNT;k++){d.inputs[k]=x[k];}}
@@ -94,4 +105,4 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
   if(h<6u){decisions[i].scores[h]=outputs[h];}
  }
 }
-fn fast_value(slot:u32,index:u32)->f32 {let at=slot*FAST_BANK_STRIDE+index%FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){return fast0[at];}return fast1[at];}
+fn fast_value(slot:u32,index:u32)->f32 {if(!SPECIALIZED_BANKS){let at=slot*FAST_BANK_STRIDE+index%FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){return fast0[at];}return fast1[at];}let base=slot*FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){return fast0[base+index];}return fast1[base+index-FAST_BANK_STRIDE];}
