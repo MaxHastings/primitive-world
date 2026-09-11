@@ -1,3 +1,12 @@
+## GPU tick scheduling and plasticity traffic (unreleased)
+
+- Group consecutive simulation dispatches into three compute passes per ordinary
+  tick, with explicit boundaries for copies, clears, and optional observers.
+- Update plasticity energy accounting in place without rewriting the full body.
+  Weights remain f32; model rules and checkpoint layout are unchanged.
+- Add exact-state regression coverage and a paired throughput diagnostic. See
+  [GPU tick performance](docs/gpu-tick-performance.md) for reproduction and limits.
+
 ## 0.9.2 — depth-biased hereditary retention
 
 - Every newborn challenges two random pool entries. Replace the shallower stored

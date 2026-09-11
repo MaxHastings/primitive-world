@@ -239,3 +239,122 @@ fn profile_neural_input_layout_and_capacity() {
         }
     }
 }
+
+// Keep a reference kernel to compare exact numerical state and paired throughput.
+fn install_tick_optimizations(
+    s: &mut Simulation,
+    d: &wgpu::Device,
+    grouped: bool,
+    accounting: bool,
+) {
+    s.separate_compute_passes = !grouped;
+    let name = "plastic";
+    let source = include_str!("../shaders/plasticity.wgsl").replace(
+        "DIRECT_ACCOUNTING:bool=true",
+        &format!("DIRECT_ACCOUNTING:bool={accounting}"),
+    );
+    let compute = s.passes.get_mut(name).unwrap();
+    let layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("optimization reference"),
+        bind_group_layouts: &[&compute.pipeline.get_bind_group_layout(0)],
+        push_constant_ranges: &[],
+    });
+    let shader = d.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some(name),
+        source: wgpu::ShaderSource::Wgsl(shader_source(&source).into()),
+    });
+    compute.pipeline = d.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some(name),
+        layout: Some(&layout),
+        module: &shader,
+        entry_point: Some("main"),
+        compilation_options: Default::default(),
+        cache: None,
+    });
+}
+
+#[test]
+fn tick_optimizations_preserve_state_across_climate_epochs() {
+    let (d, q) = gpu();
+    let mut s = Simulation::new(&d, &q, 42);
+    s.settings.population = 32;
+    for (seed, rotation, age) in [(42, 0, 0), (91, 1, 995), (3137, 3, 47001), (42, 2, 999998)] {
+        let mut expected = Vec::new();
+        for optimized in [false, true] {
+            install_tick_optimizations(&mut s, &d, optimized, optimized);
+            s.seed = seed;
+            s.settings.environment_rotation = rotation;
+            s.reset(&q);
+            s.environment_start_age = age;
+            step(&mut s, &d, &q, 8);
+            // A second batch verifies parameter updates across command submissions.
+            step(&mut s, &d, &q, 8);
+            for (index, buffer) in [
+                &s.agent_buffers[s.current_buffer],
+                &s.decision_buffer,
+                &s.fast_weight_buffers[0],
+                &s.fast_weight_buffers[1],
+                &s.trace_buffer,
+                &s.resource_buffer,
+                &s.fertility_buffer,
+                &s.ground_buffer,
+                &s.ecology_buffer,
+                &s.death_stats_buffer,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let bytes = observability::read_buffer(&d, &q, buffer).unwrap();
+                if optimized {
+                    assert!(
+                        bytes == expected[index],
+                        "seed={seed} rotation={rotation} age={age} buffer={index}"
+                    );
+                } else {
+                    expected.push(bytes);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "manual paired compute-pass and plasticity-accounting throughput probe"]
+fn profile_tick_optimizations() {
+    let instance = wgpu::Instance::new(&Default::default());
+    let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
+    eprintln!("Adapter: {:?}", adapter.get_info());
+    let (d, q) = pollster::block_on(adapter.request_device(
+        &wgpu::DeviceDescriptor {
+            label: Some("tick optimization profiler"),
+            required_features: wgpu::Features::empty(),
+            required_limits: adapter.limits(),
+            memory_hints: wgpu::MemoryHints::Performance,
+        },
+        None,
+    ))
+    .unwrap();
+    let mut s = Simulation::new(&d, &q, 42);
+    for population in [32, 1000, 4096] {
+        s.settings.population = population;
+        for repeat in 0..3 {
+            let mut modes = vec![(false, false), (true, false), (true, true)];
+            if repeat % 2 == 1 {
+                modes.reverse();
+            }
+            for (grouped, accounting) in modes {
+                install_tick_optimizations(&mut s, &d, grouped, accounting);
+                s.reset(&q);
+                step(&mut s, &d, &q, 32);
+                let start = std::time::Instant::now();
+                for _ in 0..16 {
+                    step(&mut s, &d, &q, 32);
+                }
+                eprintln!(
+                    "population={population} repeat={repeat} grouped={grouped} accounting={accounting}: {:.1} ticks/s",
+                    512.0 / start.elapsed().as_secs_f64()
+                );
+            }
+        }
+    }
+}

@@ -126,6 +126,64 @@ impl Compute {
         pass.dispatch_workgroups(x, y, 1);
     }
 }
+// Compute dispatches have separate usage scopes, so wgpu inserts storage
+// dependencies within a pass. Copies, clears, and observers flush the batch.
+#[derive(Default)]
+struct ComputeBatch<'a> {
+    commands: Vec<(&'a Compute, usize, [u32; 2], Option<&'a wgpu::Buffer>)>,
+    separate: bool,
+}
+impl<'a> ComputeBatch<'a> {
+    fn dispatch(&mut self, compute: &'a Compute, group: usize, x: u32, y: u32) {
+        self.commands.push((compute, group, [x, y], None));
+    }
+    fn indirect(&mut self, compute: &'a Compute, group: usize, args: &'a wgpu::Buffer) {
+        self.commands.push((compute, group, [0, 0], Some(args)));
+    }
+    fn scan(&mut self, passes: &'a HashMap<String, Compute>, name: &str, count: u32) {
+        self.dispatch(
+            &passes[&format!("{name}_blocks")],
+            0,
+            count.div_ceil(256),
+            1,
+        );
+        self.dispatch(&passes[&format!("{name}_sums")], 0, 1, 1);
+        self.dispatch(&passes[&format!("{name}_add")], 0, count.div_ceil(256), 1);
+    }
+    fn flush(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        if self.commands.is_empty() {
+            return;
+        }
+        let separate = self.separate;
+        // Preserve per-dispatch timestamp probes without requiring timestamp
+        // writes inside passes on production adapters.
+        #[cfg(test)]
+        let separate = separate || self.commands.iter().any(|(c, _, _, _)| c.timing.is_some());
+        if separate {
+            for (compute, group, [x, y], args) in self.commands.drain(..) {
+                if let Some(args) = args {
+                    compute.dispatch_indirect(encoder, group, args);
+                } else {
+                    compute.dispatch(encoder, group, x, y);
+                }
+            }
+        } else {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("simulation dispatch batch"),
+                ..Default::default()
+            });
+            for (compute, group, [x, y], args) in self.commands.drain(..) {
+                pass.set_pipeline(&compute.pipeline);
+                pass.set_bind_group(0, &compute.groups[group], &[]);
+                if let Some(args) = args {
+                    pass.dispatch_workgroups_indirect(args, 0);
+                } else {
+                    pass.dispatch_workgroups(x, y, 1);
+                }
+            }
+        }
+    }
+}
 fn buffer(device: &wgpu::Device, name: &str, size: u64) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
         label: Some(name),
@@ -205,6 +263,8 @@ pub struct Simulation {
     ecology_buffer: wgpu::Buffer,
     terrain_buffer: wgpu::Buffer,
     terrain_epoch: u32,
+    #[cfg(test)]
+    separate_compute_passes: bool,
     pub(crate) death_stats_buffer: wgpu::Buffer,
     event_buffer: wgpu::Buffer,
     summary_buffer: wgpu::Buffer,
@@ -961,6 +1021,8 @@ impl Simulation {
             ecology_buffer,
             terrain_buffer,
             terrain_epoch: 0,
+            #[cfg(test)]
+            separate_compute_passes: false,
             death_stats_buffer,
             event_buffer,
             summary_buffer,
@@ -1244,10 +1306,11 @@ impl Simulation {
     fn dispatch(&self, e: &mut wgpu::CommandEncoder, name: &str, group: usize, x: u32, y: u32) {
         self.passes[name].dispatch(e, group, x, y);
     }
+    #[cfg(test)]
     fn scan(&self, e: &mut wgpu::CommandEncoder, name: &str, count: u32) {
-        self.dispatch(e, &format!("{name}_blocks"), 0, count.div_ceil(256), 1);
-        self.dispatch(e, &format!("{name}_sums"), 0, 1, 1);
-        self.dispatch(e, &format!("{name}_add"), 0, count.div_ceil(256), 1);
+        let mut batch = ComputeBatch::default();
+        batch.scan(&self.passes, name, count);
+        batch.flush(e);
     }
 
     pub fn encode_ticks(
@@ -1279,6 +1342,11 @@ impl Simulation {
             .collect();
         queue.write_buffer(&self.tick_params_buffer, 0, bytemuck::cast_slice(&ps));
         let groups = MAX_AGENTS.div_ceil(64);
+        let mut batch = ComputeBatch::default();
+        #[cfg(test)]
+        {
+            batch.separate = self.separate_compute_passes;
+        }
         for offset in 0..ticks {
             let environment_tick = configured_ecology_time(self.tick, &self.settings)
                 .saturating_add(self.environment_start_age);
@@ -1293,9 +1361,11 @@ impl Simulation {
                     )),
                     usage: wgpu::BufferUsages::COPY_SRC,
                 });
+                batch.flush(e);
                 e.copy_buffer_to_buffer(&staging, 0, &self.terrain_buffer, 0, staging.size());
                 self.terrain_epoch = epoch;
             }
+            batch.flush(e);
             e.copy_buffer_to_buffer(
                 &self.tick_params_buffer,
                 offset as u64 * std::mem::size_of::<SimParams>() as u64,
@@ -1306,22 +1376,28 @@ impl Simulation {
             let s = self.current_buffer;
             let d = 1 - s;
             // Only slots already dead at tick start may be reused: disjoint parent/child writes.
-            self.dispatch(e, "free", s, groups, 1);
-            self.scan(e, "free", MAX_AGENTS);
-            self.dispatch(e, "free_compact", 0, groups, 1);
-            self.dispatch(e, "resource", 0, 64, 64);
-            self.dispatch(e, "clear", 0, 32, 32);
-            self.dispatch(e, "count", s, groups, 1);
-            self.scan(e, "spatial", SPATIAL_CELL_COUNT);
-            self.dispatch(e, "cursors", 0, 1024, 1);
-            self.dispatch(e, "scatter", s, groups, 1);
-            self.passes["perceive_live"].dispatch_indirect(e, s, &self.active_indices);
-            self.passes["decide_live"].dispatch_indirect(e, s, &self.cognitive_dispatch);
-            self.dispatch(e, "observe_signals", s, groups, 1);
-            self.dispatch(e, "observe_memory", s, groups, 1);
-            self.dispatch(e, "consume", s, RESOURCE_GRID * RESOURCE_GRID / 64, 1);
+            batch.dispatch(&self.passes["free"], s, groups, 1);
+            batch.scan(&self.passes, "free", MAX_AGENTS);
+            batch.dispatch(&self.passes["free_compact"], 0, groups, 1);
+            batch.dispatch(&self.passes["resource"], 0, 64, 64);
+            batch.dispatch(&self.passes["clear"], 0, 32, 32);
+            batch.dispatch(&self.passes["count"], s, groups, 1);
+            batch.scan(&self.passes, "spatial", SPATIAL_CELL_COUNT);
+            batch.dispatch(&self.passes["cursors"], 0, 1024, 1);
+            batch.dispatch(&self.passes["scatter"], s, groups, 1);
+            batch.indirect(&self.passes["perceive_live"], s, &self.active_indices);
+            batch.indirect(&self.passes["decide_live"], s, &self.cognitive_dispatch);
+            batch.dispatch(&self.passes["observe_signals"], s, groups, 1);
+            batch.dispatch(&self.passes["observe_memory"], s, groups, 1);
+            batch.dispatch(
+                &self.passes["consume"],
+                s,
+                RESOURCE_GRID * RESOURCE_GRID / 64,
+                1,
+            );
             // Preserve dead records (including slot generations) with a bulk GPU
             // copy. Only living bodies need the expensive structured update.
+            batch.flush(e);
             e.copy_buffer_to_buffer(
                 &self.agent_buffers[s],
                 0,
@@ -1329,21 +1405,23 @@ impl Simulation {
                 0,
                 self.agent_buffers[s].size(),
             );
+            batch.flush(e);
             e.clear_buffer(&self.birth_flags, 0, None);
-            self.passes["body_live"].dispatch_indirect(e, s, &self.active_indices);
+            batch.indirect(&self.passes["body_live"], s, &self.active_indices);
             // Decisions act with the previous lifetime state.  Only after the
             // body update do local traces and fast weights change, and their
             // exact write cost is debited before interaction or birth.
-            self.passes["plastic"].dispatch_indirect(e, s, &self.cognitive_dispatch);
+            batch.indirect(&self.passes["plastic"], s, &self.cognitive_dispatch);
             // Contact is resolved after voluntary integration, so rebuild the
             // compact spatial index from the actual post-movement bodies.
-            self.dispatch(e, "clear", 0, 32, 32);
-            self.dispatch(e, "count", d, groups, 1);
-            self.scan(e, "spatial", SPATIAL_CELL_COUNT);
-            self.dispatch(e, "cursors", 0, 1024, 1);
-            self.dispatch(e, "scatter", d, groups, 1);
+            batch.dispatch(&self.passes["clear"], 0, 32, 32);
+            batch.dispatch(&self.passes["count"], d, groups, 1);
+            batch.scan(&self.passes, "spatial", SPATIAL_CELL_COUNT);
+            batch.dispatch(&self.passes["cursors"], 0, 1024, 1);
+            batch.dispatch(&self.passes["scatter"], d, groups, 1);
             #[cfg(test)]
             if let Some(observer) = &self.funnel_observer {
+                batch.flush(e);
                 observer.before_contacts(e, d);
             }
             for n in [
@@ -1352,18 +1430,20 @@ impl Simulation {
                 "interact_resolve",
                 "interact_production",
             ] {
-                self.dispatch(e, n, d, groups, 1);
+                batch.dispatch(&self.passes[n], d, groups, 1);
             }
-            self.scan(e, "birth", MAX_AGENTS);
-            self.dispatch(e, "birth_compact", 0, groups, 1);
-            self.passes["birth"].dispatch_indirect(e, d, &self.birth_dispatch);
-            self.passes["inherit_genomes"].dispatch_indirect(e, d, &self.birth_dispatch);
+            batch.scan(&self.passes, "birth", MAX_AGENTS);
+            batch.dispatch(&self.passes["birth_compact"], 0, groups, 1);
+            batch.indirect(&self.passes["birth"], d, &self.birth_dispatch);
+            batch.indirect(&self.passes["inherit_genomes"], d, &self.birth_dispatch);
             #[cfg(test)]
             if let Some(observer) = &self.funnel_observer {
+                batch.flush(e);
                 observer.before_fusion(e, d);
             }
             #[cfg(test)]
             if let Some(admission) = &self.parent_admission {
+                batch.flush(e);
                 admission.before_fusion(e, d);
             }
             #[cfg(test)]
@@ -1374,34 +1454,40 @@ impl Simulation {
             };
             #[cfg(not(test))]
             let fusion_pass = "fusion";
-            self.dispatch(e, fusion_pass, d, groups, 1);
-            self.dispatch(e, "inherit_fusion", d, groups, 1);
+            batch.dispatch(&self.passes[fusion_pass], d, groups, 1);
+            batch.dispatch(&self.passes["inherit_fusion"], d, groups, 1);
             #[cfg(test)]
             let admit = !self.defer_reservoir_admission && self.parent_admission.is_none();
             #[cfg(not(test))]
             let admit = true;
             if admit {
+                batch.flush(e);
                 e.clear_buffer(&self.reservoir_claims_buffer, 0, None);
-                self.dispatch(e, "claim_reservoir", d, groups, 1);
-                self.dispatch(e, "update_reservoir", d, groups, 1);
-                self.dispatch(e, "advance_reservoir", d, 1, 1);
+                batch.dispatch(&self.passes["claim_reservoir"], d, groups, 1);
+                batch.dispatch(&self.passes["update_reservoir"], d, groups, 1);
+                batch.dispatch(&self.passes["advance_reservoir"], d, 1, 1);
             }
             #[cfg(test)]
             if let Some(admission) = &self.parent_admission {
+                batch.flush(e);
                 admission.after_fusion(e, d, &self.reservoir_claims_buffer);
             }
-            self.dispatch(e, "reset_cognitive_birth_state", d, groups, 1);
-            self.dispatch(e, "release", d, groups, 1);
+            batch.dispatch(&self.passes["reset_cognitive_birth_state"], d, groups, 1);
+            batch.dispatch(&self.passes["release"], d, groups, 1);
             if let Some(observer) = &self.family_observer {
+                batch.flush(e);
                 observer.encode(e, d);
             }
             #[cfg(test)]
             if let Some(observer) = &self.funnel_observer {
+                batch.flush(e);
                 observer.after_tick(e, d);
             }
+            batch.flush(e);
             self.current_buffer = d;
             self.tick += 1;
         }
+        batch.flush(e);
         e.copy_buffer_to_buffer(
             &self.resource_buffer,
             0,
@@ -1409,8 +1495,10 @@ impl Simulation {
             0,
             self.resource_buffer.size(),
         );
+        batch.flush(e);
         e.clear_buffer(&self.alive_count_buffer, 0, None);
-        self.dispatch(e, "alive", self.current_buffer, groups, 1);
+        batch.dispatch(&self.passes["alive"], self.current_buffer, groups, 1);
+        batch.flush(e);
     }
     pub fn select_agent(
         &self,

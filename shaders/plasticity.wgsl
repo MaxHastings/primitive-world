@@ -24,6 +24,7 @@ fn update_fast(slot:u32,index:u32,pre:f32,post:f32,rate:f32,retention:f32,change
 @group(0) @binding(8) var<storage,read> live_slots:array<u32>;
 // Stage input deltas contiguously, then preserve each unit's write-cost order.
 const COALESCED_INPUTS:bool=true;
+const DIRECT_ACCOUNTING:bool=true;
 var<workgroup> learned_inputs:array<f32,HIDDEN_COUNT*INPUT_COUNT>;
 var<workgroup> changes:array<f32,32>;
 // Every active unit uses the same presynaptic traces and output activations.
@@ -67,9 +68,17 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
  changes[h]=change;workgroupBarrier();
  if(COALESCED_INPUTS && decisions[i].invalid==0u){for(var at=h;at<HIDDEN_COUNT*INPUT_COUNT;at+=32u){if(unit_active(mask,at/INPUT_COUNT)){set_fast(i,at,learned_inputs[at]);}}}
 
- if(h==0u){var total=0.0;for(var k=0u;k<32u;k++){total+=changes[k];}let cost=total*params.environment.w;var a=after[i];let paid=min(a.energy,cost);
-  counter_add(34,u32(round(paid*1000.0)));a.spent+=paid;a.energy=max(0.0,a.energy-cost);
-  if(a.energy<=0.0){a.alive=0u;counter_add(1,1u);}after[i]=a;
+ if(h==0u){var total=0.0;for(var k=0u;k<32u;k++){total+=changes[k];}let cost=total*params.environment.w;
+  // Accounting changes only three fields; avoid copying the full body record.
+  if(DIRECT_ACCOUNTING){
+   let energy=after[i].energy;let paid=min(energy,cost);
+   counter_add(34,u32(round(paid*1000.0)));after[i].spent+=paid;let remaining=max(0.0,energy-cost);after[i].energy=remaining;
+   if(remaining<=0.0){after[i].alive=0u;counter_add(1,1u);}
+  }else{
+   var a=after[i];let paid=min(a.energy,cost);
+   counter_add(34,u32(round(paid*1000.0)));a.spent+=paid;a.energy=max(0.0,a.energy-cost);
+   if(a.energy<=0.0){a.alive=0u;counter_add(1,1u);}after[i]=a;
+  }
  }
 }
 fn fast_value(slot:u32,index:u32)->f32 {let at=slot*FAST_BANK_STRIDE+index%FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){return fast0[at];}return fast1[at];}
