@@ -6,10 +6,12 @@ fn summary(a: &[AgentGpu]) -> Value {
     let mut juveniles = Vec::new();
     let mut adults = Vec::new();
     let mut packets = 0;
+    let mut packet_sizes = Vec::new();
     let mut actions = [0u32; 6];
     for b in a {
         if b.alive == 2 {
             packets += 1;
+            packet_sizes.push(b.packet_size);
         }
         if b.alive != 1 {
             continue;
@@ -34,7 +36,40 @@ fn summary(a: &[AgentGpu]) -> Value {
             .unwrap()
             .total_cmp(&a["age"].as_f64().unwrap())
     });
-    json!({"founders":founders,"packets":packets,"juveniles":juveniles,"adult_descendants":adults,"actions":actions})
+    json!({"founders":founders,"packets":packets,"packet_sizes":packet_sizes,"juveniles":juveniles,"adult_descendants":adults,"actions":actions})
+}
+
+/// Current controller outputs are an observation, not a policy intervention.
+fn juvenile_decisions(a: &[AgentGpu], d: &[DecisionGpu]) -> Value {
+    let live: Vec<_> = a
+        .iter()
+        .zip(d)
+        .filter(|(a, d)| a.alive == 1 && a.ancestry_depth > 0 && a.age < 1800.0 && d.evaluated != 0)
+        .collect();
+    let n = live.len().max(1) as f64;
+    let mut selected = [0u32; 6];
+    let mut gather = Vec::with_capacity(live.len());
+    let mut movement = Vec::with_capacity(live.len());
+    let mut force = Vec::with_capacity(live.len());
+    for (a, d) in live {
+        selected[d.selected_action.min(5) as usize] += 1;
+        gather.push(d.outputs[1].clamp(0.0, 1.0));
+        movement.push((d.movement[0].powi(2) + d.movement[1].powi(2)).sqrt());
+        force.push((d.force[0].powi(2) + d.force[1].powi(2)).sqrt());
+        assert!(a.energy.is_finite());
+    }
+    let mean = |v: &[f32]| v.iter().map(|x| f64::from(*x)).sum::<f64>() / n;
+    let nonzero = |v: &[f32]| v.iter().filter(|x| **x > 0.001).count();
+    json!({
+        "juveniles_observed": gather.len(),
+        "selected_action": selected,
+        "mean_gather_effort": mean(&gather),
+        "juveniles_requesting_gather": nonzero(&gather),
+        "mean_movement_command": mean(&movement),
+        "mean_force_command": mean(&force),
+        "juveniles_requesting_force": nonzero(&force),
+        "scope": "One saved-tick controller output. Gathering is continuous output 1, independent of the selected primary action. Commands are not delivered food or realized force."
+    })
 }
 #[test]
 #[ignore = "local saved-world observation; explicit copied checkpoint and output directory"]
@@ -68,9 +103,11 @@ fn inspect_saved_world_and_pool() {
     };
     load(&mut s);
     let mut search = None;
+    let bodies = s.agent_snapshot(&d, &q).unwrap();
+    let decisions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, MAX_AGENTS as usize);
     write(
         "snapshot.json",
-        &json!({"receipt":receipt,"settings":s.settings,"progress":s.progress,"metrics":s.metrics(&d,&q).unwrap(),"search":s.search_snapshot(&d,&q,&mut search).unwrap(),"population":summary(&s.agent_snapshot(&d,&q).unwrap())}),
+        &json!({"maximum_world_ancestry_depth":read::<u32>(&d,&q,&s.death_stats_buffer,DEATH_STATS_COUNT as usize)[23],"pool_depths":s.reservoir_snapshot(&d,&q).unwrap().1.iter().map(|t|t.padding[0]).collect::<Vec<_>>(),"receipt":receipt,"settings":s.settings,"progress":s.progress,"metrics":s.metrics(&d,&q).unwrap(),"search":s.search_snapshot(&d,&q,&mut search).unwrap(),"population":summary(&bodies),"juvenile_decisions":juvenile_decisions(&bodies,&decisions)}),
     );
     if std::env::var_os("PRIMITIVE_SNAPSHOT_ONLY").is_some() {
         return;
