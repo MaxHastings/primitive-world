@@ -107,6 +107,16 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
  for(var k=0u;k<GENOME_SIZE;k++){set_gene(ci,k,gene(pi,k));}
 }
 
+// One workgroup per packet copies independent inherited parameters contiguously.
+@compute @workgroup_size(64)
+fn parallel(@builtin(workgroup_id) id:vec3<u32>, @builtin(local_invocation_index) lane:u32) {
+ let rank=id.x;if(rank>=min(free_prefix[INVALID-1u],birth_prefix[INVALID-1u])){return;}
+ let parent_rank=(rank+hash_u32(params.tick)%birth_prefix[INVALID-1u])%birth_prefix[INVALID-1u];
+ let pi=parents[parent_rank];let ci=free_indices[rank];let child=agents[ci];
+ if(child.alive==0u || child.birth_tick!=params.tick || child.birth_parent_slot!=pi){return;}
+ for(var k=lane;k<GENOME_SIZE;k+=64u){set_gene(ci,k,gene(pi,k));}
+}
+
 @compute @workgroup_size(64)
 fn fusion(@builtin(global_invocation_id) id:vec3<u32>){
  let pi=id.x;if(pi>=params.agent_count||claims[2u*INVALID+pi]!=INVALID){return;}

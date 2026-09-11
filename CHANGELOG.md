@@ -1,3 +1,14 @@
+## Cooperative GPU work and accelerated playback (unreleased)
+
+- Copy packet genomes with one cooperative workgroup per eligible packet and write
+  neural decision arrays across adjacent GPU lanes. All biological rules and save
+  layouts remain unchanged.
+- Amortize completion polling at 32x, 64x and 128x with the same 32-millisecond batch
+  target as MAX, retaining the 32-tick batch bound.
+- Add exact-state and 130-packet inheritance checks, plus paired kernel and saved
+  experiment benchmarks. Local headless measurements show +24–28% at 4,096–8,192
+  starting bodies; see [performance evidence](docs/gpu-tick-performance.md).
+
 ## GPU tick scheduling and plasticity traffic (unreleased)
 
 - Group consecutive simulation dispatches into three compute passes per ordinary

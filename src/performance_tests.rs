@@ -358,3 +358,277 @@ fn profile_tick_optimizations() {
         }
     }
 }
+
+// Retain the previous scheduling and shader paths for paired measurements.
+fn install_streaming_optimizations(
+    s: &mut Simulation,
+    d: &wgpu::Device,
+    parallel_inheritance: bool,
+    cooperative: bool,
+) {
+    s.reference_inheritance = !parallel_inheritance;
+    for (name, source) in [
+        (
+            "inherit_genomes",
+            include_str!("../shaders/inherit_genomes.wgsl").to_string(),
+        ),
+        (
+            "decide_live",
+            include_str!("../shaders/decide_parallel.wgsl").replace(
+                "COOPERATIVE_OUTPUTS:bool=true",
+                &format!("COOPERATIVE_OUTPUTS:bool={cooperative}"),
+            ),
+        ),
+    ] {
+        let compute = s.passes.get_mut(name).unwrap();
+        let layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("streaming reference"),
+            bind_group_layouts: &[&compute.pipeline.get_bind_group_layout(0)],
+            push_constant_ranges: &[],
+        });
+        let shader = d.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some(name),
+            source: wgpu::ShaderSource::Wgsl(shader_source(&source).into()),
+        });
+        compute.pipeline = d.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some(name),
+            layout: Some(&layout),
+            module: &shader,
+            entry_point: Some(if name == "inherit_genomes" && parallel_inheritance {
+                "parallel"
+            } else {
+                "main"
+            }),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+    }
+}
+
+#[test]
+fn streaming_optimizations_preserve_sparse_state() {
+    let (d, q) = gpu();
+    let mut s = Simulation::new(&d, &q, 42);
+    for (seed, population) in [(42, 0), (91, 32), (3137, 1000)] {
+        let mut expected = Vec::new();
+        for optimized in [false, true] {
+            install_streaming_optimizations(&mut s, &d, optimized, optimized);
+            s.seed = seed;
+            s.settings.population = population;
+            s.reset(&q);
+            // Deliberately leave different dead history in the other bank.
+            // Preservation cannot rely on the two banks initially matching.
+            let mut agents = read::<AgentGpu>(
+                &d,
+                &q,
+                &s.agent_buffers[s.current_buffer],
+                MAX_AGENTS as usize,
+            );
+            for (i, a) in agents.iter_mut().enumerate() {
+                if i % 3 == 0 {
+                    a.alive = 0;
+                    a.generation = 73;
+                    a.food = 0.5;
+                }
+                if a.alive != 0 {
+                    // Separate bodies and keep them juvenile: avoid atomic birth-ID
+                    // allocation and neighbor summation order in exact comparisons.
+                    a.position = [32.0 + (i % 32) as f32 * 64.0, 32.0 + (i / 32) as f32 * 64.0];
+                    a.age = 0.0;
+                    a.max_age = 3.0 + (i % 17) as f32;
+                }
+            }
+            q.write_buffer(
+                &s.agent_buffers[s.current_buffer],
+                0,
+                bytemuck::cast_slice(&agents),
+            );
+            for ticks in [1, 3, 8, 17] {
+                step(&mut s, &d, &q, ticks);
+            }
+            for (index, buffer) in [
+                &s.agent_buffers[s.current_buffer],
+                &s.decision_buffer,
+                &s.fast_weight_buffers[0],
+                &s.fast_weight_buffers[1],
+                &s.trace_buffer,
+                &s.resource_buffer,
+                &s.fertility_buffer,
+                &s.ground_buffer,
+                &s.ecology_buffer,
+                &s.death_stats_buffer,
+                &s.reservoir_genome_buffers[0],
+                &s.reservoir_genome_buffers[1],
+                &s.reservoir_traits_buffer,
+                &s.reservoir_rng_buffer,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let bytes = observability::read_buffer(&d, &q, buffer).unwrap();
+                if optimized {
+                    if bytes != expected[index] {
+                        let first = bytes
+                            .iter()
+                            .zip(&expected[index])
+                            .position(|(a, b)| a != b)
+                            .unwrap();
+                        eprintln!(
+                            "first difference at byte {first}, body stride {}",
+                            std::mem::size_of::<AgentGpu>()
+                        );
+                        panic!("seed={seed} buffer={index}");
+                    }
+                } else {
+                    expected.push(bytes);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "manual paired inheritance and neural-output throughput probe"]
+fn profile_streaming_optimizations() {
+    let (d, q) = gpu();
+    let mut s = Simulation::new(&d, &q, 42);
+    for population in [32, 1000, 4096, 8192] {
+        s.settings.population = population;
+        for repeat in 0..3 {
+            let mut modes = vec![(false, false), (true, false), (true, true)];
+            if repeat % 2 == 1 {
+                modes.reverse();
+            }
+            for (parallel_inheritance, cooperative) in modes {
+                install_streaming_optimizations(&mut s, &d, parallel_inheritance, cooperative);
+                s.reset(&q);
+                step(&mut s, &d, &q, 32);
+                let start = std::time::Instant::now();
+                for _ in 0..16 {
+                    step(&mut s, &d, &q, 32);
+                }
+                eprintln!(
+                    "population={population} repeat={repeat} parallel_inheritance={parallel_inheritance} cooperative={cooperative}: {:.1} ticks/s",
+                    512.0 / start.elapsed().as_secs_f64()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn cooperative_packet_inheritance_copies_every_parameter() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    for slot in 0..130 {
+        let mut genes = fixed(5, [0.0; 2]);
+        genes[INPUT_BASE] = slot as f32 / 100.0;
+        let a = AgentGpu {
+            lineage_id: slot as u32 + 1,
+            active_mask: 1,
+            ..body([
+                32.0 + (slot % 16) as f32 * 100.0,
+                32.0 + (slot / 16) as f32 * 100.0,
+            ])
+        };
+        put(&s, &q, slot, a, &genes);
+    }
+    step(&mut s, &d, &q, 1);
+    let agents = s.agent_snapshot(&d, &q).unwrap();
+    let packets: Vec<_> = agents
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| a.alive == 2)
+        .collect();
+    assert_eq!(packets.len(), 130);
+    let slots: Vec<_> = packets.iter().map(|(slot, _)| *slot).collect();
+    let genes = s.read_genome_slots(&d, &q, &slots).unwrap();
+    for ((_, packet), actual) in packets.iter().zip(genes.chunks_exact(GENOME_SIZE)) {
+        let mut expected = fixed(5, [0.0; 2]);
+        expected[INPUT_BASE] = packet.birth_parent_slot as f32 / 100.0;
+        assert_eq!(actual, expected.as_slice());
+    }
+}
+
+#[test]
+#[ignore = "read-only paired benchmark of latest saved experiment"]
+fn profile_saved_experiment_streaming() {
+    let (d, q) = gpu();
+    let mut s = Simulation::new(&d, &q, 42);
+    let (mut saves, _) = crate::experiments::list(&crate::experiments::save_root()).unwrap();
+    saves.sort_by_key(|s| std::cmp::Reverse(s.record.saved_at_ms));
+    let saved = &saves[0];
+    eprintln!(
+        "Saved world={} tick={} living={}",
+        saved.record.world, saved.record.tick, saved.record.living
+    );
+    for repeat in 0..3 {
+        let modes = if repeat % 2 == 0 {
+            [false, true]
+        } else {
+            [true, false]
+        };
+        for optimized in modes {
+            install_streaming_optimizations(&mut s, &d, optimized, optimized);
+            s.load_game_checkpoint(
+                &q,
+                std::fs::File::open(saved.checkpoint()).unwrap(),
+                (saved.record.seed, saved.record.tick, saved.record.living),
+                saved.record.world,
+            )
+            .unwrap();
+            step(&mut s, &d, &q, 32);
+            let start = std::time::Instant::now();
+            for _ in 0..16 {
+                step(&mut s, &d, &q, 32);
+            }
+            eprintln!(
+                "saved repeat={repeat} optimized={optimized}: {:.1} ticks/s",
+                512.0 / start.elapsed().as_secs_f64()
+            );
+            // Model completion polling at 32x without surface rendering.
+            // Both paths start this phase after the same number of ticks.
+            let output = readback(&d, crate::playback::TELEMETRY_SIZE);
+            let target: f64 = if optimized { 0.032 } else { 0.008 };
+            let mut seconds_per_tick = start.elapsed().as_secs_f64() / 512.0;
+            let start = std::time::Instant::now();
+            let mut elapsed_ticks = 0;
+            let mut batches = 0;
+            while elapsed_ticks < 512 {
+                let ticks = ((target / seconds_per_tick).floor().clamp(1.0, 32.0) as u32)
+                    .min(512 - elapsed_ticks);
+                let batch_start = std::time::Instant::now();
+                let mut e = d.create_command_encoder(&Default::default());
+                s.encode_ticks(&mut e, &d, &q, ticks);
+                s.encode_telemetry(&mut e, &output);
+                q.submit(Some(e.finish()));
+                let (tx, rx) = mpsc::channel();
+                output.slice(..).map_async(wgpu::MapMode::Read, move |r| {
+                    tx.send(r).unwrap();
+                });
+                loop {
+                    d.poll(wgpu::Maintain::Poll);
+                    match rx.try_recv() {
+                        Ok(result) => {
+                            result.unwrap();
+                            break;
+                        }
+                        Err(mpsc::TryRecvError::Empty) => {
+                            std::thread::sleep(std::time::Duration::from_millis(1))
+                        }
+                        Err(error) => panic!("{error}"),
+                    }
+                }
+                output.unmap();
+                seconds_per_tick = seconds_per_tick * 0.8
+                    + batch_start.elapsed().as_secs_f64() / f64::from(ticks) * 0.2;
+                elapsed_ticks += ticks;
+                batches += 1;
+            }
+            eprintln!(
+                "saved polling repeat={repeat} optimized={optimized}: {:.1} ticks/s ({batches} batches)",
+                512.0 / start.elapsed().as_secs_f64()
+            );
+        }
+    }
+}

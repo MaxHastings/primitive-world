@@ -14,14 +14,19 @@ sampling reads only selected genomes; learned-magnitude observation reduces on
 GPU before reading compact totals.
 
 The viewer adaptively batches up to 32 ticks so GPU readback stays bounded while
-timer pacing can still reach the selected rate. MAX targets 32 milliseconds of
-work per batch; paced speeds retain an 8-millisecond target. Once-per-second
+timer pacing can still reach the selected rate. Speeds of 32x and above target 32 milliseconds of
+work per batch; speeds through 16x retain an 8-millisecond target. Once-per-second
 world statistics share the asynchronous batch readback instead of blocking the
 playback loop on additional GPU reads. 1x requests
 60 ticks/s; 32x requests 1,920 ticks/s; MAX is uncapped.
 Requested speed does not override hardware throughput. Rendering, other GPU
 applications, body count, dense neighbors, and reproduction all affect speed.
 Full saves can pause playback while complete state is read and written.
+
+Current cooperative inheritance/output benchmarks show about 24–28% higher
+headless throughput at 4,096–8,192 starting bodies; see the
+[paired GPU measurements](gpu-tick-performance.md#cooperative-inheritance-and-neural-outputs).
+The speed menu also supports 64x and 128x; these request 3,840 and 7,680 ticks/s.
 
 ## Neural input memory access
 

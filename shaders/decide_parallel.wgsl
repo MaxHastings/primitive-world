@@ -16,6 +16,7 @@ fn fast_output(o:u32,h:u32)->u32{return HIDDEN_COUNT*INPUT_COUNT+2u*HIDDEN_COUNT
 @group(0) @binding(8) var<storage,read> live_slots:array<u32>;
 // Cooperative contiguous loads retain the original per-unit accumulation order.
 const COALESCED_INPUTS:bool=true;
+const COOPERATIVE_OUTPUTS:bool=true;
 var<workgroup> input_weights:array<f32,HIDDEN_COUNT*INPUT_COUNT>;
 var<workgroup> x:array<f32,INPUT_COUNT>;
 var<workgroup> candidates:array<f32,HIDDEN_COUNT>;
@@ -69,7 +70,7 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
  if(h<OUTPUT_COUNT){var value=gene(i,OUTPUT_BIAS+h);for(var k=0u;k<HIDDEN_COUNT;k++){if(unit_active(mask,k)){value+=effective(gene(i,OUTPUT_BASE+h*HIDDEN_COUNT+k),i,fast_output(h,k))*states[k];}}if(!finite(value)){atomicStore(&fault,1u);value=0.0;}outputs[h]=value;}
  workgroupBarrier();
  if(h==0u){let p=perceptions[i];var d:Decision;d.evaluated=1u;d.invalid=atomicLoad(&fault);
- for(var k=0u;k<INPUT_COUNT;k++){d.inputs[k]=x[k];}
+ if(!COOPERATIVE_OUTPUTS){for(var k=0u;k<INPUT_COUNT;k++){d.inputs[k]=x[k];}}
  for(var k=0u;k<HIDDEN_COUNT;k++){d.candidate[k]=candidates[k];d.hidden[k]=states[k];d.update_gates[k]=gates[k];}
  for(var k=0u;k<OUTPUT_COUNT;k++){d.outputs[k]=outputs[k];}
  for(var k=0u;k<6u;k++){d.scores[k]=d.outputs[k];}
@@ -78,7 +79,19 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
  d.movement=vec2<f32>(tanh(d.outputs[7]*params.physical.z),tanh(d.outputs[6]));d.amount=1.0/(1.0+exp(-clamp(d.outputs[8],-20.0,20.0)));d.payload=tanh(d.outputs[9]);
  let force_raw=vec2<f32>(d.outputs[FORCE_OUTPUT],d.outputs[FORCE_OUTPUT+1u]);d.force=unit_vector(force_raw)*tanh(length(force_raw));let placement_raw=vec2<f32>(d.outputs[PLACEMENT_OUTPUT],d.outputs[PLACEMENT_OUTPUT+1u]);d.placement=unit_vector(placement_raw)*tanh(length(placement_raw));
  if(d.invalid!=0u){d.selected_action=NONE;d.movement=vec2<f32>(0);d.amount=0.0;d.payload=0.0;d.force=vec2<f32>(0);d.placement=vec2<f32>(0);for(var h=0u;h<HIDDEN_COUNT;h++){d.hidden[h]=0.0;d.candidate[h]=0.0;d.update_gates[h]=0.0;}}
- decisions[i]=d;
+ if(COOPERATIVE_OUTPUTS){
+  decisions[i].selected_action=d.selected_action;decisions[i].evaluated=d.evaluated;
+  decisions[i].movement=d.movement;decisions[i].amount=d.amount;decisions[i].payload=d.payload;
+  decisions[i].invalid=d.invalid;decisions[i].decision_padding=0u;
+  decisions[i].force=d.force;decisions[i].placement=d.placement;decisions[i].memory_write_cost=0.0;
+ }else{decisions[i]=d;}
+ }
+ // Disjoint fields are written by adjacent lanes, with unchanged arithmetic.
+ if(COOPERATIVE_OUTPUTS){
+  for(var k=h;k<INPUT_COUNT;k+=32u){decisions[i].inputs[k]=x[k];}
+  if(h<HIDDEN_COUNT){let valid=atomicLoad(&fault)==0u;decisions[i].candidate[h]=select(0.0,candidates[h],valid);decisions[i].hidden[h]=select(0.0,states[h],valid);decisions[i].update_gates[h]=select(0.0,gates[h],valid);}
+  if(h<OUTPUT_COUNT){decisions[i].outputs[h]=outputs[h];}
+  if(h<6u){decisions[i].scores[h]=outputs[h];}
  }
 }
 fn fast_value(slot:u32,index:u32)->f32 {let at=slot*FAST_BANK_STRIDE+index%FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){return fast0[at];}return fast1[at];}

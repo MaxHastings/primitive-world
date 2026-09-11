@@ -38,9 +38,9 @@ impl Scheduler {
         self.next_allowed = now;
     }
     fn goal(&self, speed: usize) -> u32 {
-        // MAX amortizes submission/readback over a longer batch while retaining
+        // Accelerated playback amortizes submission/readback while retaining
         // the 32-tick bound on extinction detection and user-action latency.
-        let target_seconds = if speed == 8 { 0.032 } else { 0.008 };
+        let target_seconds = if speed >= 5 { 0.032 } else { 0.008 };
         let responsive = (target_seconds / self.seconds_per_tick)
             .floor()
             .clamp(1.0, 32.0) as u32;
@@ -424,7 +424,8 @@ mod tests {
         let mut scheduler = Scheduler::new(now);
         scheduler.seconds_per_tick = 0.002;
         assert_eq!(scheduler.take(now, 8), 16);
-        assert_eq!(scheduler.goal(5), 4);
+        assert_eq!(scheduler.goal(5), 16);
+        assert_eq!(scheduler.goal(4), 4);
         scheduler.seconds_per_tick = 0.0001;
         assert_eq!(scheduler.take(now, 8), 32);
         scheduler.seconds_per_tick = 0.1;

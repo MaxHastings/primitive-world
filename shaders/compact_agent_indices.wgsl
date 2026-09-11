@@ -4,6 +4,7 @@
 @group(0) @binding(3) var<storage, read> free_prefix: array<u32>;
 @group(0) @binding(4) var<storage, read_write> dispatch: array<u32>;
 @group(0) @binding(5) var<storage,read_write> stats:array<atomic<u32>>;
+@group(0) @binding(6) var<storage,read_write> inheritance_dispatch:array<u32>;
 @compute @workgroup_size(64, 1, 1)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x == 0u) {
@@ -13,6 +14,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     // Keep ticking while a rollover is pending, but do not allocate identities.
     dispatch[0] = select((min(births,free_prefix[INVALID-1u])+63u)/64u,0u,atomicLoad(&stats[36])!=0u);
     dispatch[1] = 1u; dispatch[2] = 1u;
+    inheritance_dispatch[0]=select(min(births,free_prefix[INVALID-1u]),0u,atomicLoad(&stats[36])!=0u);
+    inheritance_dispatch[1]=1u;inheritance_dispatch[2]=1u;
   }
   if (id.x >= INVALID || flags[id.x] == 0u) { return; }
   indices[prefix[id.x] - 1u] = id.x;

@@ -256,6 +256,9 @@ pub struct Simulation {
     audit_indices: wgpu::Buffer,
     pub(crate) active_indices: wgpu::Buffer,
     birth_dispatch: wgpu::Buffer,
+    inheritance_dispatch: wgpu::Buffer,
+    #[cfg(test)]
+    reference_inheritance: bool,
     cognitive_dispatch: wgpu::Buffer,
     birth_flags: wgpu::Buffer,
     pub(crate) decision_buffer: wgpu::Buffer,
@@ -384,6 +387,12 @@ impl Simulation {
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::INDIRECT
                 | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let inheritance_dispatch = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("cooperative inheritance work count"),
+            size: 12,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::INDIRECT,
             mapped_at_creation: false,
         });
         let parents = buffer(device, "parents", MAX_AGENTS as u64 * 4);
@@ -710,14 +719,15 @@ impl Simulation {
             "birth_compact",
             "../shaders/compact_agent_indices.wgsl",
             "main",
-            "rrwrww",
+            "rrwrwww",
             vec![vec![
                 &birth_flags,
                 &birth_prefix,
                 &parents,
                 &free_prefix,
                 &birth_dispatch,
-                &death_stats_buffer
+                &death_stats_buffer,
+                &inheritance_dispatch
             ]]
         );
         add!(
@@ -740,7 +750,7 @@ impl Simulation {
         add!(
             "inherit_genomes",
             "../shaders/inherit_genomes.wgsl",
-            "main",
+            "parallel",
             "wrrrruwwwrr",
             pair(|s| vec![
                 &agent_buffers[s],
@@ -1015,6 +1025,9 @@ impl Simulation {
             decision_buffer,
             active_indices,
             birth_dispatch,
+            inheritance_dispatch,
+            #[cfg(test)]
+            reference_inheritance: false,
             cognitive_dispatch,
             birth_flags,
             fertility_buffer,
@@ -1435,7 +1448,15 @@ impl Simulation {
             batch.scan(&self.passes, "birth", MAX_AGENTS);
             batch.dispatch(&self.passes["birth_compact"], 0, groups, 1);
             batch.indirect(&self.passes["birth"], d, &self.birth_dispatch);
-            batch.indirect(&self.passes["inherit_genomes"], d, &self.birth_dispatch);
+            #[cfg(test)]
+            let inheritance_args = if self.reference_inheritance {
+                &self.birth_dispatch
+            } else {
+                &self.inheritance_dispatch
+            };
+            #[cfg(not(test))]
+            let inheritance_args = &self.inheritance_dispatch;
+            batch.indirect(&self.passes["inherit_genomes"], d, inheritance_args);
             #[cfg(test)]
             if let Some(observer) = &self.funnel_observer {
                 batch.flush(e);
