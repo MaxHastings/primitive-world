@@ -1,3 +1,14 @@
+## Wallpaper speeds and performance audit (unreleased)
+
+- Show all shared playback speeds in the wallpaper menu, including 64x, 128x and
+  MAX. Size and reset native click targets from the shared speed list so these
+  choices can actually be selected.
+- Dispatch hereditary-pool updates over its 4,096 destinations instead of all
+  16,384 body slots.
+- Benchmark additional queue, scratch-memory, diagnostic-fusion, expressed-unit
+  staging and birth-copy prototypes; retain the established kernels after the
+  candidates failed to show a reliable improvement on the saved experiment.
+
 ## Cooperative GPU work and accelerated playback (unreleased)
 
 - Copy packet genomes with one cooperative workgroup per eligible packet and write
@@ -6,7 +17,7 @@
 - Amortize completion polling at 32x, 64x and 128x with the same 32-millisecond batch
   target as MAX, retaining the 32-tick batch bound.
 - Add exact-state and 130-packet inheritance checks, plus paired kernel and saved
-  experiment benchmarks. Local headless measurements show +24–28% at 4,096–8,192
+  experiment benchmarks. Local headless measurements show +24â€“28% at 4,096â€“8,192
   starting bodies; see [performance evidence](docs/gpu-tick-performance.md).
 
 ## GPU tick scheduling and plasticity traffic (unreleased)

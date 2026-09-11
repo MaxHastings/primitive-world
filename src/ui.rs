@@ -60,7 +60,7 @@ pub struct WallpaperControls {
     pub brush_sizing: Option<BrushAdjustment>,
     pub brush_density_rect: egui::Rect,
     pub lens_options: [egui::Rect; 10],
-    pub speed_buttons: [egui::Rect; 6],
+    pub speed_buttons: [egui::Rect; playback::SPEED_LABELS.len()],
     pub menu: Option<WallpaperMenu>,
 }
 
@@ -88,7 +88,7 @@ impl Default for WallpaperControls {
             brush_sizing: None,
             brush_density_rect: egui::Rect::NOTHING,
             lens_options: [egui::Rect::NOTHING; 10],
-            speed_buttons: [egui::Rect::NOTHING; 6],
+            speed_buttons: [egui::Rect::NOTHING; playback::SPEED_LABELS.len()],
             menu: None,
         }
     }
@@ -269,7 +269,7 @@ fn brush_slider(ui: &mut egui::Ui, value: &mut f32, min: f32, max: f32) -> egui:
 }
 
 fn draw_wallpaper(ctx: &egui::Context, state: &mut AppState, action: &mut Action) {
-    state.ui.wallpaper_controls.speed_buttons = [egui::Rect::NOTHING; 6];
+    state.ui.wallpaper_controls.speed_buttons = [egui::Rect::NOTHING; playback::SPEED_LABELS.len()];
     state.ui.wallpaper_controls.lens_options = [egui::Rect::NOTHING; 10];
     egui::CentralPanel::default()
         .frame(egui::Frame::NONE)
@@ -429,8 +429,7 @@ fn draw_wallpaper(ctx: &egui::Context, state: &mut AppState, action: &mut Action
                             }
                             WallpaperMenu::Speed => {
                                 ui.weak("Playback speed");
-                                for (index, label) in playback::SPEED_LABELS[..6].iter().enumerate()
-                                {
+                                for (index, label) in playback::SPEED_LABELS.iter().enumerate() {
                                     let choice = ui.add_sized(
                                         [210.0, 26.0],
                                         egui::Button::new(*label)

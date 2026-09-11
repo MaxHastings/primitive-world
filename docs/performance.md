@@ -23,8 +23,8 @@ Requested speed does not override hardware throughput. Rendering, other GPU
 applications, body count, dense neighbors, and reproduction all affect speed.
 Full saves can pause playback while complete state is read and written.
 
-Current cooperative inheritance/output benchmarks show about 24–28% higher
-headless throughput at 4,096–8,192 starting bodies; see the
+Current cooperative inheritance/output benchmarks show about 24â€“28% higher
+headless throughput at 4,096â€“8,192 starting bodies; see the
 [paired GPU measurements](gpu-tick-performance.md#cooperative-inheritance-and-neural-outputs).
 The speed menu also supports 64x and 128x; these request 3,840 and 7,680 ticks/s.
 

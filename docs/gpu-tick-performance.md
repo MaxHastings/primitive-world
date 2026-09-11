@@ -118,3 +118,29 @@ Validation: 166 release tests passed, 29 manual diagnostics ignored; Clippy with
 warnings denied, formatting, and 12 Python tests passed. The saved-experiment
 benchmark was run separately from the full suite with competing simulation work
 closed. No saved state was rewritten by benchmarks.
+
+## Further execution audit
+
+Additional September 11, 2026 prototypes were compared against the cooperative
+inheritance/output implementation above, using the same adapter and alternating
+three-pair, 32-warmup/512-measured-tick methodology. The live wallpaper was saved
+and closed. These prototypes were removed after testing:
+
+- Stable organism-only cognition queues used two packed 16-bit prefix counts in
+  the existing scan. Mixed organism/packet parity passed; representative rates
+  differed by roughly -1% to +2%, with no reliable saved-world improvement.
+- Explicit neural scratch initialization passed parity, but removing automatic
+  workgroup clearing did not produce a consistent material gain.
+- Fusing signal/memory diagnostics into decisions passed state comparisons, but
+  the extra work in the neural kernel offset dispatch savings. Signal-only fusion
+  also regressed dense and saved-world measurements.
+- Expressed-unit staging preserved sparse and full controller state. Dense random
+  scenes improved about 2%, but the saved experiment regressed about 2%.
+- Eight-lane newborn resets and pool copying gave small, workload-sensitive
+  differences rather than a reliable saved-world gain.
+
+These results do not rule out a larger storage or spatial redesign; they show why
+estimated savings should be checked against the actual running population. Neural
+identity, inherited latent parameters, f32 storage, ecology cadence and save formats
+remain unchanged. The retained small scheduling correction limits pool-update
+launches to 4,096 destinations; no substantial speedup is claimed for that change.

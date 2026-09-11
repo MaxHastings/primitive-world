@@ -47,7 +47,8 @@ The habitat uses the desktop host's pixel dimensions. When resuming a differentl
 sized habitat, a separate descendant experiment is created; the original save,
 world age, and ecology remain available in Load Game. Matching sizes resume directly.
 The compact top-right strip shows the world number and living population. Click
-the current view or speed to open its menu; Details shows world ticks, population
+the current view or speed to open its menu. The wallpaper speed menu includes
+1x through 128x and MAX, matching the regular viewer; Details shows world ticks, population
 history, survival records, and performance. Click outside an open menu to dismiss
 it without adding food. Manual food additions are saved as part of the experiment.
 

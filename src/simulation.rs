@@ -1485,7 +1485,13 @@ impl Simulation {
                 batch.flush(e);
                 e.clear_buffer(&self.reservoir_claims_buffer, 0, None);
                 batch.dispatch(&self.passes["claim_reservoir"], d, groups, 1);
-                batch.dispatch(&self.passes["update_reservoir"], d, groups, 1);
+                // The destination is the hereditary pool, not the body-slot domain.
+                batch.dispatch(
+                    &self.passes["update_reservoir"],
+                    d,
+                    HEREDITARY_RESERVOIR_SIZE.div_ceil(64),
+                    1,
+                );
                 batch.dispatch(&self.passes["advance_reservoir"], d, 1, 1);
             }
             #[cfg(test)]
