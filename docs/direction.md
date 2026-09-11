@@ -1,207 +1,142 @@
-# Primitive World
-
-Primitive World is an artificial-life experiment about how much adaptive, complex behavior can emerge from a small set of general physical, cognitive, and evolutionary primitives.
-
-The goal is **not to make agents intelligent, cooperative, efficient, human-like, or successful according to our preferences**.
-
-The goal is to build a world with enough expressive freedom that evolution can discover its own strategies, while minimizing the amount of strategy we implicitly author into the simulator.
-
-See [release acceptance and stopping rules](north-star.md).
-
-The current experiment explicitly biases hereditary-pool retention toward deeper
-within-world reproduction. This is an authored selection preference, documented
-in [the evolutionary contract](evolution.md), while physical behavior and mutation
-remain unchanged. It is an intentional exception to purely ecological selection.
-
-## North star
-
-**We define a broad, reachable space of possibilities.
-We avoid defining which solution is desirable.
-The environment determines consequences.
-Evolution determines what persists.**
-
-We must author a viable search space, not just a neutral one. Physical budgets,
-actuator composition, sensing and inherited variation must make complete life
-cycles reachable. We may measure reachability across seeds and deliberately
-simple test controllers while designing the world. Such tests never become
-founder policies, behavioral rewards, online difficulty adjustments or selection
-rules. Longer survival alone is not evidence that the search space is viable.
-
-The simulator should provide possibilities, not preferred solutions. Development
-has fixed physical costs; paid reproductive investment, gathering and received food
-can meet them in different combinations. Dependence is a consequence of those budgets,
-not a required social strategy. Climate varies independently of population success. Preserving the game's presentation, controls, scale,
-sensing, cognition and interaction capabilities is an explicit requirement.
-
-A good primitive supports many incompatible strategies. Movement may be used to flee, hunt, explore, migrate, follow, orbit, or remain still. Signals may become communication, deception, coordination, noise, or be ignored. Memory and plasticity may become useful, useless, or actively selected against.
-
-When interesting behavior appears, we should ideally be able to say:
-
-**“There is no primitive for that behavior. It emerged from more general primitives.”**
-
-## What we author
-
-We must author the physics of the experiment. This includes things such as:
-
-* energy and material;
-* local sensing;
-* movement and physical interaction;
-* reproduction;
-* heredity and blind mutation;
-* neural computation and memory;
-* local lifetime plasticity;
-* environmental dynamics;
-* physical costs;
-* unavoidable simulation and persistence rules.
-
-These mechanisms should be understandable without reference to whether their consequences are desirable.
-
-Small mutations, bounded values, duplication, inheritance, local learning, and computation costs are acceptable because they define the structure of possibility.
-
-## What we do not author
-
-We should avoid encoding answers to the evolutionary problem.
-
-The simulator should not decide that:
-
-* intelligence is good;
-* complexity is good;
-* cooperation is good;
-* food-seeking is the intended strategy;
-* exploration deserves a bonus;
-* certain individuals are “best”;
-* one developmental sequence should occur before another;
-* a particular mutation would help;
-* a particular signal has meaning;
-* a particular cognitive architecture is the destination.
-
-There should be no behavioral reward function, intelligence score, complexity objective, or hidden optimizer guiding evolution.
-
-## Evolution
-
-Selection should arise primarily from ordinary ecological consequences:
-
-**heredity → behavior → survival/reproduction → descendants → changing population**
-
-Mutation generates possibilities; it does not generate proposals for improvement.
-
-Mutation must be blind to behavior and outcomes.
-
-Where cross-world hereditary continuity is required because early worlds frequently go extinct, it should also be blind: inherited records may persist through a bounded random hereditary pool, but they are never ranked by lifespan, intelligence, behavior, complexity, reproduction count, or any other merit score.
-
-The purpose of such continuity is to avoid erasing accumulated heredity, not to decide which heredity deserves to survive.
-
-## Learning
-
-Agents may adapt during their lifetime, but learning must not receive an authored definition of success.
-
-Plasticity should depend on locally available neural or physical information, not an external reward such as “food was good” or “reproduction succeeded.”
-
-Acquired lifetime state is not inherited. Offspring inherit the machinery and predispositions for learning, not their parent's learned weights, traces, or recurrent memories.
-
-This keeps lifetime adaptation and evolutionary adaptation distinct.
-
-## Complexity
-
-Capability should be available, but never free merely because we want complex agents.
-
-Larger brains, active neural units, memory changes, movement, signaling, reproduction, and other physical processes should have costs where appropriate.
-
-If simple organisms outperform complex ones, simplicity is a valid result.
-
-If plasticity evolves toward zero, that is a valid result.
-
-If signaling is ignored, that is a valid result.
-
-If every lineage eventually goes extinct, that is also a valid result.
-
-We are studying what evolution chooses, not trying to force an interesting answer.
-
-## Information given to agents
-
-Prefer physical measurements over interpretations.
-
-Agents should ideally observe things like state, local fields, relative positions, motion, and changes in their own physical state.
-
-Be cautious about channels that tell an agent why something happened or label an event according to our interpretation.
-
-A useful rule is:
-
-**Expose state and consequence; avoid exposing meaning.**
-
-## Environment
-
-The environment should behave according to general dynamics rather than a curriculum.
-
-Do not deliberately make the world easy first and harder later so evolution can learn in an order chosen by us.
-
-Dynamic geography, seasons, scarcity, motion, and environmental variation are fine when they are properties of the world itself and operate without reference to agent progress.
-
-## Observation
-
-Research tools may measure anything:
-
-* survival;
-* ancestry;
-* behavior;
-* communication;
-* complexity;
-* learning;
-* generalization;
-* migration;
-* diversity;
-* ecological statistics.
-
-But observations must have **no causal path back into evolution**.
-
-Reports, UI metrics, diagnostics, experimental forks, and analysis tools never decide reproduction, mutation, hereditary retention, founder selection, or world reset behavior.
-
-**Evaluation may measure anything. Evolution sees none of it.**
-
-## Engineering constraints
-
-Implementation limits are not automatically biological laws.
-
-Continuous gameplay takes priority over experiment purity. Storage pressure must
-not automatically pause the game. At full entity storage, manufacture requests
-that cannot fit are visibly counted and skipped without charging their producers;
-existing entities continue, and fusion reuses a consumed packet slot. This is an
-acknowledged admission limit that can affect outcomes, not an emergent biological
-law. Accounting horizons automatically begin another world from the hereditary
-pool without reporting a natural extinction. Autosave errors report a failure
-and retry while play continues. Pause remains an explicit user control.
-
-## Decision test
-
-When considering a new feature, ask:
-
-1. **Does it increase the space of possible strategies, or does it encourage a particular strategy?**
-2. **Does it behave differently because an organism was “successful”?**
-3. **Does it expose physical information, or our interpretation of that information?**
-4. **Could several very different behaviors make use of the same primitive?**
-5. **Would the rule still make sense if all behavioral names were replaced with meaningless symbols?**
-6. **Is this biology/world physics, or an engineering convenience accidentally becoming biology?**
-
-Prefer mechanisms that increase **compositional capability** rather than mechanisms that directly make recognizable behavior easier to obtain.
-
-## The standard
-
-Primitive World is successful as an experiment when surprising behavior can emerge without that behavior already existing, semantically or strategically, in the source code.
-
-We are not trying to make evolution succeed.
-
-We are trying to create a sufficiently expressive world in which evolution is free to decide what success becomes.
-
-
-## Freeze policy
-
-A model is complete when its primitives, hereditary continuity, reachable life
-cycles, invariants, persistence and unattended operation are verified and its
-remaining assumptions are explicit. Interesting behavior is not a completion
-criterion. Record implementation and operational evidence in the finish-line
-checklist; do not turn an unperformed desktop or multi-day test into a pass.
-
-After freezing, reopen core biology only for demonstrated unreachable search,
-correctness defects, unintended bias, engine artifacts affecting biology, or a
-primitive that fundamentally prevents composition. Boring, unfamiliar, inefficient
-or unintelligent-looking runs are not grounds for redesign. Let the experiment run.
+# Design principles
+
+Primitive World asks how much adaptive behavior can emerge from general physical,
+cognitive, and evolutionary mechanisms. The organisms begin with random brains;
+the simulator supplies opportunities and consequences, not a strategy to follow.
+
+This page distinguishes that design intent from the choices actually made in
+`primitive-v45-depth-retention`. For exact mechanics, read [agents](agents.md),
+[world rules](world.md), and [evolution](evolution.md).
+
+## Define possibilities, not behavioral goals
+
+Movement can support exploration, orbiting, approach, escape, or inactivity.
+Food transfer can provision another organism without a built-in definition of
+help. A signed local signal may acquire a use, remain noise, or go unused.
+
+The simulator does not train a controller to maximize food, lifespan, intelligence,
+cooperation, or a behavioral score. There is no authored courtship or care policy.
+A successful experiment need not produce human-like or steadily increasing
+complexity. Extinction and simple strategies are valid outcomes.
+
+The search space must nevertheless permit complete life cycles. Physical budgets,
+sensing, actions and hereditary variation determine what is reachable. Controlled
+test brains can check physical reachability; they do not become random founders
+or online guidance. A mechanism being available does not demonstrate that evolution
+will discover it.
+
+## What the simulator authors
+
+All simulated physics involves design choices. This model specifies:
+
+- Energy, food, developmental costs and lifespans.
+- Local physical sensing, movement, contact and action arbitration.
+- Packet reproduction, inheritance and blind mutation.
+- Gated recurrent memory, lifetime plasticity and their energy costs.
+- Spatial ecology, climate variation and initial conditions.
+- Finite entity storage, hereditary retention and world rollover.
+
+Two choices deserve explicit treatment rather than being hidden behind a claim
+of complete neutrality:
+
+**Depth-biased hereditary retention.** Each newborn challenges two random pool
+entries and targets the one with lower stored ancestry depth. This statistically
+protects deeper within-world reproduction. It is an authored selection preference;
+founder sampling remains uniform and mutation does not consult behavior. The
+[evolution protocol](evolution.md#the-rolling-pool) defines the exact rule.
+
+**Favorable climate initialization.** Fresh default worlds begin with wet/mild
+initial climate keyframes. Subsequent variation follows the ordinary seeded
+process, independent of population success. This is an initial-condition choice,
+not proof that every world begins with a particular duration of abundance. Older
+saves can preserve different initialization settings.
+
+## Memory, learning and inheritance
+
+Recurrent state carries information through time. Local plasticity changes bounded
+connection deltas during an organism's lifetime, using local activity and inherited
+rates/retention. Neither receives an external reward explaining which behavior
+was successful.
+
+Offspring inherit weights and traits that enable memory and learning. They do not
+inherit acquired recurrent state, traces or learned connection deltas. Evolutionary
+change between generations and adaptation within a lifetime are distinct.
+
+Expressed capacity and state changes have physical costs. Evolution may use or
+reduce learning and memory; providing the machinery is not a claim that useful
+learning has been demonstrated. A currently unused capability is not, by itself,
+evidence that it should be removed.
+
+## Expose physical information
+
+Controllers receive body condition, motion, local food, occupancy, proximity and
+aggregate signals. They do not receive neighbor identities, kinship labels, global
+maps, behavior scores or explanations such as “you were helped.” Inspector
+metadata is not a controller input.
+
+These interfaces have real limits. Aggregate measurements can make different
+situations indistinguishable; finite brain capacity limits available state and
+computation. The model offers opportunities for complex behavior, not a guarantee
+of unbounded intelligence or evolutionary potential.
+
+## Keep observation separate from selection
+
+Research tools can measure survival, ancestry, movement, learning, signals and
+resource use. Their reports do not supply controller inputs, adjust mutation,
+select founders or change hereditary retention. The depth metadata used by the
+pool is explicitly part of selection, not a supposedly passive observer.
+
+Describe observations at the level the evidence supports. Packet production is
+not successful reproduction. Signal emission is not demonstrated communication.
+A food transfer does not alone establish parental care. Population movement can
+reflect births and deaths rather than travel by the same individuals.
+
+Manual food painting, physical-setting changes and founder imports are
+interventions. Preserve their provenance when interpreting a run. See the
+[observation guide](observing.md) for tools and measurement limits.
+
+## Treat engineering limits honestly
+
+Organisms and packets share 16,384 slots. Unfulfilled manufacturing requests are
+counted and skipped without charge; fusion can reuse a packet slot. Contact
+arbitration uses a tick-varying permutation of storage slots. These choices can
+affect outcomes and are not biological discoveries.
+
+Rolling runs and the viewer continue into another world when accounting/tick
+horizons are reached, without reporting natural extinction. Single-world
+diagnostics report their stopping boundary. Autosave failures are reported and
+retried; they do not intentionally end the live experiment.
+
+Performance changes should distinguish cheaper execution from different biology.
+Reducing sensory detail, learning frequency or ecology cadence changes the model;
+it is not equivalent to reducing rendering or redundant buffer traffic. Current
+presentation, controls, sensing, cognition and interactions are preservation
+requirements unless a separate change explicitly revises them.
+
+## Review a proposed change
+
+1. Which capability, physical rule or implementation cost does it change?
+2. Does it expose a measurement or supply an interpretation?
+3. Could several incompatible strategies use it?
+4. Does it add a preference based on behavioral outcomes?
+5. What information, dynamics or possible behaviors does it remove?
+6. Does it alter costs, timing, random draws, selection or save compatibility?
+7. What do the tests establish, and what remains an experimental question?
+
+Prefer mechanisms that organisms can combine for different purposes. Record
+exceptions and limits explicitly; do not turn a design aspiration into a claim
+about observed intelligence.
+
+## Model stability
+
+After a model is frozen, unfamiliar or uninteresting behavior alone is not a
+reason to retune it. Reopen biology for a demonstrated reachability problem,
+correctness defect, unintended bias or fundamental restriction on composition.
+Keep new experiments distinguishable from continuations of existing ones.
+
+Completion means the mechanisms, accounting, persistence and operation are
+verified and their remaining assumptions documented. It does not require
+communication, cooperation or any other favored outcome. Historical release
+criteria and evidence are recorded in the [north star](north-star.md) and
+[implementation checklist](implementation-checklist.md); unperformed checks must
+remain unperformed rather than being presented as passes.

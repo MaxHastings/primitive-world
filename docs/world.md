@@ -1,9 +1,13 @@
 # World and body rules
 
-[direction.md](direction.md) is the design contract. These constants describe the
-implemented world, not inevitable laws of life. Model identity is
-`primitive-v42-climate-care`, checkpoint format 58, founder-bank format 21.
-The release/freeze evidence is tracked in [implementation-checklist.md](implementation-checklist.md).
+This page describes the environment and the consequences of agent actions.
+For how organisms choose actions, see [agents](agents.md); for what survives
+extinction, see [evolution](evolution.md).
+
+Current model: `primitive-v45-depth-retention`, checkpoint format 58, founder-bank
+format 21. Numeric costs are defaults, not universal constants: saved settings and
+explicit controls such as the live metabolism slider can change them. The
+[design principles](direction.md) distinguish physical rules from research goals.
 
 ## Geometry and tick order
 
@@ -37,7 +41,7 @@ time physiology, not simultaneous continuous physics.
 | Mechanism | Default rule |
 | --- | --- |
 | Energy/inventory capacity | 100 energy / 8 food |
-| Founder provision | 35 energy, zero food, age zero |
+| Founder provision | 35 energy, zero food, mature age (1,800 by default) |
 | Body upkeep | Stationary 0.05 energy/tick from tick zero |
 | Cognitive upkeep/writes | 0.00025 per expressed unit; 0.0001 per absolute state change |
 | Gathering | clamp(output 1,0,1), up to 0.025 food/tick |
@@ -64,11 +68,13 @@ death releases it normally. Fresh intake cannot rescue an organism that exhausts
 its reserves this tick. This is an explicit assimilation delay, not a cooperation
 reward or a conditional change to metabolism.
 
-Transfer moves existing inventory to the nearest available physical contact,
-limited by sender stock and receiver capacity. Contact ties and conflicting pair
-proposals use a tick-varying bijective hash of intrinsic lineage IDs, independent
-of storage slots. Pairs are exclusive; this local matching can leave opportunities
-unused. There is no target input/output, kin preference, utility score or reciprocity.
+Transfer proposes the nearest organism in range, then checks sender stock and
+receiver capacity. A full nearest recipient can prevent transfer even if another
+recipient could accept food; there is no fallback target search. Contact ties and
+conflicting proposals use a tick-varying permutation of entity slot indices.
+Arbitration therefore depends on storage slots, not just physical geometry. Pairs
+are exclusive; matching can leave opportunities unused. There is no controller
+target, kin preference, utility score or reciprocity rule.
 
 Force adds impulse to the recipient velocity and subtracts the same impulse from
 the actor. Equal fixed inertial masses make momentum change exactly zero up to
@@ -84,7 +90,8 @@ penalty is modeled. Both beneficial and harmful displacements are possible.
 Organisms manufacture passive reproductive packets using inherited sizes 1–48.
 Ordinary paid impulses can push them; velocity damps each tick. Different-producer
 packets fuse within two wrapped units. Offspring receive remaining energy minus
-ten construction energy, capped by newborn storage. Packet upkeep is permanently
+ten construction energy. Paid reserves above the newborn digestion ceiling are
+retained; digestion pauses until there is headroom. Packet upkeep is permanently
 `.02 * size^(2/3)` per tick. There is no world-age reproduction assistance.
 
 Signals are generic, optional and longer-range than fusion. Gathering, transfer,
@@ -114,6 +121,12 @@ scales: rainfall at 173,003 / 1,100,009 / 4,700,021 ticks, temperature at
 281,003 / 1,700,029 / 6,100,033 ticks. Regional weather varies around 47,003 ticks;
 local weather around 997. C2 temporal interpolation avoids keyframe jumps.
 
+Fresh default worlds use `flourishing_start`: initial moisture keyframes are
+sampled from 0.8–0.95 and temperature from 0.45–0.55. Later keyframes use their
+ordinary ranges. This is a favorable initialization, not a response to population
+success or a guarantee of a fixed abundant period. Older saves without this flag
+retain the previous unconditioned initialization.
+
 Persistent seeded elevation, retention and permeability affect local water
 storage, evaporation and drainage. Each cell stores water, mineral and detritus.
 Vegetation growth consumes mineral; recession returns it to detritus;
@@ -122,22 +135,24 @@ is an external input; rainfall is an external water input; evaporation, drainage
 and overflow leave the local water store. Harvested vegetation leaves this
 soil subsystem through the existing food/organism system. This is a simplified
 open system, not a claim of full watershed transport or closed-world nutrient
-conservation. The old dropped-food and body physiology rules are retained.
+conservation. Dropped food remains separately harvestable.
 
 Habitable coverage responds continuously to stored water, available mineral and
-temperature. Favorable conditions support food between the old rich patches;
+temperature. Favorable conditions support food between richer patches;
 dry conditions contract cover. Refuges arise from substrate and water history.
 Initial physical stocks are water .7, mineral 3 and detritus .3 per cell, with an
 established vegetation snapshot. These are initial conditions, never a changing
 juvenile subsidy. No climate variable reads population, diversity, care or success.
 
-The original terrain generator remains, with keyframes slowed to one million
-ticks. Static-landscape mode fixes geography without freezing weather. The
-correlation scales are declared assumptions, not a schedule for evolution.
+Terrain keyframes are separated by one million ticks. Static-landscape mode fixes
+geography without freezing weather. The correlation scales are declared assumptions, not a schedule for evolution.
 
 Juvenile gathering is always `0.01 + 0.99*x^6`, with x equal to age/maturity,
 clamped to [0,1]. Ordinary transfer can bridge the early energy deficit. This
 establishes care pressure, not a prescribed care policy or guaranteed evolution.
+
+Ecology and agents update every biological tick. Slower rendering does not reduce
+ecological, sensory or learning cadence.
 
 ## Persistence, observation and engineering limits
 
@@ -159,3 +174,9 @@ Observers cannot supply inputs, change weights, retain preferred genomes or
 choose resets. Their identity metadata, search-health histograms and interpretation
 remain outside biology. Reports must distinguish finite-resolution observations
 from hypotheses about communication, cooperation, planning or intelligence.
+
+## Implementation references
+
+- [Tick scheduling](../src/simulation.rs) and [default settings](../src/model.rs)
+- [Ecology updates](../shaders/resource_update.wgsl), [climate](../src/climate.rs), and [terrain](../src/environment.rs)
+- [Gathering](../shaders/consume.wgsl), [body costs](../shaders/update_agents.wgsl), and [contact arbitration](../shaders/interactions.wgsl)

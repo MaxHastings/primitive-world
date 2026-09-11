@@ -1,5 +1,15 @@
 # Observe without steering
 
+Use the viewer to inspect a live world, headless runs to collect bounded evidence,
+and offline tools to analyze saved outputs. Observers do not supply rewards,
+change controllers, or choose hereditary records. Explicit interventions and
+founder imports are different from observation and must be reported as such.
+
+All commands below run from the repository root. Choose new output paths; reports
+and checkpoints refuse to overwrite existing files. `--checkpoint` reads a binary
+checkpoint for headless continuation; the viewer uses `--load-game` with its JSON
+receipt. Saved physical settings take precedence.
+
 ## Bounded headless world
 
 ```sh
@@ -19,7 +29,7 @@ cargo run --release -- --headless --seed 42 --ticks 200000 --sample 4096 --outpu
 ```
 
 `--ticks` bounds work across worlds. Natural extinction starts a fresh world from
-unchanged pool records. `--comparisons` is unsupported. Samples include ancestry,
+unchanged pool records, using the current [depth-biased retention rule](evolution.md#the-rolling-pool). Samples include ancestry,
 mean movement plus horizontal direction counts and bias (-1 all left, +1 all
 right). It also reports the local food-gradient direction and the alignment of
 movement with that gradient. These measures can expose directional lock-in and
@@ -59,12 +69,23 @@ Optional Python 3.11+ tools:
 python tools/analyze_departures.py reports/journeys.jsonl --metabolic-cost 0.06 --movement-cost 0.01 --output reports/departures.json
 ```
 
-Supply the actual checkpoint costs, including metabolism for body and brain.
+Supply costs appropriate to the checkpoint, including an explicit allowance for
+body and brain metabolism.
 Range estimates remain optimistic bounds rather than full budgets.
-The tools use only the standard library.
-additionally requires NumPy (`python -m pip install -r tools/requirements.txt`).
-It audits checkpoint counters and provable action suppression; it does not
-establish that communication helps receivers or that unsuppressed actions occur.
+The departure analyzer uses only the Python standard library. The numeric costs
+in this example are illustrative, not automatically read from the save.
+
+## Signals and receiver responses
+
+```sh
+cargo run --release -- --headless --single-world --seed 42 --ticks 16384 --sample 1024 --communication-trace reports/signals.jsonl --output reports/signal-world.json
+```
+
+`--communication-trace` requires `--single-world`. A trace records emissions and
+receiver observations/responses; it does not establish that signals caused a
+response or improved survival. Compare timing and context, and distinguish signal
+production from meaningful communication. Use a separate checkpoint continuation
+when investigating an existing experiment; this command starts a fresh world.
 
 ## Measure tick throughput
 
@@ -106,9 +127,10 @@ archives elsewhere yourself, and preserve checksums/source settings when sharing
 - Five-minute saves are usually too far apart to reconstruct individual lives.
 - Population relocation can reflect birth/death turnover rather than the same
   individuals crossing the map. Use identity-aware journey traces for that claim.
-- Accounting counters have explicit finite horizons. Overflow latches an engine
-  stop; do not interpret the censored boundary as ecological extinction. Food
-  ingestion uses a paired low/high counter.
+- Accounting counters have finite horizons. Single-world diagnostics can stop
+  with `engine_capacity` or `tick_capacity`; rolling runs and the viewer continue
+  into another world under the rollover policy. Neither is natural extinction.
+  Food ingestion uses a paired low/high counter.
 - GPU contention can vary population trajectories. Seeded does not promise
   bitwise replay across devices or schedules.
 - Changed physical settings or manual food interventions confound simple
@@ -120,3 +142,11 @@ state. Cognitive upkeep and write-energy counters are quantized to thousandths.
 Memory samples use the effective inherited-plus-learned readout; their context
 contains carried food and underfoot resource, and actual_action records the
 selected action. None of these diagnostics feeds the controller or hereditary pool.
+
+## Implementation references
+
+- [CLI validation and report fields](../src/headless.rs)
+- [Journey definitions](../src/journey_observer.rs)
+- [Observer records](../src/observability.rs) and [family accounting](../src/family_observer.rs)
+- [Timing diagnostic](../src/simulation_tests.rs) and [paired performance probes](../src/performance_tests.rs)
+- [Backup utility](../tools/backup_run.py) and [departure analysis](../tools/analyze_departures.py)

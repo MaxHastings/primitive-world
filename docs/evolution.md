@@ -1,8 +1,19 @@
 # Evolution and hereditary continuity
 
-The [core direction](direction.md) requires a broad, reachable search space,
-without an authored preferred strategy. Selection comes from ordinary survival
-and paid reproduction. Evaluation never supplies online rewards or retention rules.
+Evolution operates at two levels: organisms survive and reproduce within a
+world, and a bounded hereditary pool carries inherited records across worlds.
+The current model explicitly favors deeper within-world reproduction when
+retaining pool records. It does not use a behavioral reward to train controllers.
+
+This page specifies `primitive-v45-depth-retention`. The [design principles](direction.md)
+explain the intent; the rules below describe the implemented selection preference.
+
+| Event | What carries forward |
+| --- | --- |
+| Packet manufacture | Immutable inherited genome and trait snapshot, paid energy |
+| Packet fusion | Recombined and possibly mutated heredity; remaining energy minus construction |
+| Birth | Fresh lifetime state; one hereditary-pool admission attempt |
+| Natural extinction | Pool records seed a new world; individual memories do not survive |
 
 ## Inheritance and mutation
 
@@ -45,15 +56,18 @@ word; the second remains zero. Model identity rejects pre-rule saves.
 This explicitly favors demonstrated multigenerational reproduction. It is not pure
 ecological selection, an automatic guarantee of progress, or permanent protection
 for relatives. Newborn mutations still get admission attempts before maturity;
-lifetime learning is never copied. No age threshold or success-triggered rule is used.
+lifetime learning is never copied. Admission does not wait for juvenile maturity
+or later reproduction; the retention preference uses the depth stored in pool entries.
 
 Natural extinction starts a newly seeded world. Fresh bodies sample unchanged
 pool records uniformly with replacement, using a separate saved RNG. Their
 position, age, reserves and lifetime state are freshly initialized. There are no
 ranked founders, accepted candidates, mutation proposals or immigrant quotas.
-Body upkeep is stationary at 0.05 energy/tick. New worlds use their seeded
-habitat without opening food coverage. Juvenile dependence and reproduction
-physics are permanent; ongoing climate does not observe population success.
+Body upkeep defaults to 0.05 energy/tick and does not automatically change with
+world age. New worlds use their seeded habitat and saved settings. Fresh default
+settings include favorable initial climate keyframes; see [ecology](world.md#accounting-and-ecology).
+Juvenile physiology and reproduction costs do not ease with world age, and ongoing
+climate does not observe population success.
 
 ## Observation and persistence
 
@@ -99,3 +113,10 @@ individual lifetime histories or rank a historical lineage.
 
 Declining diversity is allowed. A finite run showing diversity, turnover or births
 is not evidence of intelligence or a reason to add novelty rewards or escape logic.
+
+## Implementation references
+
+- [Pool admission and replacement](../shaders/update_reservoir.wgsl)
+- [Recombination and mutation](../shaders/inherit_genomes.wgsl)
+- [World continuity and history](../src/evolution.rs)
+- [Founder records](../src/founders.rs) and [checkpoint persistence](../src/session.rs)

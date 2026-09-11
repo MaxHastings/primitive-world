@@ -1,7 +1,15 @@
-# Agents
+# Agents: senses, memory, actions, and development
 
-The controller owns intentions. The world owns consequences. The design contract
-is [direction.md](direction.md); all execution modes use the same biology.
+An organism chooses effort from local measurements and private lifetime state.
+The world resolves whether those intentions are affordable and physically possible.
+This page specifies the current `primitive-v45-depth-retention` interface; all
+execution modes use the same biology. Values below are defaults unless stated
+otherwise; saved settings take precedence.
+
+Read [inputs](#inputs-zero-based) and [outputs](#outputs-zero-based) for the
+controller interface, [reproductive packets](#reproductive-packets) for inheritance
+and encounters, and [juvenile physiology](#juvenile-physiology) for development.
+The [design principles](direction.md) explain why these are general capabilities.
 
 ## Controller and inherited state
 
@@ -21,12 +29,13 @@ Each active unit has an inherited signed local-plasticity rate. Local pre/post
 activity, inherited trace retention, and inherited learned-weight retention update
 bounded fast connection deltas. There is no reward, optimizer, outcome label, or
 mandatory learning. Birth clears recurrent state, traces, and learned deltas.
-Only inherited weights, the active mask, plasticity/retention traits and the three
-mutation controls enter hereditary storage. Speed and sensory radius copy at birth
-and are fixed by world physiology, not evolved morphology.
+Inherited weights, the active mask, plasticity/retention traits, packet size and
+the three mutation controls enter hereditary storage. Speed and sensory radius
+copy at birth and are fixed by world physiology, not evolved morphology.
 
-Body upkeep is 0.05 energy/tick. Each active unit adds 0.00025; actual absolute
-recurrent/trace/learned-state changes cost 0.0001 energy per unit of change.
+Body upkeep defaults to 0.05 energy/tick and can be adjusted in the viewer. Each
+active unit adds 0.00025; actual absolute recurrent/trace/learned-state changes
+cost 0.0001 energy per unit of change.
 Capacity and learning are optional and paid. Genome copying has no extra upkeep.
 
 ## Inputs (zero-based)
@@ -50,8 +59,8 @@ absolute heading, lineage, map, or global population inputs.
 Samples partition the local disk into eight body-relative angular wedges and two
 radial bands (inside/outside radius/2). Default radius is 24. Every sample uses the
 same six channels, without nearest-neighbor selection. Food integrates wrapped
-4-unit grid-cell centers within the disk; bodies contribute according to their
-actual wrapped positions. Empty channels read zero. This is finite-resolution
+grid-cell centers within the disk (four-unit spacing in the default square world);
+bodies contribute according to their actual wrapped positions. Empty channels read zero. This is finite-resolution
 area sampling, not point vision or identity tracking. The square resource lattice
 has quarter-turn and grid-translation symmetries; arbitrary subcell rotations or
 translations can change sampled food through raster aliasing. Continuous body
@@ -140,8 +149,8 @@ per tick, an explicit throughput ceiling. There is no reproductive cooldown.
 Packets carry their own immutable genome and trait snapshots. They do not think,
 gather, signal, learn, or propel themselves. Ordinary organism contact force can
 push them, with the same paid impulse and opposite recoil as any other target.
-Packets integrate velocity with world wrapping, then damp it by 0.98 each tick;
-force does not damage them or change their genome or reserves. Transfer remains
+Packets start with zero velocity, integrate motion with world wrapping, and
+damp velocity by 0.98 each tick. Force does not damage them or change their genome or reserves. Transfer remains
 organism-only, and only compatible packet pairs can fuse. Packets
 spend `packet_upkeep * packet_size^(2/3)` energy per tick. The upkeep
 coefficient is permanently .02, independent of world age. They expire at zero
@@ -215,7 +224,8 @@ of decay and construction. Default basal upkeep alone costs 90 through maturity,
 before cognition or effort, so investment does not guarantee independence.
 Ordinary gathering and received food can supplement those reserves. Low-investment
 juveniles retain the same costs and reserves, and repeated transfers can support
-development. Whether unassisted evolution discovers a full life cycle remains open.
+development. These budgets describe opportunity; evidence for autonomous life
+cycles or provisioning must come from recorded runs, not from the rules alone.
 
 The initial population consists of mature bodies with 35 energy and unchanged
 seed-specific random controllers. This supplies the bootstrap generation for a
@@ -226,5 +236,12 @@ ticks; interaction pairs are disjoint) and `juvenile_received_milli`. Existing
 `juvenile_starvation_deaths`, `matured_descendants`, `births`, maximum depth and
 `births_to_descendant_parents` distinguish mortality, maturation and reproductive
 continuity. These counters cover descendants, including terminal ticks, and are
-observer-only: no controller can read them. The model ID is now
-`primitive-v45-depth-retention`; old model checkpoints are rejected.
+observer-only: no controller can read them. Other model checkpoints are rejected
+rather than converted into this controller.
+
+## Implementation references
+
+- [Model constants and state](../src/model.rs)
+- [Sensing](../shaders/perceive.wgsl), [controller](../shaders/decide_parallel.wgsl), and [plasticity](../shaders/plasticity.wgsl)
+- [Body updates](../shaders/update_agents.wgsl) and [contacts](../shaders/interactions.wgsl)
+- [Packet creation and fusion](../shaders/apply_births.wgsl) and [inheritance](../shaders/inherit_genomes.wgsl)
