@@ -1,6 +1,346 @@
 use super::*;
 
 #[test]
+fn linked_grid_contains_every_live_slot_once_in_wrapped_and_crowded_cells() {
+    let (d, q) = gpu();
+    let s = scene(&d, &q);
+    let mut agents = vec![AgentGpu::zeroed(); MAX_AGENTS as usize];
+    let world = [s.settings.habitat_width, s.settings.habitat_height];
+    let mut expected = vec![Vec::new(); SPATIAL_CELL_COUNT as usize];
+    for (slot, a) in agents.iter_mut().enumerate() {
+        if slot % 3 == 0 {
+            continue;
+        }
+        let position = if slot < 2048 {
+            [1.0, 1.0]
+        } else {
+            [
+                ((slot * 1973) % 8192) as f32 - 4096.0,
+                ((slot * 9277) % 8192) as f32 - 4096.0,
+            ]
+        };
+        *a = body(position);
+        a.alive = if slot % 2 == 0 { 2 } else { 1 };
+        let x = (position[0].rem_euclid(world[0]) / world[0] * 256.0).floor() as usize;
+        let y = (position[1].rem_euclid(world[1]) / world[1] * 256.0).floor() as usize;
+        expected[y.min(255) * 256 + x.min(255)].push(slot as u32);
+    }
+    q.write_buffer(
+        &s.agent_buffers[s.current_buffer],
+        0,
+        bytemuck::cast_slice(&agents),
+    );
+    for populated in [true, false] {
+        if !populated {
+            q.write_buffer(
+                &s.agent_buffers[s.current_buffer],
+                0,
+                bytemuck::cast_slice(&vec![AgentGpu::zeroed(); MAX_AGENTS as usize]),
+            );
+        }
+        let mut e = d.create_command_encoder(&Default::default());
+        s.dispatch(&mut e, "linked_clear", s.current_buffer, 1024, 1);
+        s.dispatch(
+            &mut e,
+            "linked_link",
+            s.current_buffer,
+            MAX_AGENTS.div_ceil(64),
+            1,
+        );
+        q.submit(Some(e.finish()));
+        let heads = read::<u32>(&d, &q, &s.audit_cell_offsets, SPATIAL_CELL_COUNT as usize);
+        let links = read::<u32>(&d, &q, &s.audit_indices, MAX_AGENTS as usize);
+        let counts = read::<u32>(&d, &q, &s.occupancy_buffer, SPATIAL_CELL_COUNT as usize);
+        let mut seen = vec![false; MAX_AGENTS as usize];
+        for (cell, head) in heads.into_iter().enumerate() {
+            let mut at = head;
+            let mut actual = Vec::new();
+            while at != MAX_AGENTS {
+                assert!(
+                    at < MAX_AGENTS && !seen[at as usize],
+                    "invalid link or cycle in cell {cell}"
+                );
+                seen[at as usize] = true;
+                actual.push(at);
+                at = links[at as usize];
+            }
+            actual.sort_unstable();
+            assert_eq!(actual.len(), counts[cell] as usize);
+            assert_eq!(
+                actual.as_slice(),
+                if populated {
+                    expected[cell].as_slice()
+                } else {
+                    &[]
+                }
+            );
+        }
+    }
+}
+
+#[test]
+fn linked_sensing_matches_contiguous_neighborhoods_at_wrapped_edges() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    let mut agents = vec![AgentGpu::zeroed(); MAX_AGENTS as usize];
+    for (slot, a) in agents.iter_mut().take(130).enumerate() {
+        *a = body([
+            if slot % 2 == 0 {
+                1.0
+            } else {
+                s.settings.habitat_width - 1.0
+            },
+            1.0 + (slot % 7) as f32 * 0.25,
+        ]);
+        a.velocity = [slot as f32 * 0.003, -(slot as f32) * 0.002];
+        a.heading = slot as f32 * 0.17;
+        a.signal_payload = (slot as f32 - 65.0) * 0.01;
+        a.signal_tick = 1;
+        if slot % 5 == 0 {
+            a.alive = 2;
+        }
+    }
+    s.tick = 1;
+    s.update_params(&q);
+    q.write_buffer(
+        &s.agent_buffers[s.current_buffer],
+        0,
+        bytemuck::cast_slice(&agents),
+    );
+    let mut expected = Vec::new();
+    for linked in [false, true] {
+        install_linked_spatial(&mut s, &d, linked);
+        let mut e = d.create_command_encoder(&Default::default());
+        if linked {
+            s.dispatch(&mut e, "linked_clear", s.current_buffer, 1024, 1);
+            s.dispatch(
+                &mut e,
+                "linked_link",
+                s.current_buffer,
+                MAX_AGENTS.div_ceil(64),
+                1,
+            );
+        } else {
+            s.dispatch(&mut e, "clear", 0, 32, 32);
+            s.dispatch(
+                &mut e,
+                "count",
+                s.current_buffer,
+                MAX_AGENTS.div_ceil(64),
+                1,
+            );
+            s.scan(&mut e, "spatial", SPATIAL_CELL_COUNT);
+            s.dispatch(&mut e, "cursors", 0, 1024, 1);
+            s.dispatch(
+                &mut e,
+                "scatter",
+                s.current_buffer,
+                MAX_AGENTS.div_ceil(64),
+                1,
+            );
+        }
+        s.dispatch(
+            &mut e,
+            "perceive",
+            s.current_buffer,
+            MAX_AGENTS.div_ceil(64),
+            1,
+        );
+        q.submit(Some(e.finish()));
+        let actual = read::<PerceptionGpu>(&d, &q, &s.perception_buffer, 130);
+        if !linked {
+            expected = actual;
+            continue;
+        }
+        for (a, b) in actual.iter().zip(&expected) {
+            assert_eq!(a.nearby_count, b.nearby_count);
+            assert_eq!(a.resource_here, b.resource_here);
+            for (a, b) in a.regions.iter().zip(&b.regions) {
+                assert_eq!(a.food, b.food);
+                assert_eq!(a.bodies, b.bodies);
+            }
+        }
+        // Both grids insert neighbors in GPU scheduling order. Reduction
+        // rounding may differ, but no neighbor or sensory channel may be lost.
+        for (&a, &b) in bytemuck::cast_slice::<_, f32>(&actual)
+            .iter()
+            .zip(bytemuck::cast_slice::<_, f32>(&expected))
+        {
+            assert!(
+                (a - b).abs() <= 1e-5 * (1.0 + a.abs().max(b.abs())),
+                "{a} != {b}"
+            );
+        }
+    }
+}
+
+fn install_linked_spatial(s: &mut Simulation, d: &wgpu::Device, linked: bool) {
+    s.linked_spatial = linked;
+    for (name, source, entry) in [
+        (
+            "perceive",
+            include_str!("../shaders/perceive.wgsl").to_owned(),
+            "main",
+        ),
+        (
+            "perceive_live",
+            live_source(include_str!("../shaders/perceive.wgsl"), 8),
+            "main",
+        ),
+        (
+            "consume",
+            include_str!("../shaders/consume.wgsl").to_owned(),
+            "main",
+        ),
+        (
+            "interact_propose",
+            include_str!("../shaders/interactions.wgsl").to_owned(),
+            "propose",
+        ),
+    ] {
+        let source = source.replace(
+            "// SPATIAL_ITERATION",
+            &include_str!("../shaders/spatial_iteration.wgsl").replace(
+                "LINKED_SPATIAL:bool=true",
+                &format!("LINKED_SPATIAL:bool={linked}"),
+            ),
+        );
+        let compute = s.passes.get_mut(name).unwrap();
+        let layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &[&compute.pipeline.get_bind_group_layout(0)],
+            push_constant_ranges: &[],
+        });
+        let shader = d.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some(name),
+            source: wgpu::ShaderSource::Wgsl(shader_source(&source).into()),
+        });
+        compute.pipeline = d.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some(name),
+            layout: Some(&layout),
+            module: &shader,
+            entry_point: Some(entry),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+    }
+}
+
+#[test]
+#[ignore = "manual paired linked spatial benchmark"]
+fn profile_linked_spatial() {
+    let (d, q) = gpu();
+    let mut s = Simulation::new(&d, &q, 42);
+    let (mut saves, _) = crate::experiments::list(&crate::experiments::save_root()).unwrap();
+    saves.sort_by_key(|s| std::cmp::Reverse(s.record.saved_at_ms));
+    let saved = &saves[0];
+    for population in [32, 1000, 4096, 8192, 0] {
+        for repeat in 0..3 {
+            for linked in if repeat % 2 == 0 {
+                [false, true]
+            } else {
+                [true, false]
+            } {
+                install_linked_spatial(&mut s, &d, linked);
+                if population == 0 {
+                    s.load_game_checkpoint(
+                        &q,
+                        std::fs::File::open(saved.checkpoint()).unwrap(),
+                        (saved.record.seed, saved.record.tick, saved.record.living),
+                        saved.record.world,
+                    )
+                    .unwrap();
+                } else {
+                    s.settings.population = population;
+                    s.reset(&q);
+                }
+                step(&mut s, &d, &q, 32);
+                let start = std::time::Instant::now();
+                for _ in 0..32 {
+                    step(&mut s, &d, &q, 32);
+                }
+                eprintln!(
+                    "spatial population={population} repeat={repeat} linked={linked}: {:.1} ticks/s",
+                    1024.0 / start.elapsed().as_secs_f64()
+                );
+            }
+        }
+    }
+}
+
+fn install_tick_boundaries(s: &mut Simulation, d: &wgpu::Device, optimized: bool) {
+    s.reference_tick_boundaries = !optimized;
+    let compute = s.passes.get_mut("free").unwrap();
+    let layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("tick boundary reference"),
+        bind_group_layouts: &[&compute.pipeline.get_bind_group_layout(0)],
+        push_constant_ranges: &[],
+    });
+    let source = include_str!("../shaders/free_flags.wgsl").replace(
+        "CLEAR_CLAIMS:bool=true",
+        &format!("CLEAR_CLAIMS:bool={optimized}"),
+    );
+    let shader = d.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("claim clearing"),
+        source: wgpu::ShaderSource::Wgsl(shader_source(&source).into()),
+    });
+    compute.pipeline = d.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("claim clearing"),
+        layout: Some(&layout),
+        module: &shader,
+        entry_point: Some("main"),
+        compilation_options: Default::default(),
+        cache: None,
+    });
+}
+
+#[test]
+#[ignore = "manual paired tick boundary benchmark including latest saved world"]
+fn profile_tick_boundaries() {
+    let (d, q) = gpu();
+    let mut s = Simulation::new(&d, &q, 42);
+    let (mut saves, _) = crate::experiments::list(&crate::experiments::save_root()).unwrap();
+    saves.sort_by_key(|s| std::cmp::Reverse(s.record.saved_at_ms));
+    let saved = &saves[0];
+    eprintln!(
+        "Saved world={} tick={} living={}",
+        saved.record.world, saved.record.tick, saved.record.living
+    );
+    for population in [32, 1000, 4096, 8192, 0] {
+        for repeat in 0..3 {
+            for optimized in if repeat % 2 == 0 {
+                [false, true]
+            } else {
+                [true, false]
+            } {
+                install_tick_boundaries(&mut s, &d, optimized);
+                if population == 0 {
+                    s.load_game_checkpoint(
+                        &q,
+                        std::fs::File::open(saved.checkpoint()).unwrap(),
+                        (saved.record.seed, saved.record.tick, saved.record.living),
+                        saved.record.world,
+                    )
+                    .unwrap();
+                } else {
+                    s.settings.population = population;
+                    s.reset(&q);
+                }
+                step(&mut s, &d, &q, 32);
+                let start = std::time::Instant::now();
+                for _ in 0..32 {
+                    step(&mut s, &d, &q, 32);
+                }
+                eprintln!(
+                    "boundaries population={population} repeat={repeat} optimized={optimized}: {:.1} ticks/s",
+                    1024.0 / start.elapsed().as_secs_f64()
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn batched_metrics_match_synchronous_metrics() {
     use crate::playback::{METRICS_OFFSET, READBACK_SIZE, TELEMETRY_SIZE};
     let (d, q) = gpu();
@@ -275,6 +615,15 @@ fn install_tick_optimizations(
 
 #[test]
 fn tick_optimizations_preserve_state_across_climate_epochs() {
+    compare_tick_state(false);
+}
+
+#[test]
+fn linked_spatial_preserves_isolated_state_across_climate_epochs() {
+    compare_tick_state(true);
+}
+
+fn compare_tick_state(compare_spatial: bool) {
     let (d, q) = gpu();
     let mut s = Simulation::new(&d, &q, 42);
     s.settings.population = 32;
@@ -282,9 +631,29 @@ fn tick_optimizations_preserve_state_across_climate_epochs() {
         let mut expected = Vec::new();
         for optimized in [false, true] {
             install_tick_optimizations(&mut s, &d, optimized, optimized);
+            install_tick_boundaries(&mut s, &d, optimized);
+            install_linked_spatial(&mut s, &d, !compare_spatial || optimized);
             s.seed = seed;
             s.settings.environment_rotation = rotation;
             s.reset(&q);
+            if compare_spatial {
+                // Neighbor reductions have unordered GPU insertion in both
+                // layouts. Separate bodies for a byte-exact execution check;
+                // crowded-cell membership and sensing are checked separately.
+                let mut bodies = s.agent_snapshot(&d, &q).unwrap();
+                for (slot, body) in bodies.iter_mut().enumerate().filter(|(_, a)| a.alive != 0) {
+                    body.position = [
+                        128.0 + (slot % 8) as f32 * 256.0,
+                        128.0 + (slot / 8) as f32 * 256.0,
+                    ];
+                    body.age = 0.0;
+                }
+                q.write_buffer(
+                    &s.agent_buffers[s.current_buffer],
+                    0,
+                    bytemuck::cast_slice(&bodies),
+                );
+            }
             s.environment_start_age = age;
             step(&mut s, &d, &q, 8);
             // A second batch verifies parameter updates across command submissions.

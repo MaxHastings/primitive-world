@@ -9,11 +9,8 @@ pub(super) fn sense(
     s.update_params(q);
     let mut e = d.create_command_encoder(&Default::default());
     let groups = MAX_AGENTS.div_ceil(64);
-    s.dispatch(&mut e, "clear", 0, 32, 32);
-    s.dispatch(&mut e, "count", s.current_buffer, groups, 1);
-    s.scan(&mut e, "spatial", SPATIAL_CELL_COUNT);
-    s.dispatch(&mut e, "cursors", 0, 1024, 1);
-    s.dispatch(&mut e, "scatter", s.current_buffer, groups, 1);
+    s.dispatch(&mut e, "linked_clear", s.current_buffer, 1024, 1);
+    s.dispatch(&mut e, "linked_link", s.current_buffer, groups, 1);
     s.dispatch(&mut e, "perceive", s.current_buffer, groups, 1);
     s.dispatch(&mut e, "decide", s.current_buffer, groups, 1);
     q.submit(Some(e.finish()));

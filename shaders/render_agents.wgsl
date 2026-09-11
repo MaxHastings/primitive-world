@@ -25,12 +25,13 @@ fn vs(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: u32) -
   }
   let agent_offset = agent.position - camera.center;
   let ndc = vec2<f32>(agent_offset.x * 2.0 * camera.zoom / camera.world_size.y / camera.aspect, -agent_offset.y * 2.0 * camera.zoom / camera.world_size.y);
-  let p = perceptions[index];
-  let cell = clamp(agent.position / camera.world_size * 256.0, vec2<f32>(vec2(0.0)), vec2<f32>(255.0));
-  let density = min(f32(atomicLoad(&occupancy[u32(cell.y) * 256u + u32(cell.x)])) / 24.0, 1.0);
   var color = vec3<f32>(0.86, 0.94, 0.98);
-  if (camera.lens == 1u) { color = heat(p.resource_here, vec3<f32>(0.15, 0.22, 0.94), vec3<f32>(1.0, 0.85, 0.18)); }
-  if (camera.lens == 2u) { color = heat(density, vec3<f32>(0.12, 0.20, 0.9), vec3<f32>(1.0, 0.18, 0.12)); }
+  if (camera.lens == 1u) { color = heat(perceptions[index].resource_here, vec3<f32>(0.15, 0.22, 0.94), vec3<f32>(1.0, 0.85, 0.18)); }
+  if (camera.lens == 2u) {
+    let cell = clamp(agent.position / camera.world_size * 256.0, vec2<f32>(vec2(0.0)), vec2<f32>(255.0));
+    let density = min(f32(atomicLoad(&occupancy[u32(cell.y) * 256u + u32(cell.x)])) / 24.0, 1.0);
+    color = heat(density, vec3<f32>(0.12, 0.20, 0.9), vec3<f32>(1.0, 0.18, 0.12));
+  }
   if (camera.lens == 3u) { color = heat(agent.energy / 100.0, vec3<f32>(0.9, 0.12, 0.08), vec3<f32>(0.10, 0.95, 0.45)); }
   if (camera.lens == 4u) { color = heat(length(agent.velocity), vec3<f32>(0.15, 0.25, 0.85), vec3<f32>(0.95, 0.78, 0.16)); }
   if (camera.lens == 5u) { color = heat(fract(agent.age / 5000.0), vec3<f32>(0.15, 0.75, 0.95), vec3<f32>(0.94, 0.28, 0.72)); }

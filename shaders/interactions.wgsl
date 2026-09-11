@@ -8,6 +8,7 @@
 @group(0) @binding(7) var<storage,read> offsets:array<u32>;
 @group(0) @binding(8) var<storage,read> indices:array<u32>;
 @group(0) @binding(9) var<storage,read_write> births:array<u32>;
+// SPATIAL_ITERATION
 // A tick-varying permutation assigns unique keys, independent of packet size.
 fn priority(i:u32)->u32{return (i*4051u+hash_u32(params.tick))%INVALID;}
 fn contact(i:u32)->u32{
@@ -17,9 +18,8 @@ fn contact(i:u32)->u32{
  let reach=vec2<i32>(ceil(vec2<f32>(radius)/size));
  for(var oy=-reach.y;oy<=reach.y;oy++){for(var ox=-reach.x;ox<=reach.x;ox++){
   let cell=vec2<u32>(wrap_grid_index(base.x+ox,256),wrap_grid_index(base.y+oy,256));let ci=cell.y*256u+cell.x;
-  var start=0u;if(ci>0u){start=offsets[ci-1u];}
-  for(var k=start;k<offsets[ci];k++){
-   let j=indices[k];if(j==i||j>=params.agent_count){continue;}let b=agents[j];
+  for(var k=spatial_first(ci);k!=spatial_end(ci);k=spatial_next(k)){
+   let j=spatial_slot(k);if(j==i||j>=params.agent_count){continue;}let b=agents[j];
    if(b.alive==0u){continue;}
    // Force can contact any live entity. Transfer and fusion have separate eligibility.
    if(a.alive==ORGANISM&&decisions[i].selected_action==TRANSFER&&b.alive!=ORGANISM){continue;}

@@ -6,6 +6,7 @@
 @group(0) @binding(5) var<storage,read> indices:array<u32>;
 @group(0) @binding(6) var<storage,read_write> perceptions:array<Perception>;
 @group(0) @binding(7) var<uniform> params:SimParams;
+// SPATIAL_ITERATION
 fn food_at_index(i:u32)->f32{return f32(resources[i]+min(atomicLoad(&ground[i].dropped),8000u))/1000.0;}
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id:vec3<u32>){
@@ -37,9 +38,8 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
   for(var x=blo.x;x<=bhi.x;x++){
    let cell=vec2<u32>(wrap_grid_index(x,256),wrap_grid_index(y,256));
    let ci=cell.y*256u+cell.x;if(occupancy[ci]==0u){continue;}
-   var start=0u;if(ci>0u){start=offsets[ci-1u];}
-   for(var j=start;j<offsets[ci];j++){
-    let other=indices[j];if(other==i||other>=INVALID){continue;}
+   for(var j=spatial_first(ci);j!=spatial_end(ci);j=spatial_next(j)){
+    let other=spatial_slot(j);if(other==i||other>=INVALID){continue;}
     let b=agents[other];if(b.alive==0u){continue;}
     let delta=torus_delta(a.position,b.position,params.world_size.xy);let distance2=dot(delta,delta);if(distance2>r2){continue;}
     let region=sensory_sector(world_to_body(delta,a.heading))+select(0u,8u,distance2>near2);

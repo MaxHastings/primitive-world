@@ -1,5 +1,12 @@
 # Performance and limits
 
+Current wallpaper measurements at the monitor's original refresh setting show
+about 12% more actual simulation throughput (median 1,959 → 2,199 ticks/s).
+The retained changes reduce spatial indexing and compute-pass overhead; refresh,
+resolution, biological cadence and save formats are unchanged. See the
+[paired wallpaper measurements](gpu-tick-performance.md#spatial-links-and-dynamic-tick-parameters)
+for workload and validation details.
+
 The model has 16 potential recurrent units, with 1–16 expressed per organism.
 Decisions and local plasticity use a cooperative GPU workgroup per living body.
 Each lane evaluates a unit or output, sharing intermediate activities through

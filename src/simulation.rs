@@ -4,9 +4,18 @@ use std::{collections::HashMap, sync::mpsc};
 use wgpu::util::DeviceExt;
 const RESOURCE_SCALE: f32 = 1000.0;
 
+fn parameter_stride(device: &wgpu::Device) -> u64 {
+    (std::mem::size_of::<SimParams>() as u64).next_multiple_of(u64::from(
+        device.limits().min_uniform_buffer_offset_alignment,
+    ))
+}
+
 pub(crate) struct Compute {
     pipeline: wgpu::ComputePipeline,
     groups: Vec<wgpu::BindGroup>,
+    parameter_binding: Option<usize>,
+    binding_buffers: Vec<Vec<wgpu::Buffer>>,
+    tick_groups: Vec<wgpu::BindGroup>,
     #[cfg(test)]
     pub(crate) timing: Option<(wgpu::QuerySet, u32)>,
 }
@@ -22,6 +31,12 @@ impl Compute {
         kinds: &str,
         buffers: Vec<Vec<&wgpu::Buffer>>,
     ) -> Self {
+        // SimParams is the shared 144-byte uniform; other uniforms (selection,
+        // interventions) retain their ordinary bindings and zero offsets.
+        let parameter_binding = kinds.chars().enumerate().find_map(|(i, k)| {
+            (k == 'u' && buffers[0][i].size() == std::mem::size_of::<SimParams>() as u64)
+                .then_some(i)
+        });
         let entries: Vec<_> = kinds
             .chars()
             .enumerate()
@@ -37,7 +52,7 @@ impl Compute {
                             read_only: k == 'r',
                         }
                     },
-                    has_dynamic_offset: false,
+                    has_dynamic_offset: parameter_binding == Some(i),
                     min_binding_size: None,
                 },
             })
@@ -63,6 +78,10 @@ impl Compute {
             compilation_options: Default::default(),
             cache: None,
         });
+        let binding_buffers = buffers
+            .iter()
+            .map(|bs| bs.iter().map(|b| (*b).clone()).collect())
+            .collect();
         let groups = buffers
             .into_iter()
             .map(|bs| {
@@ -85,8 +104,60 @@ impl Compute {
         Self {
             pipeline,
             groups,
+            parameter_binding,
+            binding_buffers,
+            tick_groups: Vec::new(),
             #[cfg(test)]
             timing: None,
+        }
+    }
+    fn prepare_tick_groups(&mut self, device: &wgpu::Device, parameters: &wgpu::Buffer) {
+        let Some(binding) = self.parameter_binding else {
+            return;
+        };
+        if !self.tick_groups.is_empty() {
+            return;
+        }
+        let layout = self.pipeline.get_bind_group_layout(0);
+        self.tick_groups =
+            self.binding_buffers
+                .iter()
+                .map(|buffers| {
+                    let entries: Vec<_> = buffers
+                        .iter()
+                        .enumerate()
+                        .map(|(i, buffer)| wgpu::BindGroupEntry {
+                            binding: i as u32,
+                            resource: if i == binding {
+                                wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                                    buffer: parameters,
+                                    offset: 0,
+                                    size: wgpu::BufferSize::new(
+                                        std::mem::size_of::<SimParams>() as u64
+                                    ),
+                                })
+                            } else {
+                                buffer.as_entire_binding()
+                            },
+                        })
+                        .collect();
+                    device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("tick parameters"),
+                        layout: &layout,
+                        entries: &entries,
+                    })
+                })
+                .collect();
+    }
+    fn bind(&self, pass: &mut wgpu::ComputePass<'_>, group: usize, tick_offset: Option<u32>) {
+        if self.parameter_binding.is_some() {
+            let (groups, offset) = match tick_offset {
+                Some(offset) => (&self.tick_groups, offset),
+                None => (&self.groups, 0),
+            };
+            pass.set_bind_group(0, &groups[group], &[offset]);
+        } else {
+            pass.set_bind_group(0, &self.groups[group], &[]);
         }
     }
     fn descriptor(&self) -> wgpu::ComputePassDescriptor<'_> {
@@ -102,6 +173,7 @@ impl Compute {
             ..Default::default()
         }
     }
+    #[cfg(test)]
     fn dispatch_indirect(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -110,7 +182,7 @@ impl Compute {
     ) {
         let mut pass = encoder.begin_compute_pass(&self.descriptor());
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &self.groups[group], &[]);
+        self.bind(&mut pass, group, None);
         pass.dispatch_workgroups_indirect(arguments, 0);
     }
     pub(crate) fn dispatch(
@@ -122,7 +194,7 @@ impl Compute {
     ) {
         let mut pass = encoder.begin_compute_pass(&self.descriptor());
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &self.groups[group], &[]);
+        self.bind(&mut pass, group, None);
         pass.dispatch_workgroups(x, y, 1);
     }
 }
@@ -130,15 +202,35 @@ impl Compute {
 // dependencies within a pass. Copies, clears, and observers flush the batch.
 #[derive(Default)]
 struct ComputeBatch<'a> {
-    commands: Vec<(&'a Compute, usize, [u32; 2], Option<&'a wgpu::Buffer>)>,
+    commands: Vec<ComputeCommand<'a>>,
     separate: bool,
+    tick_offset: Option<u32>,
+}
+struct ComputeCommand<'a> {
+    compute: &'a Compute,
+    group: usize,
+    dimensions: [u32; 2],
+    arguments: Option<&'a wgpu::Buffer>,
+    tick_offset: Option<u32>,
 }
 impl<'a> ComputeBatch<'a> {
     fn dispatch(&mut self, compute: &'a Compute, group: usize, x: u32, y: u32) {
-        self.commands.push((compute, group, [x, y], None));
+        self.commands.push(ComputeCommand {
+            compute,
+            group,
+            dimensions: [x, y],
+            arguments: None,
+            tick_offset: self.tick_offset,
+        });
     }
     fn indirect(&mut self, compute: &'a Compute, group: usize, args: &'a wgpu::Buffer) {
-        self.commands.push((compute, group, [0, 0], Some(args)));
+        self.commands.push(ComputeCommand {
+            compute,
+            group,
+            dimensions: [0, 0],
+            arguments: Some(args),
+            tick_offset: self.tick_offset,
+        });
     }
     fn scan(&mut self, passes: &'a HashMap<String, Compute>, name: &str, count: u32) {
         self.dispatch(
@@ -158,13 +250,16 @@ impl<'a> ComputeBatch<'a> {
         // Preserve per-dispatch timestamp probes without requiring timestamp
         // writes inside passes on production adapters.
         #[cfg(test)]
-        let separate = separate || self.commands.iter().any(|(c, _, _, _)| c.timing.is_some());
+        let separate = separate || self.commands.iter().any(|c| c.compute.timing.is_some());
         if separate {
-            for (compute, group, [x, y], args) in self.commands.drain(..) {
-                if let Some(args) = args {
-                    compute.dispatch_indirect(encoder, group, args);
+            for c in self.commands.drain(..) {
+                let mut pass = encoder.begin_compute_pass(&c.compute.descriptor());
+                pass.set_pipeline(&c.compute.pipeline);
+                c.compute.bind(&mut pass, c.group, c.tick_offset);
+                if let Some(args) = c.arguments {
+                    pass.dispatch_workgroups_indirect(args, 0);
                 } else {
-                    compute.dispatch(encoder, group, x, y);
+                    pass.dispatch_workgroups(c.dimensions[0], c.dimensions[1], 1);
                 }
             }
         } else {
@@ -172,13 +267,13 @@ impl<'a> ComputeBatch<'a> {
                 label: Some("simulation dispatch batch"),
                 ..Default::default()
             });
-            for (compute, group, [x, y], args) in self.commands.drain(..) {
-                pass.set_pipeline(&compute.pipeline);
-                pass.set_bind_group(0, &compute.groups[group], &[]);
-                if let Some(args) = args {
+            for c in self.commands.drain(..) {
+                pass.set_pipeline(&c.compute.pipeline);
+                c.compute.bind(&mut pass, c.group, c.tick_offset);
+                if let Some(args) = c.arguments {
                     pass.dispatch_workgroups_indirect(args, 0);
                 } else {
-                    pass.dispatch_workgroups(x, y, 1);
+                    pass.dispatch_workgroups(c.dimensions[0], c.dimensions[1], 1);
                 }
             }
         }
@@ -268,6 +363,10 @@ pub struct Simulation {
     terrain_epoch: u32,
     #[cfg(test)]
     separate_compute_passes: bool,
+    #[cfg(test)]
+    reference_tick_boundaries: bool,
+    #[cfg(test)]
+    linked_spatial: bool,
     pub(crate) death_stats_buffer: wgpu::Buffer,
     event_buffer: wgpu::Buffer,
     summary_buffer: wgpu::Buffer,
@@ -409,11 +508,14 @@ impl Simulation {
             "parameters",
             std::mem::size_of::<SimParams>() as u64,
         );
-        let tick_params_buffer = buffer(
-            device,
-            "tick parameters",
-            1024 * std::mem::size_of::<SimParams>() as u64,
-        );
+        let tick_params_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("aligned tick parameters"),
+            size: 1024 * parameter_stride(device),
+            usage: wgpu::BufferUsages::UNIFORM
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
         let alive_count_buffer = buffer(device, "alive count", 4);
         let alive_count_readback = readback(device, 4);
         let selection_params_buffer = uniform(device, "selection", 16);
@@ -496,6 +598,21 @@ impl Simulation {
             "rwwu",
             pair(|s| vec![&agent_buffers[s], &cursors, &indices, &params_buffer])
         );
+        for entry in ["clear", "link"] {
+            add!(
+                &format!("linked_{entry}"),
+                "../shaders/linked_spatial.wgsl",
+                entry,
+                "rwwwu",
+                pair(|s| vec![
+                    &agent_buffers[s],
+                    &occupancy_buffer,
+                    &cell_offsets,
+                    &indices,
+                    &params_buffer
+                ])
+            );
+        }
         #[cfg(test)]
         add!(
             "perceive",
@@ -697,8 +814,13 @@ impl Simulation {
             "free",
             "../shaders/free_flags.wgsl",
             "main",
-            "rwu",
-            pair(|s| vec![&agent_buffers[s], &free_flags, &params_buffer])
+            "rwuw",
+            pair(|s| vec![
+                &agent_buffers[s],
+                &free_flags,
+                &params_buffer,
+                &reservoir_claims_buffer
+            ])
         );
         add!(
             "free_compact",
@@ -1036,6 +1158,10 @@ impl Simulation {
             terrain_epoch: 0,
             #[cfg(test)]
             separate_compute_passes: false,
+            #[cfg(test)]
+            reference_tick_boundaries: false,
+            #[cfg(test)]
+            linked_spatial: true,
             death_stats_buffer,
             event_buffer,
             summary_buffer,
@@ -1353,7 +1479,29 @@ impl Simulation {
                 )
             })
             .collect();
-        queue.write_buffer(&self.tick_params_buffer, 0, bytemuck::cast_slice(&ps));
+        let stride = parameter_stride(device);
+        let mut upload = vec![0u8; ticks as usize * stride as usize];
+        for (slot, params) in upload.chunks_exact_mut(stride as usize).zip(&ps) {
+            slot[..std::mem::size_of::<SimParams>()].copy_from_slice(bytemuck::bytes_of(params));
+        }
+        queue.write_buffer(&self.tick_params_buffer, 0, &upload);
+        for compute in self.passes.values_mut() {
+            compute.prepare_tick_groups(device, &self.tick_params_buffer);
+        }
+        #[cfg(test)]
+        let reference = self.reference_tick_boundaries;
+        #[cfg(not(test))]
+        let reference = false;
+        #[cfg(test)]
+        let linked = self.linked_spatial;
+        #[cfg(not(test))]
+        let linked = true;
+        // Observer pipelines use the public current-parameter uniform. Publish
+        // their epoch explicitly; normal playback only publishes once per batch.
+        let observing = self.family_observer.is_some();
+        #[cfg(test)]
+        let observing =
+            observing || self.funnel_observer.is_some() || self.parent_admission.is_some();
         let groups = MAX_AGENTS.div_ceil(64);
         let mut batch = ComputeBatch::default();
         #[cfg(test)]
@@ -1378,14 +1526,17 @@ impl Simulation {
                 e.copy_buffer_to_buffer(&staging, 0, &self.terrain_buffer, 0, staging.size());
                 self.terrain_epoch = epoch;
             }
-            batch.flush(e);
-            e.copy_buffer_to_buffer(
-                &self.tick_params_buffer,
-                offset as u64 * std::mem::size_of::<SimParams>() as u64,
-                &self.params_buffer,
-                0,
-                std::mem::size_of::<SimParams>() as u64,
-            );
+            if reference || observing {
+                batch.flush(e);
+                e.copy_buffer_to_buffer(
+                    &self.tick_params_buffer,
+                    offset as u64 * stride,
+                    &self.params_buffer,
+                    0,
+                    std::mem::size_of::<SimParams>() as u64,
+                );
+            }
+            batch.tick_offset = (!reference).then_some((offset as u64 * stride) as u32);
             let s = self.current_buffer;
             let d = 1 - s;
             // Only slots already dead at tick start may be reused: disjoint parent/child writes.
@@ -1393,11 +1544,16 @@ impl Simulation {
             batch.scan(&self.passes, "free", MAX_AGENTS);
             batch.dispatch(&self.passes["free_compact"], 0, groups, 1);
             batch.dispatch(&self.passes["resource"], 0, 64, 64);
-            batch.dispatch(&self.passes["clear"], 0, 32, 32);
-            batch.dispatch(&self.passes["count"], s, groups, 1);
-            batch.scan(&self.passes, "spatial", SPATIAL_CELL_COUNT);
-            batch.dispatch(&self.passes["cursors"], 0, 1024, 1);
-            batch.dispatch(&self.passes["scatter"], s, groups, 1);
+            if linked {
+                batch.dispatch(&self.passes["linked_clear"], s, 1024, 1);
+                batch.dispatch(&self.passes["linked_link"], s, groups, 1);
+            } else {
+                batch.dispatch(&self.passes["clear"], 0, 32, 32);
+                batch.dispatch(&self.passes["count"], s, groups, 1);
+                batch.scan(&self.passes, "spatial", SPATIAL_CELL_COUNT);
+                batch.dispatch(&self.passes["cursors"], 0, 1024, 1);
+                batch.dispatch(&self.passes["scatter"], s, groups, 1);
+            }
             batch.indirect(&self.passes["perceive_live"], s, &self.active_indices);
             batch.indirect(&self.passes["decide_live"], s, &self.cognitive_dispatch);
             batch.dispatch(&self.passes["observe_signals"], s, groups, 1);
@@ -1426,12 +1582,17 @@ impl Simulation {
             // exact write cost is debited before interaction or birth.
             batch.indirect(&self.passes["plastic"], s, &self.cognitive_dispatch);
             // Contact is resolved after voluntary integration, so rebuild the
-            // compact spatial index from the actual post-movement bodies.
-            batch.dispatch(&self.passes["clear"], 0, 32, 32);
-            batch.dispatch(&self.passes["count"], d, groups, 1);
-            batch.scan(&self.passes, "spatial", SPATIAL_CELL_COUNT);
-            batch.dispatch(&self.passes["cursors"], 0, 1024, 1);
-            batch.dispatch(&self.passes["scatter"], d, groups, 1);
+            // spatial index from the actual post-movement bodies.
+            if linked {
+                batch.dispatch(&self.passes["linked_clear"], d, 1024, 1);
+                batch.dispatch(&self.passes["linked_link"], d, groups, 1);
+            } else {
+                batch.dispatch(&self.passes["clear"], 0, 32, 32);
+                batch.dispatch(&self.passes["count"], d, groups, 1);
+                batch.scan(&self.passes, "spatial", SPATIAL_CELL_COUNT);
+                batch.dispatch(&self.passes["cursors"], 0, 1024, 1);
+                batch.dispatch(&self.passes["scatter"], d, groups, 1);
+            }
             #[cfg(test)]
             if let Some(observer) = &self.funnel_observer {
                 batch.flush(e);
@@ -1482,8 +1643,10 @@ impl Simulation {
             #[cfg(not(test))]
             let admit = true;
             if admit {
-                batch.flush(e);
-                e.clear_buffer(&self.reservoir_claims_buffer, 0, None);
+                if reference {
+                    batch.flush(e);
+                    e.clear_buffer(&self.reservoir_claims_buffer, 0, None);
+                }
                 batch.dispatch(&self.passes["claim_reservoir"], d, groups, 1);
                 // The destination is the hereditary pool, not the body-slot domain.
                 batch.dispatch(
@@ -1510,11 +1673,18 @@ impl Simulation {
                 batch.flush(e);
                 observer.after_tick(e, d);
             }
-            batch.flush(e);
             self.current_buffer = d;
             self.tick += 1;
         }
         batch.flush(e);
+        e.copy_buffer_to_buffer(
+            &self.tick_params_buffer,
+            (ticks - 1) as u64 * stride,
+            &self.params_buffer,
+            0,
+            std::mem::size_of::<SimParams>() as u64,
+        );
+        batch.tick_offset = None;
         e.copy_buffer_to_buffer(
             &self.resource_buffer,
             0,
@@ -2228,6 +2398,10 @@ pub fn live_source(source: &str, binding: u32) -> String {
 }
 
 pub fn shader_source(source: &str) -> String {
+    let source = source.replace(
+        "// SPATIAL_ITERATION",
+        include_str!("../shaders/spatial_iteration.wgsl"),
+    );
     let constants = [
         ("LIVE_WORKGROUP_SIZE", LIVE_WORKGROUP_SIZE),
         ("INPUT_COUNT", INPUTS),

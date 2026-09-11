@@ -70,8 +70,6 @@ fn fs(input: VertexOutput) -> @location(0) vec4<f32> {
   let uv = world / params.world_size.xy;
   let cell = vec2<u32>(uv * f32(GRID));
   let value = sample_resource(uv);
-  let occupancy_cell = vec2<u32>(uv * f32(AGENT_GRID));
-  let density = min(f32(atomicLoad(&occupancy[occupancy_cell.y * AGENT_GRID + occupancy_cell.x])) / 24.0, 1.0);
   var tint = mix(vec3<f32>(0.004, 0.008, 0.016), vec3<f32>(0.12, 0.27, 0.14), smoothstep(0.02, 0.78, value));
   if (camera.lens == 1u) {
     let v = clamp(value, 0.0, 1.0);
@@ -82,6 +80,8 @@ fn fs(input: VertexOutput) -> @location(0) vec4<f32> {
     }
   }
   if (camera.lens == 2u) {
+    let occupancy_cell = vec2<u32>(uv * f32(AGENT_GRID));
+    let density = min(f32(atomicLoad(&occupancy[occupancy_cell.y * AGENT_GRID + occupancy_cell.x])) / 24.0, 1.0);
     tint = mix(vec3<f32>(0.01, 0.02, 0.10), vec3<f32>(0.92, 0.12, 0.04), smoothstep(0.0, 0.9, density));
   }
   let dropped = f32(ground_words[(cell.y*GRID+cell.x)*2u].x)/1000.0;

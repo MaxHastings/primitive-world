@@ -1,9 +1,14 @@
 # GPU tick performance
 
-The ordinary tick records 44 dispatches in three compute passes. Buffer copies
-and clears remain outside the passes. Optional observers flush pending dispatches
-before observing state. Per-dispatch timestamp diagnostics use separate passes so
-they still work without requiring timestamp writes inside compute passes.
+The ordinary tick records 34 dispatches. Cell heads and per-slot links rebuild
+spatial indexing in two dispatches, twice per tick, replacing the previous two
+seven-dispatch prefix/compaction sequences. Occupancy counts remain available.
+Aligned dynamic uniforms select each tick's parameters, and free-slot classification
+also clears reservoir claims. A normal N-tick batch uses N+1 compute passes for
+ticks plus one for its final alive count; body copies remain the per-tick boundary.
+Terrain changes and observers add boundaries when needed. Observers receive the
+current tick's public parameter uniform; rendering receives the final one.
+Per-dispatch timestamp diagnostics retain separate passes.
 
 Plasticity accounting writes energy, cumulative spending, and (when necessary)
 alive status directly. It does not rewrite the remaining body fields. Genome and
@@ -144,3 +149,54 @@ estimated savings should be checked against the actual running population. Neura
 identity, inherited latent parameters, f32 storage, ecology cadence and save formats
 remain unchanged. The retained small scheduling correction limits pool-update
 launches to 4,096 destinations; no substantial speedup is claimed for that change.
+
+## Spatial links and dynamic tick parameters
+
+September 11, 2026, Windows, RTX 4070 SUPER, NVIDIA 591.86, Vulkan. A real
+3440×1440 wallpaper comparison used MAX with the original monitor refresh setting
+in both builds. Every run loaded an isolated copy of the same compatible save:
+world 286, tick 246,036, 749 living entities. The original experiment stayed saved
+and closed. Three paired runs alternated order. Each used a three-second startup
+wait followed by ten one-second title samples; the first two samples were excluded
+from both builds to remove checkpoint/shader startup. Values below are medians of
+the three per-run medians, from the application's rounded actual-speed display.
+
+| Wallpaper build | Actual ticks/s | Rendered FPS |
+| --- | ---: | ---: |
+| Previous implementation | 1,959 | 133.9 |
+| Spatial links + dynamic parameters + conditional density reads | 2,199 | 138.8 |
+
+This is about +12% actual playback throughput at unchanged refresh and resolution.
+Population evolves during each run; the short windows are not a sustained-run
+guarantee. These measurements include rendering, telemetry, polling and ordinary
+viewer work, but exclude five-minute autosaves. No save from the original
+experiment was rewritten by the comparison.
+
+Separate 1,024-tick headless pairs (32 warmup ticks, batches of 32, three alternating
+repetitions) found roughly 2–4% from removing tick boundaries and about 4–9% from
+linked indexing at 1,000–8,192 starting bodies and the saved world. Do not add
+these percentages to the wallpaper result. Reproduce the isolated comparisons:
+
+```sh
+cargo test --release profile_tick_boundaries -- --ignored --nocapture --test-threads=1
+cargo test --release profile_linked_spatial -- --ignored --nocapture --test-threads=1
+```
+
+The linked-grid test verifies every live organism and packet occurs exactly once,
+including dense cells, wrapped positions, sparse slots, and a subsequent empty
+world. Wrapped crowded sensing matches exact food/body counts and floating
+channels within rounding tolerance. Isolated full-state comparisons span climate
+epochs and command batches. Existing recovery, gathering, contact, packet-fusion
+and observer tests exercise the production path. Both old scatter and linked
+insertion use GPU scheduling order: neighbor sums can round differently, so
+compatible checkpoint loading does not imply identical long-term trajectories
+between builds. Neural arithmetic, physical costs and sensory coverage are unchanged.
+
+A double-buffered prefix scan and a linear ecology-cell launch layout did not
+show reliable saved-world gains and were removed. A 10 FPS presentation trial
+gave only a small throughput improvement; it was also removed. MAX retains the
+normal presentation refresh policy.
+
+Validation: 169 release tests passed, 31 manual diagnostics ignored; formatting,
+Clippy with warnings denied, and 12 Python checks passed. The release wallpaper
+build was also exercised in the paired playback runs above.

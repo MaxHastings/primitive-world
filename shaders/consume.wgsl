@@ -7,6 +7,7 @@
 @group(0) @binding(5) var<storage, read_write> stats: array<atomic<u32>>;
 @group(0) @binding(7) var<storage,read> offsets:array<u32>;
 @group(0) @binding(8) var<storage,read> indices:array<u32>;
+// SPATIAL_ITERATION
 fn demand(i:u32)->u32 {
  let a=agents[i];let d=decisions[i];
  if(a.alive!=ORGANISM || d.invalid!=0u){return 0u;}
@@ -38,15 +39,15 @@ fn share(stock:u32,request:u32,total:u32)->u32 {
 fn main(@builtin(global_invocation_id) id:vec3<u32>){
  let ri=id.x;if(ri>=262144u){return;}
  let cell=vec2<u32>(ri%512u,ri/512u);let ci=(cell.y/2u)*256u+cell.x/2u;
- var start=0u;if(ci>0u){start=offsets[ci-1u];}let end=offsets[ci];
+ let start=spatial_first(ci);let end=spatial_end(ci);
  if(start==end){return;}
  var total=0u;
- for(var k=start;k<end;k++){let i=indices[k];if(ground_index(agents[i].position,params.world_size.xy)==ri){total+=demand(i);}}
+ for(var k=start;k!=end;k=spatial_next(k)){let i=spatial_slot(k);if(ground_index(agents[i].position,params.world_size.xy)==ri){total+=demand(i);}}
  let dropped=min(atomicLoad(&ground[ri].dropped),total);
  let grown=min(atomicLoad(&resources[ri]),total-dropped);
  var used_drop=0u;var used_grown=0u;
- for(var k=start;k<end;k++){
-  let i=indices[k];if(ground_index(agents[i].position,params.world_size.xy)!=ri){continue;}
+ for(var k=start;k!=end;k=spatial_next(k)){
+  let i=spatial_slot(k);if(ground_index(agents[i].position,params.world_size.xy)!=ri){continue;}
   requests[i]=0u;if(total==0u){continue;}
   let requested=demand(i);let drop=share(dropped,requested,total);let food=share(grown,requested,total);
   requests[i]=drop+food;used_drop+=drop;used_grown+=food;

@@ -1,3 +1,15 @@
+## Spatial indexing and tick submission (unreleased)
+
+- Rebuild spatial cells with heads and per-slot links, removing ten dispatches per
+  tick while retaining wrapped sensing, gathering and contact rules.
+- Select tick uniforms through aligned dynamic offsets and clear hereditary-pool
+  claims during free-slot classification, reducing compute-pass boundaries.
+- Read display density only in the density lens. Keep presentation refresh and
+  simulation cadence unchanged; no ticks, sensory samples or learning updates are skipped.
+- Add wrapped/crowded spatial checks, state comparisons and paired benchmarks.
+  Saves remain compatible. Neighbor reduction order can differ, as it could
+  with the previous GPU scatter; exact long-term trajectories are not guaranteed.
+
 ## Wallpaper speeds and performance audit (unreleased)
 
 - Show all shared playback speeds in the wallpaper menu, including 64x, 128x and
