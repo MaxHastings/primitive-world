@@ -4,6 +4,14 @@ use std::{collections::HashMap, sync::mpsc};
 use wgpu::util::DeviceExt;
 const RESOURCE_SCALE: f32 = 1000.0;
 
+/// Opt-in diagnostic queries; each dispatch occurrence gets its own timestamp pair.
+#[cfg(test)]
+pub(crate) struct DispatchTrace {
+    pub queries: wgpu::QuerySet,
+    pub capacity: u32,
+    pub labels: Vec<String>,
+}
+
 fn parameter_stride(device: &wgpu::Device) -> u64 {
     (std::mem::size_of::<SimParams>() as u64).next_multiple_of(u64::from(
         device.limits().min_uniform_buffer_offset_alignment,
@@ -18,6 +26,8 @@ pub(crate) struct Compute {
     tick_groups: Vec<wgpu::BindGroup>,
     #[cfg(test)]
     pub(crate) timing: Option<(wgpu::QuerySet, u32)>,
+    #[cfg(test)]
+    pub(crate) dispatch_trace: Option<(String, std::rc::Rc<std::cell::RefCell<DispatchTrace>>)>,
 }
 fn pair<'a>(f: impl Fn(usize) -> Vec<&'a wgpu::Buffer>) -> Vec<Vec<&'a wgpu::Buffer>> {
     (0..2).map(f).collect()
@@ -109,6 +119,8 @@ impl Compute {
             tick_groups: Vec::new(),
             #[cfg(test)]
             timing: None,
+            #[cfg(test)]
+            dispatch_trace: None,
         }
     }
     fn prepare_tick_groups(&mut self, device: &wgpu::Device, parameters: &wgpu::Buffer) {
@@ -268,12 +280,25 @@ impl<'a> ComputeBatch<'a> {
                 ..Default::default()
             });
             for c in self.commands.drain(..) {
+                #[cfg(test)]
+                let trace = c.compute.dispatch_trace.as_ref().map(|(name, trace)| {
+                    let mut trace = trace.borrow_mut();
+                    let index = 2 + trace.labels.len() as u32 * 2;
+                    assert!(index + 1 < trace.capacity);
+                    trace.labels.push(name.clone());
+                    pass.write_timestamp(&trace.queries, index);
+                    (trace.queries.clone(), index + 1)
+                });
                 pass.set_pipeline(&c.compute.pipeline);
                 c.compute.bind(&mut pass, c.group, c.tick_offset);
                 if let Some(args) = c.arguments {
                     pass.dispatch_workgroups_indirect(args, 0);
                 } else {
                     pass.dispatch_workgroups(c.dimensions[0], c.dimensions[1], 1);
+                }
+                #[cfg(test)]
+                if let Some((queries, index)) = trace {
+                    pass.write_timestamp(&queries, index);
                 }
             }
         }

@@ -1,6 +1,12 @@
 # Performance and limits
 
-Current wallpaper measurements at the monitor's original refresh setting show
+September 12 saved-world profiling measured 2,660 ticks/s in synchronized headless
+batches and 2,353 ticks/s in native-refresh wallpaper. These are workload-specific
+baselines, not a new optimization gain. See the
+[layer breakdown and rejected fusion prototype](gpu-tick-performance.md#saved-world-layer-profile)
+and the [profiling guide](profiling.md) for methods and reproduction instructions.
+
+Earlier paired wallpaper measurements at the monitor's original refresh setting show
 about 12% more actual simulation throughput (median 1,959 → 2,199 ticks/s).
 The retained changes reduce spatial indexing and compute-pass overhead; refresh,
 resolution, biological cadence and save formats are unchanged. See the

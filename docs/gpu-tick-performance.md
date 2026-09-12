@@ -1,5 +1,8 @@
 # GPU tick performance
 
+For explicit checkpoint inputs, selective GPU timestamps, observer timings and
+opt-in viewer logging, see the [profiling guide](profiling.md).
+
 The ordinary tick records 34 dispatches. Cell heads and per-slot links rebuild
 spatial indexing in two dispatches, twice per tick, replacing the previous two
 seven-dispatch prefix/compaction sequences. Occupancy counts remain available.
@@ -245,3 +248,91 @@ cargo test --release profile_retained_inner_loops -- --ignored --nocapture --tes
 
 Validation: 170 release tests passed and 32 manual diagnostics were ignored;
 formatting, Clippy with warnings denied, and 12 Python checks passed.
+
+## Saved-world layer profile
+
+September 12, 2026, Windows, RTX 4070 SUPER, NVIDIA 591.86, Vulkan, release build.
+The original wallpaper was saved and closed; measurements loaded isolated copies
+of world 442 at tick 5,977,704. The snapshot contained 582 organisms and 53 packets;
+549 organisms expressed four recurrent units. The original experiment and binary
+were preserved and resumed after measurement.
+
+Five alternating-order headless repetitions each warmed 128 ticks and measured
+4,096 ticks in batches of 32. Population evolved during each measurement.
+
+| Layer | Median ticks/s |
+| --- | ---: |
+| Synchronized simulation batches | 2,660 |
+| Batches with telemetry | 2,654 |
+| Telemetry with one-millisecond completion polling | 2,507 |
+| Polling plus once-per-second metrics | 2,489 |
+| Blocking batches with detailed observation every 1,024 ticks | 2,383 |
+
+The batch-timestamp probe measured about 308 microseconds of GPU execution,
+65 microseconds of CPU command encoding/finish, and 1.7 microseconds of submission
+per tick. Completion waiting includes GPU execution; these overlapping timings
+must not be added together. Detailed observation includes metrics, evolution and
+hereditary-pool search, but the diagnostic excludes full report serialization.
+
+Three alternating wallpaper pairs used MAX at 3440 by 1440, with a fresh copied
+save for each run. Each launch ran for 24 seconds; the first five statistics
+windows were discarded and the next fifteen analyzed. Native refresh requested
+165 Hz and measured about 144 FPS. Median throughput was 2,353 ticks/s at native
+refresh versus 2,452 at a 30-FPS limit, approximately a 4.2% difference. This
+comparison includes presentation and scheduling effects, not just drawing cost.
+
+Selective kernel captures used three repetitions of 128 measured ticks per kernel,
+with the same warmup and a reset for every repetition. Median diagnostic durations
+were approximately 66 microseconds/tick for sensing, 53 for fusion inheritance,
+51 for ecology, 23 for plasticity and 18 for decisions. These independently
+sampled intervals are not additive time shares or guaranteed removable costs.
+Timing every dispatch inflated GPU batch time to about 508 microseconds/tick;
+selective captures stayed near their own short-window baseline of 339. The short
+capture windows and longer throughput runs do not have identical evolving loads.
+
+Five warmed observer probes measured median hereditary-pool search at 40 ms,
+evolution snapshots at 6.8 ms, ordinary synchronous metrics at 0.34 ms and durable
+experiment saves at 0.39 seconds. Queued checkpoint uploads were explicitly
+submitted and completed before timing observers. Separate readback probes found
+large genome and learned-weight buffers dominate save transfer cost. Save timing
+includes synchronization and receipt publication, not only checkpoint writes.
+
+Three normal 30,000-tick headless continuations, sampling every 1,024 ticks and
+saving an end checkpoint, measured about 2,279 ticks/s using the report's wall
+timer. Complete process durations were about 14.6 seconds, including startup and
+final output. No world transition occurred; restart cost was not established.
+Nsight Systems produced no Vulkan events in the attempted capture, so no
+hardware-counter or instruction-level conclusions are claimed.
+
+### Rejected cooperative fusion prototype
+
+A subsequent prototype queued successful fusions and used one workgroup per
+child to copy independent genome entries. One lane retained donor draws, trait
+updates and mutation ordering. Targeted tests passed byte-for-byte comparisons
+against serial inheritance, including 130 disjoint offspring, topology growth
+and pruning, high-word ticks, failed fusions and queue resets.
+
+Five alternating pairs used a newer isolated snapshot of the same world at tick
+6,873,224 with 738 living entities, plus seed-42 fresh worlds. Every run warmed
+128 ticks and measured 4,096 ticks in batches of 32. Both diagnostic variants
+retained the prototype scratch allocation/reset; this was an internal algorithm
+comparison, not a clean release-binary comparison.
+
+| Workload | Serial reference ticks/s | Queued cooperative ticks/s | Change |
+| --- | ---: | ---: | ---: |
+| Saved world | 2,664 | 2,751 | +3.2% |
+| 32 starting bodies | 4,444 | 4,371 | -1.6% |
+| 1,000 starting bodies | 3,276 | 3,129 | -4.5% |
+| 4,096 starting bodies | 2,885 | 2,845 | -1.4% |
+| 8,192 starting bodies | 2,537 | 2,465 | -2.8% |
+
+The small saved-world gain and mixed/regressing fresh-world results did not
+justify the additional queue and synchronization complexity. The prototype was
+removed without deployment. A later queued-serial comparison was interrupted
+and is not treated as completed evidence. No claim of exhaustive optimization
+follows from rejecting this candidate.
+
+The retained profiling implementation passed 174 release tests, formatting,
+Clippy with warnings denied, and 12 Python tests. Three new profiling diagnostics
+are ignored by default and require explicit paths. No biological optimization
+was retained from this profiling pass.

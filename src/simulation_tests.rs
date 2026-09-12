@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "profiling.rs"]
+mod profiling;
+
 #[path = "transfer_probe.rs"]
 mod transfer_probe;
 

@@ -15,6 +15,7 @@ mod journey_observer;
 mod model;
 mod play_files;
 mod playback;
+mod profile_log;
 mod renderer;
 mod session;
 mod simulation;
@@ -47,6 +48,7 @@ struct App {
 }
 
 struct AppState {
+    profile_log: Option<profile_log::ProfileLog>,
     capture_path: Option<std::path::PathBuf>,
     wallpaper: bool,
     wallpaper_size: Option<[f32; 2]>,
@@ -264,6 +266,7 @@ impl AppState {
             saved_revision: None,
             window: window.clone(),
             surface,
+            profile_log: profile_log::ProfileLog::from_env(&device, timestamp_period_ns),
             device,
             queue,
             config,
@@ -558,8 +561,15 @@ impl AppState {
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         self.poll_saves();
+        let profile_render = self
+            .profile_log
+            .as_mut()
+            .is_some_and(|p| p.prepare_render());
         let now = Instant::now();
         let output = self.surface.get_current_texture()?;
+        if let Some(profile) = &mut self.profile_log {
+            profile.surface_wait_ms += now.elapsed().as_secs_f64() * 1000.0;
+        }
         self.next_frame = now + self.frame_interval();
         let raw_input = self.egui_state.take_egui_input(&self.window);
         let context = self.egui_context.clone();
@@ -602,7 +612,11 @@ impl AppState {
                 })],
                 depth_stencil_attachment: None,
                 occlusion_query_set: None,
-                timestamp_writes: None,
+                timestamp_writes: self
+                    .profile_log
+                    .as_ref()
+                    .filter(|_| profile_render)
+                    .and_then(|p| p.timestamps(0)),
             });
             if self.ui.screen == ui::Screen::Play && rect.is_positive() {
                 let scale = full_output.pixels_per_point;
@@ -653,7 +667,11 @@ impl AppState {
                 })],
                 depth_stencil_attachment: None,
                 occlusion_query_set: None,
-                timestamp_writes: None,
+                timestamp_writes: self
+                    .profile_log
+                    .as_ref()
+                    .filter(|_| profile_render)
+                    .and_then(|p| p.timestamps(2)),
             });
             self.egui_renderer
                 .render(&mut pass.forget_lifetime(), &paint_jobs, &screen_descriptor);
@@ -670,7 +688,16 @@ impl AppState {
         } else {
             None
         };
+        if profile_render {
+            self.profile_log
+                .as_ref()
+                .unwrap()
+                .resolve_render(&mut encoder);
+        }
         self.queue.submit(Some(encoder.finish()));
+        if profile_render {
+            self.profile_log.as_mut().unwrap().map_render();
+        }
         if let Some((buffer, pitch)) = capture {
             let path = self.capture_path.take().unwrap();
             if let Err(error) =
@@ -681,11 +708,21 @@ impl AppState {
         }
         self.window.pre_present_notify();
         output.present();
+        if let Some(profile) = &mut self.profile_log {
+            profile.render_cpu_ms += now.elapsed().as_secs_f64() * 1000.0;
+        }
         self.frame_count += 1;
         if now.duration_since(self.fps_timer) >= Duration::from_secs(1) {
             let seconds = now.duration_since(self.fps_timer).as_secs_f32();
             self.render_fps = self.frame_count as f32 / seconds;
             self.ticks_last_second = (self.ticks_window_accumulated as f32 / seconds) as u32;
+            if let Some(profile) = &mut self.profile_log {
+                profile.emit(serde_json::json!({"seconds": seconds, "tps": self.ticks_last_second,
+                    "fps": self.render_fps, "living": self.living_agents, "tick": self.simulation.tick,
+                    "world": self.simulation.progress.world, "speed": playback::SPEED_LABELS[self.speed_index],
+                    "width": self.config.width, "height": self.config.height, "render_hz": self.render_hz,
+                    "gpu_timestamps": self.gpu_timing.is_some()}));
+            }
             self.frame_count = 0;
             self.ticks_window_accumulated = 0;
             self.fps_timer = now;

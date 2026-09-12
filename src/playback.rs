@@ -230,6 +230,9 @@ impl AppState {
             }
         }
         self.queue.submit(Some(e.finish()));
+        if let Some(profile) = &mut self.profile_log {
+            profile.encode_submit_ms += now.elapsed().as_secs_f64() * 1000.0;
+        }
         let (tx, rx) = mpsc::channel();
         self.batch_readback
             .slice(
@@ -348,6 +351,12 @@ impl AppState {
         self.batch_readback.unmap();
         self.update_selection_highlight();
         let now = Instant::now();
+        if let Some(profile) = &mut self.profile_log {
+            profile.batches += 1;
+            profile.ticks += u64::from(pending.ticks);
+            profile.gpu_ms += f64::from(self.gpu_tick_ms.unwrap_or(0.0)) * f64::from(pending.ticks);
+            profile.batch_wall_ms += now.duration_since(pending.started).as_secs_f64() * 1000.0;
+        }
         self.scheduler.completed(
             now,
             now.duration_since(pending.started),
