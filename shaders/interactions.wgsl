@@ -23,7 +23,7 @@ fn contact(i:u32)->u32{
    if(b.alive==0u){continue;}
    // Force can contact any live entity. Transfer and fusion have separate eligibility.
    if(a.alive==ORGANISM&&decisions[i].selected_action==TRANSFER&&b.alive!=ORGANISM){continue;}
-   if(a.alive==PACKET&&(b.alive!=PACKET||a.parent_lineage==b.parent_lineage)){continue;}
+   if(a.alive==PACKET&&(b.alive!=PACKET||(a.parent_lineage==b.parent_lineage && a.parent_high==b.parent_high))){continue;}
    let delta=torus_delta(a.position,b.position,params.world_size.xy);let distance2=dot(delta,delta);
    if(distance2>radius*radius||distance2>best2){continue;}
    if(distance2==best2&&best!=INVALID&&priority(j)>=priority(best)){continue;}
@@ -55,7 +55,7 @@ fn resolve(@builtin(global_invocation_id) id:vec3<u32>){
  if(j>=params.agent_count||atomicLoad(&claims[i])!=rank||atomicLoad(&claims[j])!=rank){return;}
  var a=agents[i];var b=agents[j];if(a.alive==0u||b.alive==0u){return;}
  if(a.alive==PACKET){
-  if(b.alive==PACKET&&a.parent_lineage!=b.parent_lineage){atomicStore(&claims[2u*INVALID+i],INVALID);}
+  if(b.alive==PACKET&&(a.parent_lineage!=b.parent_lineage || a.parent_high!=b.parent_high)){atomicStore(&claims[2u*INVALID+i],INVALID);}
   return;
  }
  if(d.selected_action==TRANSFER){
@@ -84,10 +84,10 @@ fn production(@builtin(global_invocation_id) id:vec3<u32>){
  births[i]=u32(mature&&funded);counter_add(21,births[i]);
 }
 fn record(actor:u32,other:u32,action:u32,amount:f32,position:vec2<f32>){
- let sequence=counter_add(8,1u);events[sequence%65536u]=InteractionEvent(params.tick,actor,other,action,amount,sequence,agents[actor].lineage_id,agents[other].lineage_id,position,vec2<f32>(0.0),0u,0u);
+ let sequence=counter_add(8,1u);events[sequence%65536u]=InteractionEvent(params.tick,actor,other,action,amount,sequence,agents[actor].lineage_id,agents[other].lineage_id,position,vec2<f32>(0.0),0u,0u,params.clock.x,agents[actor].lineage_high,agents[other].lineage_high,0u);
 }
 fn counter_add(index:u32,value:u32)->u32 {
  let prior=atomicAdd(&stats[index],value);
- if(index!=0u && prior>0xffffffffu-value){atomicStore(&stats[36],1u);}
+ if(index!=0u && prior>0xffffffffu-value){atomicAdd(&stats[40u+index],1u);}
  return prior;
 }

@@ -9,7 +9,7 @@
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id:vec3<u32>){
  let i=id.x;if(i>=INVALID){return;}var a=source[i];births[i]=0u;
- if(id.x==0u){atomicStore(&stats[18],params.tick+1u);}
+ if(id.x==0u){atomicStore(&stats[18],params.tick+1u);atomicStore(&stats[58],params.clock.x+u32(params.tick==0xffffffffu));}
 if(a.alive==0u){destination[i]=a;return;}if(a.alive==PACKET){
   a.age+=1.0;a.energy=max(0.0,a.energy-params.sensor_and_padding.z*pow(a.packet_size,2.0/3.0));
   a.position=wrap_world(a.position+a.velocity,params.world_size.xy);a.velocity*=0.98;
@@ -44,11 +44,11 @@ if(a.alive==0u){destination[i]=a;return;}if(a.alive==PACKET){
  let unit_cost=min(a.energy,params.mutation.w*f32(countOneBits(a.active_mask)));a.energy-=unit_cost;a.spent+=body_cost+unit_cost;counter_add(35,u32(round(unit_cost*1000.0)));
  a.distance_travelled+=length(movement);a.age+=1.0;a.action=d.selected_action;a.hidden=d.hidden;a.rng=hash_u32(a.rng+params.tick+1u);
  if(a.energy<=0.0||a.age>=a.max_age){a.alive=0u;if(a.age>=a.max_age){counter_add(2,1u);}else{counter_add(1,1u);}}
- let signal_cost=SIGNAL_ACTIVATION_COST+SIGNAL_AMPLITUDE_COST*abs(d.payload);if(a.alive!=0u && d.selected_action==EMIT && params.physical.y>=0.5 && a.energy>=signal_cost){a.energy-=signal_cost;a.spent+=signal_cost;a.signal_payload=d.payload;a.signal_tick=params.tick+1u;let sequence=counter_add(8,1u);events[sequence%65536u]=InteractionEvent(params.tick,i,INVALID,EMIT,d.payload,sequence,a.lineage_id,0u,a.position,vec2<f32>(0.0),0u,0u);counter_add(9,1u);}
+ let signal_cost=SIGNAL_ACTIVATION_COST+SIGNAL_AMPLITUDE_COST*abs(d.payload);if(a.alive!=0u && d.selected_action==EMIT && params.physical.y>=0.5 && a.energy>=signal_cost){a.energy-=signal_cost;a.spent+=signal_cost;a.signal_payload=d.payload;a.signal_tick=params.tick+1u;a.signal_high=params.clock.x+u32(params.tick==0xffffffffu);let sequence=counter_add(8,1u);events[sequence%65536u]=InteractionEvent(params.tick,i,INVALID,EMIT,d.payload,sequence,a.lineage_id,0u,a.position,vec2<f32>(0.0),0u,0u,params.clock.x,a.lineage_high,0u,0u);counter_add(9,1u);}
  destination[i]=a;
 }
 fn counter_add(index:u32,value:u32)->u32 {
  let prior=atomicAdd(&stats[index],value);
- if(index!=0u && prior>0xffffffffu-value){atomicStore(&stats[36],1u);}
+ if(index!=0u && prior>0xffffffffu-value){atomicAdd(&stats[40u+index],1u);}
  return prior;
 }

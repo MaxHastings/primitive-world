@@ -188,6 +188,13 @@ impl AppState {
             self.activate_experiment(experiment)?;
         }
         self.paused = false;
+        eprintln!(
+            "Wallpaper resumed: world {}, tick {}, {} living; playback {}",
+            self.simulation.progress.world,
+            self.simulation.tick,
+            self.living_agents,
+            playback::SPEED_LABELS[self.speed_index]
+        );
         Ok(())
     }
     pub(crate) fn start_command_line_world(&mut self, args: &[String]) -> Result<(), String> {

@@ -403,7 +403,23 @@ pub fn run(args: &[String]) -> Result<(), String> {
         writeln!(file, "{header}").map_err(|e| e.to_string())?;
     }
     let start = std::time::Instant::now();
-    let target = sim.tick.checked_add(ticks).ok_or("Tick overflow")?;
+    let famine = if famine == u32::MAX {
+        u64::MAX
+    } else {
+        u64::from(famine)
+    };
+    let restore = if restore == u32::MAX {
+        u64::MAX
+    } else {
+        u64::from(restore)
+    };
+    let sample = u64::from(sample);
+    let journey_sample = u64::from(journey_sample);
+    let survivor_sample = u64::from(survivor_sample);
+    let target = sim
+        .tick
+        .checked_add(u64::from(ticks))
+        .ok_or("Tick overflow")?;
     let mut extinct = history[0].living == 0;
     while sim.tick < target && !extinct && !sim.progress.engine_saturated {
         if sim.tick == famine {
@@ -433,7 +449,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             }
         }
         let mut encoder = device.create_command_encoder(&Default::default());
-        sim.encode_ticks(&mut encoder, &device, &queue, n);
+        sim.encode_ticks(&mut encoder, &device, &queue, n as u32);
         // A four-byte readback bounds wasted work after extinction to this batch,
         // independently of the much less frequent full reporting interval.
         sim.copy_alive_count(&mut encoder);
@@ -441,14 +457,16 @@ pub fn run(args: &[String]) -> Result<(), String> {
         if let Some(file) = &mut communication_file {
             let total = sim.event_sequence(&device, &queue)?;
             let events = sim.recent_events(&device, &queue)?;
-            communication_dropped_events += u64::from(
-                total
-                    .wrapping_sub(communication_next_sequence)
-                    .saturating_sub(EVENT_RING_SIZE),
-            );
+            communication_dropped_events += total
+                .wrapping_sub(communication_next_sequence)
+                .saturating_sub(u64::from(EVENT_RING_SIZE));
             for event in events.into_iter().filter(|event| {
-                event.sequence >= communication_next_sequence
-                    && event.sequence < total
+                event
+                    .sequence
+                    .wrapping_sub(communication_next_sequence as u32)
+                    < total
+                        .saturating_sub(communication_next_sequence)
+                        .min(u64::from(u32::MAX)) as u32
                     && (event.action == crate::model::EMIT
                         || event.action == crate::model::SIGNAL_OBSERVED
                         || event.action == crate::model::MEMORY_SAMPLE)
@@ -534,8 +552,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             let line = serde_json::json!({"type": "ended_attempt", "evidence": event});
             writeln!(file, "{line}").map_err(|e| e.to_string())?;
         }
-        let footer =
-            serde_json::json!({"type": "summary", "observer": journeys.report(journey_sample)});
+        let footer = serde_json::json!({"type": "summary", "observer": journeys.report(journey_sample as u32)});
         writeln!(file, "{footer}").map_err(|e| e.to_string())?;
         file.flush().map_err(|e| e.to_string())?;
     }
@@ -572,10 +589,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
   "termination_reason":if sim.progress.engine_saturated {"engine_capacity"} else if extinct {"extinction"} else if sim.tick >= MAX_WORLD_TICKS {"tick_capacity"} else {"tick_limit"},
   "extinction_detection_max_delay_ticks":31,
   "initial_settings":settings,"final_settings":sim.settings,"history_limit":4096,"history":history,"evolution":evolution,
-  "travel_observer":travel.report(sample),
+  "travel_observer":travel.report(sample as u32),
   "family_report":family_report,
   "survivor_observer":survivors.as_ref().map(|s| serde_json::json!({"source_tick":s.bank.source_tick,"source_population":s.source_population,"sampled_bodies":s.bodies.len(),"period":survivor_sample,"selection":s.selection})),
-  "journey_observer":journey_file.as_ref().map(|_| journeys.report(journey_sample)),
+  "journey_observer":journey_file.as_ref().map(|_| journeys.report(journey_sample as u32)),
   "famine_at":famine,"restore_at":restore,"famine_radius":famine_radius,"famine_delta":famine_delta,"wall_seconds":start.elapsed().as_secs_f64(),"founder_export":export,
   "population_completion":population_completion,
   "scope":"Explicit single-world diagnostic. Observations do not affect population selection."});
@@ -637,9 +654,8 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
     let mut living = sim.metrics(&d, &q)?.living;
     while elapsed < ticks {
         if sim.progress.engine_saturated || sim.tick >= MAX_WORLD_TICKS {
-            let at = std::time::Instant::now();
-            sim.rollover_world(&d, &q)?;
-            restart_seconds += at.elapsed().as_secs_f64();
+            sim.record_engine_saturation();
+            break;
         } else if living == 0 {
             let at = std::time::Instant::now();
             sim.advance_world(&d, &q)?;
@@ -649,7 +665,11 @@ fn run_evolution(args: &[String], a: &HashMap<String, String>) -> Result<(), Str
         let n = (ticks - elapsed)
             .min(32)
             .min(sample - elapsed % sample)
-            .min(MAX_WORLD_TICKS.saturating_sub(sim.tick));
+            .min(
+                MAX_WORLD_TICKS
+                    .saturating_sub(sim.tick)
+                    .min(u64::from(u32::MAX)) as u32,
+            );
         if n == 0 {
             sim.record_engine_saturation();
             break;

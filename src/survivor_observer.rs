@@ -9,15 +9,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SampledBody {
     pub slot: usize,
-    pub lineage_id: u32,
-    pub parent_lineage: u32,
+    pub lineage_id: u64,
+    pub parent_lineage: u64,
     pub ancestry_depth: u32,
     pub founder_family: u32,
     pub age: f32,
     pub energy: f32,
     pub food: f32,
     /// None means the source did not record an individual observation tick.
-    pub observed_tick: Option<u32>,
+    pub observed_tick: Option<u64>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -29,7 +29,7 @@ pub struct SurvivorSample {
     pub selection: String,
 }
 
-fn slots(agents: &[AgentGpu], seed: u32, tick: u32) -> Vec<usize> {
+fn slots(agents: &[AgentGpu], seed: u32, tick: u64) -> Vec<usize> {
     let mut indices: Vec<_> = agents
         .iter()
         .enumerate()
@@ -38,7 +38,7 @@ fn slots(agents: &[AgentGpu], seed: u32, tick: u32) -> Vec<usize> {
         .collect();
     // Hash ordering does not inspect food, energy, action, family or ancestry.
     indices.sort_unstable_by_key(|&i| {
-        let mut x = (i as u64) ^ ((seed as u64) << 32) ^ tick as u64;
+        let mut x = (i as u64) ^ ((seed as u64) << 32) ^ tick;
         x = (x ^ (x >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
         x = (x ^ (x >> 27)).wrapping_mul(0x94d049bb133111eb);
         x ^ (x >> 31)
@@ -79,7 +79,7 @@ pub fn observe_cached(
     let missing: Vec<_> = chosen
         .iter()
         .copied()
-        .filter(|&slot| !cached.contains_key(&agents[slot].lineage_id))
+        .filter(|&slot| !cached.contains_key(&agents[slot].identity()))
         .collect();
     let mut genomes = Vec::new();
     if !missing.is_empty() {
@@ -93,7 +93,7 @@ pub fn observe_cached(
     let genomes: Vec<_> = chosen
         .iter()
         .map(|&slot| {
-            cached.get(&agents[slot].lineage_id).map_or_else(
+            cached.get(&agents[slot].identity()).map_or_else(
                 || fresh.next().expect("packed missing genome"),
                 |g| (*g).clone(),
             )
@@ -121,8 +121,8 @@ pub fn observe_cached(
                 let a = agents[slot];
                 SampledBody {
                     slot,
-                    lineage_id: a.lineage_id,
-                    parent_lineage: a.parent_lineage,
+                    lineage_id: a.identity(),
+                    parent_lineage: a.parent_identity(),
                     ancestry_depth: a.ancestry_depth,
                     founder_family: a.founder_family,
                     age: a.age,

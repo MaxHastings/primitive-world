@@ -4,13 +4,13 @@ use crate::model::SelectionOutput;
 #[derive(Default)]
 pub struct Inspection {
     pub snapshot: Option<SelectionOutput>,
-    pub tick: u32,
+    pub tick: u64,
     pub following: bool,
     pub notice: String,
 }
 
 impl Inspection {
-    pub fn select(&mut self, snapshot: Option<SelectionOutput>, tick: u32) {
+    pub fn select(&mut self, snapshot: Option<SelectionOutput>, tick: u64) {
         *self = Self {
             following: snapshot.is_some(),
             snapshot,
@@ -19,7 +19,7 @@ impl Inspection {
         };
     }
 
-    pub fn refresh(&mut self, result: Result<Option<SelectionOutput>, String>, tick: u32) {
+    pub fn refresh(&mut self, result: Result<Option<SelectionOutput>, String>, tick: u64) {
         if !self.following {
             return;
         }
@@ -62,7 +62,8 @@ impl Inspection {
             s.agent.alive == 1
                 && s.agent.lived_ticks > 0
                 && self.tick > 0
-                && (s.agent.ancestry_depth == 0 || self.tick > s.agent.birth_tick.saturating_add(1))
+                && (s.agent.ancestry_depth == 0
+                    || self.tick > s.agent.birth_time().saturating_add(1))
         })
     }
 }

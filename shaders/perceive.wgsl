@@ -49,7 +49,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
     let region=sensory_sector(perception_to_body(delta,a.heading,body_c,body_s))+select(0u,8u,distance2>near2);
     p.regions[region].bodies+=1.0;p.regions[region].velocity+=perception_to_body(b.velocity-a.velocity,a.heading,body_c,body_s);p.nearby_count+=1.0;
     // Signal is an aggregate signed activity, never a sender record.
-    if(b.signal_tick==params.tick && params.tick>0u){p.regions[region].signal+=b.signal_payload;}
+    if(b.signal_tick==params.tick && b.signal_high==params.clock.x && (params.tick>0u || params.clock.x>0u)){p.regions[region].signal+=b.signal_payload;}
     // Smooth bounded proximity/contact pressure, shared by every sample.
     p.regions[region].pressure+=max(0.0,1.0-sqrt(distance2)/r);
    }

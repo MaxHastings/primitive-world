@@ -154,7 +154,11 @@ impl AppState {
         } else {
             self.scheduler.take(now, self.speed_index)
         }
-        .min(model::MAX_WORLD_TICKS.saturating_sub(self.simulation.tick));
+        .min(
+            model::MAX_WORLD_TICKS
+                .saturating_sub(self.simulation.tick)
+                .min(u64::from(u32::MAX)) as u32,
+        );
         if self.simulation.progress.engine_saturated
             || self.simulation.tick >= model::MAX_WORLD_TICKS
         {
@@ -284,13 +288,19 @@ impl AppState {
             |offset: usize| bytemuck::pod_read_unaligned::<u32>(&mapped[offset..offset + 4]);
         self.living_agents = u32_at(0);
         self.food_eaten = u64::from(u32_at(4)) + (u64::from(u32_at(60)) << 32);
-        self.starvation_deaths = u32_at(8);
-        self.age_deaths = u32_at(12);
-        self.births = u32_at(16);
-        self.interaction_stats = [u32_at(20), u32_at(24), u32_at(28), u32_at(32)];
-        if u32_at(4 + 36 * 4) != 0 || self.simulation.tick >= model::MAX_WORLD_TICKS {
+        let counter = |index| {
+            model::wide_counter(
+                bytemuck::cast_slice(&mapped[4..TELEMETRY_SIZE as usize]),
+                index,
+            )
+        };
+        self.starvation_deaths = counter(1);
+        self.age_deaths = counter(2);
+        self.births = counter(3);
+        self.interaction_stats = [counter(4), counter(5), counter(6), counter(7)];
+        if self.simulation.tick >= model::MAX_WORLD_TICKS {
             self.simulation.record_engine_saturation();
-            self.file_status = "Accounting horizon reached; continuing into the next world".into();
+            self.file_status = "Engine capacity reached; world preserved and paused".into();
         }
         if let Some(timing) = &self.gpu_timing {
             let start = bytemuck::pod_read_unaligned::<u64>(
@@ -317,8 +327,8 @@ impl AppState {
             let size = std::mem::size_of::<model::DecisionGpu>();
             current.decision = bytemuck::pod_read_unaligned(&mapped[offset..offset + size]);
             let same = current.agent.generation == previous.agent.generation
-                && current.agent.lineage_id == previous.agent.lineage_id
-                && current.agent.birth_tick == previous.agent.birth_tick;
+                && current.agent.identity() == previous.agent.identity()
+                && current.agent.birth_time() == previous.agent.birth_time();
             self.inspection
                 .refresh(Ok(same.then_some(current)), self.simulation.tick);
         }
@@ -355,19 +365,8 @@ impl AppState {
 
     fn service_completed_world(&mut self) {
         if self.simulation.progress.engine_saturated {
-            match self.simulation.rollover_world(&self.device, &self.queue) {
-                Ok(()) => {
-                    self.file_status =
-                        "Accounting horizon passed; continued from the hereditary pool".into()
-                }
-                Err(e) => {
-                    self.simulation.reset(&self.queue);
-                    self.file_status = format!("World recovery used fresh founders: {e}");
-                }
-            }
-            self.world_revision = self.world_revision.saturating_add(1);
-            self.clear_world_observers();
-            let _ = self.refresh_metrics();
+            self.paused = true;
+            self.file_status = "Engine capacity reached; world preserved and paused".into();
             return;
         }
         if self.living_agents == 0 && self.simulation.progress.completed.is_none() {

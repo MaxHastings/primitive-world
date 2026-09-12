@@ -1,5 +1,17 @@
 ## GPU inner-loop reductions (unreleased)
 
+
+## Unreleased — living-world counter continuity
+
+- Widen cumulative GPU telemetry and world time to 64 bits. Carrying a low word
+  no longer ends a world or disables packet production and fusion.
+- Extend entity identities and parent references with a high word. Reserve a new
+  identity epoch before the low word runs out, preserving live ecology.
+- Preserve signal timing, birth matching, climate phase, observer identities,
+  and checkpoint continuation across the former 32-bit boundaries.
+- Write format 59 checkpoints and load same-model format 58 by zero-extending
+  appended storage. Existing saves are not rewritten during loading.
+
 - Remove repeated neural bank division/remainder operations and stage sensory
   weights by active row while preserving accumulation and learning-cost order.
 - Reuse one body-frame rotation per organism and pass weather epochs/remainders

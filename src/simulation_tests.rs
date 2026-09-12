@@ -370,7 +370,7 @@ fn environment_rotation_permutates_resources_soil_and_weather_across_renewals() 
             s.settings.environment_rotation = turns;
             s.reset(&q);
             s.tick = tick;
-            s.terrain_epoch = u32::MAX;
+            s.terrain_epoch = u64::MAX;
             step(&mut s, &d, &q, 32);
             let food = read::<u32>(
                 &d,
@@ -1258,13 +1258,13 @@ fn temp(name: &str) -> std::path::PathBuf {
 fn layout_and_cli_contract() {
     assert_eq!(GENOME_SIZE, 2494);
     assert_eq!(GENOME_BANK_COUNT, 2);
-    assert_eq!(std::mem::size_of::<AgentGpu>(), 296);
+    assert_eq!(std::mem::size_of::<AgentGpu>(), 312);
     assert_eq!(std::mem::offset_of!(AgentGpu, moved), 96);
     assert_eq!(std::mem::offset_of!(AgentGpu, lineage_id), 104);
     assert_eq!(std::mem::size_of::<PerceptionGpu>(), 400);
     assert_eq!(std::mem::size_of::<DecisionGpu>(), 752);
-    assert_eq!(std::mem::size_of::<SelectionOutput>(), 1464);
-    assert_eq!(std::mem::size_of::<SimParams>(), 144);
+    assert_eq!(std::mem::size_of::<SelectionOutput>(), 1480);
+    assert_eq!(std::mem::size_of::<SimParams>(), 160);
     assert!(MAX_AGENTS as usize * GENOME_BANK_STRIDE * 4 <= 256 * 1024 * 1024);
     for flag in [
         "--unknown-option",
@@ -2060,7 +2060,7 @@ fn family_observer_counts_every_tick_and_preserves_dead_family_outcomes() {
     }
     assert_eq!(report.families[1].last_alive_tick, 1);
     assert_eq!(
-        report.families[0].births,
+        u64::from(report.families[0].births),
         s.metrics(&d, &q).unwrap().events[3]
     );
     let observed = s.agent_snapshot(&d, &q).unwrap();
@@ -2136,7 +2136,7 @@ fn family_diagnostics_count_juvenile_feeding_maturity_and_terminal_flow() {
     assert!(f.juvenile_ingested_milli > 0);
     assert!(f.energy_at_maturity_milli > 0);
     let metrics = s.metrics(&d, &q).unwrap();
-    assert_eq!(f.ingested_milli, u64::from(metrics.events[0]));
+    assert_eq!(f.ingested_milli, metrics.events[0]);
     assert_eq!(
         f.collected_milli,
         (metrics.harvested * 1000.0).round() as u64
@@ -2330,13 +2330,19 @@ fn assisted_provenance_survives_restarts_history_eviction_and_checkpoint() {
 }
 
 #[test]
-fn accounting_counter_horizon_requests_rollover_not_extinction() {
+fn accounting_counter_carries_without_stopping_the_world() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     put(&s, &q, 0, body([602.0, 902.0]), &fixed(0, [0.0; 2]));
     q.write_buffer(&s.death_stats_buffer, 24 * 4, bytemuck::bytes_of(&u32::MAX));
     step(&mut s, &d, &q, 1);
-    assert!(s.refresh_engine_status(&d, &q).unwrap());
+    assert!(!s.refresh_engine_status(&d, &q).unwrap());
+    let counters = read::<u32>(&d, &q, &s.death_stats_buffer, DEATH_STATS_COUNT as usize);
+    assert_eq!(wide_counter(&counters, 24), u64::from(u32::MAX) + 1);
+    assert_eq!(counters[36], 0);
+    step(&mut s, &d, &q, 8);
+    assert_eq!(s.tick, 9);
+    assert_eq!(s.progress.world, 1);
     assert!(s.complete_world(&d, &q).is_err());
     assert!(s.advance_world(&d, &q).is_err());
     assert!(s.progress.history.is_empty());
@@ -2576,7 +2582,7 @@ fn juvenile_starvation_on_final_growth_tick_is_not_successful_maturation() {
 #[test]
 fn permanent_juvenile_physiology_replays_at_different_world_ages() {
     for tick in [0, 50_000, 100_000, 3_000_000, u32::MAX] {
-        near(juvenile_gathering_floor(tick), 0.01);
+        near(juvenile_gathering_floor(u64::from(tick)), 0.01);
     }
     let (d, q) = gpu();
     for tick in [0, 50_000, 99_999, 100_000, 200_000] {
@@ -2622,10 +2628,10 @@ fn ramp_settings_are_absent_and_old_ramp_state_is_rejected() {
     }
     for tick in [0, 50_000, 100_000, 3_000_000] {
         let p = params_for(tick, tick, &settings, 91);
-        assert_eq!(p.lifecycle[1], tick / 47_003);
-        assert_eq!(p.environment[0].to_bits(), tick % 47_003);
-        assert_eq!(p.environment[1].to_bits(), tick / 997);
-        assert_eq!(p.environment[2].to_bits(), tick % 997);
+        assert_eq!(p.lifecycle[1], (tick / 47_003) as u32);
+        assert_eq!(p.environment[0].to_bits(), (tick % 47_003) as u32);
+        assert_eq!(p.environment[1].to_bits(), (tick / 997) as u32);
+        assert_eq!(p.environment[2].to_bits(), (tick % 997) as u32);
         near(p.physical[3], 2.0);
         near(p.sensor_and_padding[2], 0.02);
         near(p.world_size[2], 0.01);
@@ -2645,3 +2651,6 @@ mod budget_gate_audit;
 
 #[path = "checkpoint_inspection.rs"]
 mod checkpoint_inspection;
+
+#[path = "long_run_tests.rs"]
+mod long_run;

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct Point {
-    pub tick: u32,
+    pub tick: u64,
     pub position: [f32; 2],
     pub collection_position: [f32; 2],
     pub local_vegetation: f32,
@@ -26,18 +26,18 @@ pub struct Point {
 
 #[derive(Debug, serde::Serialize)]
 pub struct Journey {
-    pub lineage_id: u32,
+    pub lineage_id: u64,
     pub generation: u32,
-    pub birth_tick: u32,
+    pub birth_tick: u64,
     pub source: Point,
     pub source_peak_vegetation: f32,
     pub source_vegetation_at_departure: f32,
-    pub departure_tick: u32,
+    pub departure_tick: u64,
     pub poor_corridor_start: Point,
     pub poor_corridor_end: Point,
     pub destination_collection: Point,
     pub destination_ingestion: Point,
-    pub packet_production_interval: [u32; 2],
+    pub packet_production_interval: [u64; 2],
     pub packet_production_count: u32,
     pub waypoints: Vec<Point>,
 }
@@ -51,26 +51,26 @@ pub struct Destination {
 
 #[derive(Debug, serde::Serialize)]
 pub struct EndedAttempt {
-    pub lineage_id: u32,
+    pub lineage_id: u64,
     pub generation: u32,
-    pub birth_tick: u32,
-    pub ended_at_sample: u32,
+    pub birth_tick: u64,
+    pub ended_at_sample: u64,
     pub end_reason: &'static str,
     pub last_stage: &'static str,
     pub terminal_observation: Option<Point>,
     pub source: Point,
     pub source_peak_vegetation: f32,
     pub source_vegetation_at_departure: f32,
-    pub departure_tick: u32,
+    pub departure_tick: u64,
     pub nearest_destination_at_departure: Option<Destination>,
     pub waypoints: Vec<Point>,
 }
 
 struct Track {
-    birth_tick: u32,
+    birth_tick: u64,
     source: Point,
     peak: f32,
-    departure: Option<(u32, f32)>,
+    departure: Option<(u64, f32)>,
     nearest_destination: Option<Destination>,
     poor_start: Option<Point>,
     corridor: Option<(Point, Point)>,
@@ -97,8 +97,8 @@ pub struct Stats {
 
 #[derive(Default)]
 pub struct JourneyObserver {
-    tracks: HashMap<(u32, u32), Track>,
-    last_tick: Option<u32>,
+    tracks: HashMap<(u64, u32), Track>,
+    last_tick: Option<u64>,
     pub stats: Stats,
     ended: Vec<EndedAttempt>,
 }
@@ -138,7 +138,7 @@ fn vegetation(resources: &[u32], position: [f32; 2], world_size: [f32; 2]) -> f3
     total / 9.0
 }
 
-fn point(tick: u32, a: &AgentGpu, resources: &[u32], world_size: [f32; 2]) -> Point {
+fn point(tick: u64, a: &AgentGpu, resources: &[u32], world_size: [f32; 2]) -> Point {
     Point {
         tick,
         position: a.position,
@@ -201,9 +201,9 @@ fn nearest_destination(
 impl JourneyObserver {
     fn end_track(
         &mut self,
-        key: (u32, u32),
+        key: (u64, u32),
         t: Track,
-        tick: u32,
+        tick: u64,
         reason: &'static str,
         terminal: Option<Point>,
     ) {
@@ -242,7 +242,7 @@ impl JourneyObserver {
     }
 
     /// Unfinished live tracks at the horizon are censored, not failed migrations.
-    pub fn finish(&mut self, tick: u32) {
+    pub fn finish(&mut self, tick: u64) {
         for (key, t) in std::mem::take(&mut self.tracks) {
             self.end_track(key, t, tick, "run_end_censored", None);
         }
@@ -251,7 +251,7 @@ impl JourneyObserver {
     #[cfg(test)]
     pub fn observe(
         &mut self,
-        tick: u32,
+        tick: u64,
         agents: &[AgentGpu],
         resources: &[u32],
     ) -> Result<Vec<Journey>, String> {
@@ -260,7 +260,7 @@ impl JourneyObserver {
 
     pub fn observe_in_habitat(
         &mut self,
-        tick: u32,
+        tick: u64,
         agents: &[AgentGpu],
         resources: &[u32],
         world_size: [f32; 2],
@@ -275,7 +275,7 @@ impl JourneyObserver {
         let mut current = HashMap::new();
         let mut completed = Vec::new();
         for a in agents.iter().filter(|a| a.alive == 1) {
-            let key = (a.lineage_id, a.generation);
+            let key = (a.identity(), a.generation);
             if !a
                 .position
                 .iter()
@@ -300,7 +300,10 @@ impl JourneyObserver {
             }
             let p = point(tick, a, resources, world_size);
             let mut track = self.tracks.remove(&key);
-            if track.as_ref().is_some_and(|t| t.birth_tick != a.birth_tick) {
+            if track
+                .as_ref()
+                .is_some_and(|t| t.birth_tick != a.birth_time())
+            {
                 self.end_track(key, track.take().unwrap(), tick, "birth_tick_changed", None);
             }
             let collecting_in_patch = a.collected > 0.0
@@ -386,9 +389,9 @@ impl JourneyObserver {
                     let (departure_tick, source_vegetation_at_departure) = t.departure.unwrap();
                     let (poor_corridor_start, poor_corridor_end) = t.corridor.clone().unwrap();
                     completed.push(Journey {
-                        lineage_id: a.lineage_id,
+                        lineage_id: a.identity(),
                         generation: a.generation,
-                        birth_tick: a.birth_tick,
+                        birth_tick: a.birth_time(),
                         source: t.source.clone(),
                         source_peak_vegetation: t.peak,
                         source_vegetation_at_departure,
@@ -412,7 +415,7 @@ impl JourneyObserver {
             if track.is_none() && collecting_in_patch {
                 self.stats.source_anchors += 1;
                 track = Some(Track {
-                    birth_tick: a.birth_tick,
+                    birth_tick: a.birth_time(),
                     source: p.clone(),
                     peak: vegetation(resources, p.collection_position, world_size),
                     departure: None,
@@ -431,10 +434,10 @@ impl JourneyObserver {
         self.stats.lost_tracks += self.tracks.len() as u64;
         let bodies: HashMap<_, _> = agents
             .iter()
-            .map(|a| ((a.lineage_id, a.generation), a))
+            .map(|a| ((a.identity(), a.generation), a))
             .collect();
         for (key, t) in std::mem::take(&mut self.tracks) {
-            let terminal = bodies.get(&key).filter(|a| a.birth_tick == t.birth_tick);
+            let terminal = bodies.get(&key).filter(|a| a.birth_time() == t.birth_tick);
             let reason = match terminal {
                 Some(a) if a.alive == 0 => "observed_dead",
                 Some(_) => "invalid_observation",

@@ -3,8 +3,8 @@ use bytemuck::{Pod, Zeroable};
 /// Persistence accepts only this model's controller and lifetime-state layout.
 pub const MODEL_ID: &str = "primitive-v45-depth-retention";
 pub const FOUNDER_BANK_VERSION: u32 = 21;
-pub const CHECKPOINT_VERSION: u32 = 58;
-pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD058";
+pub const CHECKPOINT_VERSION: u32 = 59;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD059";
 /// Fixed rolling hereditary storage; independent of body-engine capacity.
 pub const HEREDITARY_RESERVOIR_SIZE: u32 = 4_096;
 /// Incremental maintenance paid for each expressed recurrent unit.
@@ -17,14 +17,14 @@ pub const BASE_MUTATION_MAGNITUDE: f32 = 0.03;
 pub const TERRAIN_EPOCH_TICKS: u32 = 1_000_000;
 pub const MAX_AGENTS: u32 = 16_384;
 /// Leave headroom for bounded tick arithmetic and observer windows.
-pub const MAX_WORLD_TICKS: u32 = u32::MAX - 1_000_001;
+pub const MAX_WORLD_TICKS: u64 = u64::MAX - 1_000_001;
 pub const LIVE_WORKGROUP_SIZE: usize = 8;
 pub const RESOURCE_GRID: u32 = 512;
 pub const OCCUPANCY_GRID: u32 = 256;
 pub const SPATIAL_CELL_COUNT: u32 = OCCUPANCY_GRID * OCCUPANCY_GRID;
 pub const WORLD_SIZE: f32 = 2048.0;
 /// Cumulative physical and cognitive accounting counters.
-pub const DEATH_STATS_COUNT: u32 = 40;
+pub const DEATH_STATS_COUNT: u32 = 80;
 pub const EVENT_RING_SIZE: u32 = 65_536;
 pub const SECTORS: usize = 8;
 pub const BEARING_NAMES: [&str; SECTORS] = [
@@ -183,6 +183,10 @@ pub struct AgentGpu {
     pub topology_mutation_rate: f32,
     /// Lifetime angular velocity in radians per tick; zero for new entities.
     pub angular_velocity: f32,
+    pub lineage_high: u32,
+    pub parent_high: u32,
+    pub birth_high: u32,
+    pub signal_high: u32,
 }
 impl Default for AgentGpu {
     fn default() -> Self {
@@ -279,6 +283,7 @@ pub struct SimParams {
     /// [regional remainder, local epoch, local remainder, memory-write cost].
     /// The regional epoch lives in lifecycle[1]; WGSL decodes with bitcast<u32>.
     pub environment: [f32; 4],
+    pub clock: [u32; 4],
 }
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug, Default)]
@@ -452,4 +457,20 @@ fn default_habitat_height() -> f32 {
 /// Fixed recurrent brains with random inherited parameters.
 pub fn random_genome(rng: &mut u32) -> [f32; GENOME_SIZE] {
     crate::brain::random_genome(rng)
+}
+
+/// Read a cumulative counter after all GPU writers have completed.
+pub fn wide_counter(words: &[u32], index: usize) -> u64 {
+    u64::from(words[index]) | (u64::from(words[if index == 0 { 14 } else { 40 + index }]) << 32)
+}
+impl AgentGpu {
+    pub fn identity(&self) -> u64 {
+        u64::from(self.lineage_id) | (u64::from(self.lineage_high) << 32)
+    }
+    pub fn parent_identity(&self) -> u64 {
+        u64::from(self.parent_lineage) | (u64::from(self.parent_high) << 32)
+    }
+    pub fn birth_time(&self) -> u64 {
+        u64::from(self.birth_tick) | (u64::from(self.birth_high) << 32)
+    }
 }

@@ -94,7 +94,7 @@ fn inspect_saved_world_and_pool() {
             std::fs::File::open(out.join("source.checkpoint")).unwrap(),
             (
                 receipt["seed"].as_u64().unwrap() as u32,
-                receipt["tick"].as_u64().unwrap() as u32,
+                receipt["tick"].as_u64().unwrap(),
                 receipt["living"].as_u64().unwrap() as u32,
             ),
             receipt["world"].as_u64().unwrap(),

@@ -52,7 +52,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
  atomicAdd(&families[b+1u],1u);
  if(tick>window.late_start){atomicAdd(&families[b+2u],1u);}
  if(a.age>=params.sensor_and_padding.y){atomicAdd(&families[b+3u],1u);}
- if(a.birth_tick==params.tick){
+ if((a.birth_tick==params.tick && a.birth_high==params.clock.x)){
   atomicAdd(&families[b+4u],1u);total(b+14u,a.energy);
   atomicAdd(&families[b+12u],u32(a.ancestry_depth>=2u));
   // Diagnostic lower bound only: no movement, food or other spending.

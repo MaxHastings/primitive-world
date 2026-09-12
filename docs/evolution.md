@@ -76,7 +76,7 @@ observations. History length and values cannot affect hereditary draws. Completi
 is idempotent and requires natural extinction. A pause, save or requested work
 budget never completes a living world.
 
-Checkpoint format 58 preserves live physics, lifetime learning, both pool banks,
+Checkpoint format 59 preserves live physics, lifetime learning, both pool banks,
 traits, replacement state, founder RNG and history. Validation precedes live
 writes. Prior-world durations are independent of the new world's age. Previous
 models are rejected without changing their files.
@@ -120,3 +120,6 @@ is not evidence of intelligence or a reason to add novelty rewards or escape log
 - [Recombination and mutation](../shaders/inherit_genomes.wgsl)
 - [World continuity and history](../src/evolution.rs)
 - [Founder records](../src/founders.rs) and [checkpoint persistence](../src/session.rs)
+
+Format 58 saves from this same model load by zero-extending the new high words;
+existing live biology and inherited records are preserved. New saves use format 59.

@@ -127,10 +127,10 @@ archives elsewhere yourself, and preserve checksums/source settings when sharing
 - Five-minute saves are usually too far apart to reconstruct individual lives.
 - Population relocation can reflect birth/death turnover rather than the same
   individuals crossing the map. Use identity-aware journey traces for that claim.
-- Accounting counters have finite horizons. Single-world diagnostics can stop
-  with `engine_capacity` or `tick_capacity`; rolling runs and the viewer continue
-  into another world under the rollover policy. Neither is natural extinction.
-  Food ingestion uses a paired low/high counter.
+- Cumulative event/action/energy counters use paired low/high words, decoded as
+  64-bit totals. World time and entity identities are also 64-bit. Former 32-bit
+  boundaries do not pause, reseed, or suppress reproduction. GPU event records
+  expose timestamp and identity high words alongside the low words.
 - GPU contention can vary population trajectories. Seeded does not promise
   bitwise replay across devices or schedules.
 - Changed physical settings or manual food interventions confound simple

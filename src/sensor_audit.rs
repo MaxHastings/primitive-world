@@ -426,10 +426,10 @@ fn genuine_newborn(d: &wgpu::Device, q: &wgpu::Queue) -> (AgentGpu, Vec<f32>) {
 #[derive(Default, serde::Serialize)]
 struct ChildTrace {
     parent_lineage: u32,
-    birth_tick: u32,
+    birth_tick: u64,
     birth_energy: f32,
     last_age: f32,
-    mature_tick: Option<u32>,
+    mature_tick: Option<u64>,
     dead: bool,
     received: f64,
     gathered: f64,
@@ -799,7 +799,7 @@ fn random_founder_cohort_after_sensor_certificate() {
         while s.tick < 20000 {
             let boundary = if s.tick < 10000 { 10000 } else { 20000 };
             let n = (boundary - s.tick).min(64);
-            step(&mut s, &d, &q, n);
+            step(&mut s, &d, &q, n as u32);
             let metrics = s.metrics(&d, &q).unwrap();
             if s.tick == 10000 {
                 at_10000 = Some(

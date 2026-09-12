@@ -106,10 +106,10 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
 fn fast_value(slot:u32,index:u32)->f32 {if(!SPECIALIZED_BANKS){let at=slot*FAST_BANK_STRIDE+index%FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){return fast0[at];}return fast1[at];}let base=slot*FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){return fast0[base+index];}return fast1[base+index-FAST_BANK_STRIDE];}
 fn set_fast(slot:u32,index:u32,value:f32) {if(!SPECIALIZED_BANKS){let at=slot*FAST_BANK_STRIDE+index%FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){fast0[at]=value;}else{fast1[at]=value;}return;}let base=slot*FAST_BANK_STRIDE;if(index<FAST_BANK_STRIDE){fast0[base+index]=value;}else{fast1[base+index-FAST_BANK_STRIDE]=value;}}
 
-// Accounting horizons are explicit engine limits, never ecological extinction.
+// Cumulative telemetry uses low/high words and never controls the ecology.
 // Food low-word counter 0 has the explicitly maintained high word at 14.
 fn counter_add(index:u32,value:u32)->u32 {
  let prior=atomicAdd(&stats[index],value);
- if(index!=0u && prior>0xffffffffu-value){atomicStore(&stats[36],1u);}
+ if(index!=0u && prior>0xffffffffu-value){atomicAdd(&stats[40u+index],1u);}
  return prior;
 }

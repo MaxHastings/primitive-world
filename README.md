@@ -139,9 +139,8 @@ automatic. Agents receive local physical measurements, not neighbor identities,
 global maps, or labels explaining whether an action succeeded.
 
 At storage capacity, packet requests that cannot fit are skipped without charge;
-fusion can reuse a consumed packet slot. Accounting limits can also start another
-world, separately from natural extinction. These are implementation limits, not
-evolutionary outcomes. The [agent interface](docs/agents.md) and
+fusion can reuse a consumed packet slot. Cumulative accounting, world time, and entity identities use 64-bit storage;
+crossing a 32-bit boundary does not restart or pause a living world. The [agent interface](docs/agents.md) and
 [world rules](docs/world.md) describe the mechanics in detail.
 
 ## Saves and long runs
@@ -162,8 +161,9 @@ cleanup budget while preserving each experiment's newest valid snapshot. Use
 its matching `.checkpoint` together; see [saving and recovery](docs/play.md#saving).
 
 All modes currently use model `primitive-v45-depth-retention`, checkpoint format
-58, and founder-bank format 21. Incompatible biological layouts are rejected
-rather than silently converted; older saves are not rewritten into this model.
+59, and founder-bank format 21. Incompatible biological layouts are rejected
+rather than silently converted. Same-model format 58 saves load by extending
+counters and identities with high words, preserving their existing biology.
 
 ### Run without a viewer
 

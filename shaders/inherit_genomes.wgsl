@@ -103,7 +103,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
  let rank=id.x;if(rank>=min(free_prefix[INVALID-1u],birth_prefix[INVALID-1u])){return;}
  let parent_rank=(rank+hash_u32(params.tick)%birth_prefix[INVALID-1u])%birth_prefix[INVALID-1u];
  let pi=parents[parent_rank];let ci=free_indices[rank];let child=agents[ci];
- if(child.alive==0u || child.birth_tick!=params.tick || child.birth_parent_slot!=pi){return;}
+ if(child.alive==0u || (child.birth_tick!=params.tick || child.birth_high!=params.clock.x) || child.birth_parent_slot!=pi){return;}
  for(var k=0u;k<GENOME_SIZE;k++){set_gene(ci,k,gene(pi,k));}
 }
 
@@ -113,7 +113,7 @@ fn parallel(@builtin(workgroup_id) id:vec3<u32>, @builtin(local_invocation_index
  let rank=id.x;if(rank>=min(free_prefix[INVALID-1u],birth_prefix[INVALID-1u])){return;}
  let parent_rank=(rank+hash_u32(params.tick)%birth_prefix[INVALID-1u])%birth_prefix[INVALID-1u];
  let pi=parents[parent_rank];let ci=free_indices[rank];let child=agents[ci];
- if(child.alive==0u || child.birth_tick!=params.tick || child.birth_parent_slot!=pi){return;}
+ if(child.alive==0u || (child.birth_tick!=params.tick || child.birth_high!=params.clock.x) || child.birth_parent_slot!=pi){return;}
  for(var k=lane;k<GENOME_SIZE;k+=64u){set_gene(ci,k,gene(pi,k));}
 }
 
@@ -121,19 +121,18 @@ fn parallel(@builtin(workgroup_id) id:vec3<u32>, @builtin(local_invocation_index
 fn fusion(@builtin(global_invocation_id) id:vec3<u32>){
  let pi=id.x;if(pi>=params.agent_count||claims[2u*INVALID+pi]!=INVALID){return;}
  let qi=claims[INVALID+pi];if(qi>=params.agent_count){return;}let child=agents[qi];
- if(child.alive!=ORGANISM||child.birth_tick!=params.tick||child.birth_parent_slot!=pi){return;}
+ if(child.alive!=ORGANISM||(child.birth_tick!=params.tick || child.birth_high!=params.clock.x)||child.birth_parent_slot!=pi){return;}
  let seed=agents[pi].rng^params.tick;
  recombine_child(qi,pi,qi,seed^0xa51293bdu);
  mutate_child(qi,pi,seed);
 }
-// Accounting horizons are explicit engine limits, never ecological extinction.
+// Cumulative telemetry uses low/high words and never controls the ecology.
 // Food low-word counter 0 has the explicitly maintained high word at 14.
 fn counter_add(index:u32,value:u32)->u32 {
  let prior=atomicAdd(&stats[index],value);
- if(index!=0u && prior>0xffffffffu-value){atomicStore(&stats[36],1u);}
+ if(index!=0u && prior>0xffffffffu-value){atomicAdd(&stats[40u+index],1u);}
  return prior;
 }
-
 // A module owns its input/recurrent/gate rows, biases, outgoing readout,
 // expression bit and plasticity rate. Global scalar traits segregate blindly.
 fn recombine_child(ci:u32,pi:u32,qi:u32,seed:u32) {

@@ -21,9 +21,9 @@ fn fresh(p:Agent,pi:u32,ci:u32)->Agent {
  child.max_age=9000.0+2000.0*random01(p.rng^params.tick^0x13579bdfu);
  child.rng=hash_u32(p.rng^params.tick^ci);
  child.generation=agents[ci].generation+1u;
- child.birth_tick=params.tick;child.birth_parent_slot=pi;
+ child.birth_tick=params.tick;child.birth_high=params.clock.x;child.birth_parent_slot=pi;
  child.founder_family=p.founder_family;
- child.lineage_id=counter_add(10,1u)+INVALID+1u;
+ child.lineage_id=counter_add(10,1u)+INVALID+1u;child.lineage_high=atomicLoad(&stats[50]);
  return child;
 }
 @compute @workgroup_size(64)
@@ -35,18 +35,17 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
  var packet=fresh(p,pi,ci);packet.alive=PACKET;packet.energy=p.packet_size;
  packet.position=wrap_world(p.position+body_to_world(d.placement,p.heading)*2.0,params.world_size.xy);
  // Deposited packets have no propulsion or inherited body velocity.
- packet.parent_lineage=p.lineage_id;packet.ancestry_depth=p.ancestry_depth;
+ packet.parent_lineage=p.lineage_id;packet.parent_high=p.lineage_high;packet.ancestry_depth=p.ancestry_depth;
  p.energy-=p.packet_size;p.spent+=p.packet_size;p.packets_produced++;
  if(p.energy<=0.0){p.alive=0u;counter_add(1,1u);}
  agents[pi]=p;agents[ci]=packet;counter_add(19,1u);
 }
 @compute @workgroup_size(64)
 fn fusion(@builtin(global_invocation_id) id:vec3<u32>){
- if(atomicLoad(&stats[36])!=0u){return;}
  let pi=id.x;if(pi>=params.agent_count||claims[2u*INVALID+pi]!=INVALID){return;}
  let qi=claims[INVALID+pi];if(qi>=params.agent_count){return;}
  var p=agents[pi];var q=agents[qi];
- if(p.alive!=PACKET||q.alive!=PACKET||p.parent_lineage==q.parent_lineage){return;}
+ if(p.alive!=PACKET||q.alive!=PACKET||(p.parent_lineage==q.parent_lineage && p.parent_high==q.parent_high)){return;}
  let energy=p.energy+q.energy;
  var child=fresh(p,pi,qi);
  child.position=wrap_world(p.position+torus_delta(p.position,q.position,params.world_size.xy)*0.5,params.world_size.xy);
@@ -56,13 +55,13 @@ fn fusion(@builtin(global_invocation_id) id:vec3<u32>){
  if(energy<=params.sensor_and_padding.w){counter_add(38,1u);return;}
  child.alive=ORGANISM;child.energy=energy-params.sensor_and_padding.w;
  child.heading=6.283185307*random01(child.rng);
- child.parent_lineage=p.parent_lineage;
+ child.parent_lineage=p.parent_lineage;child.parent_high=p.parent_high;
  child.ancestry_depth=max(p.ancestry_depth,q.ancestry_depth)+1u;
  atomicMax(&stats[23],child.ancestry_depth);
  agents[qi]=child;counter_add(3,1u);counter_add(22,1u);
 }
 fn counter_add(index:u32,value:u32)->u32 {
  let prior=atomicAdd(&stats[index],value);
- if(index!=0u && prior>0xffffffffu-value){atomicStore(&stats[36],1u);}
+ if(index!=0u && prior>0xffffffffu-value){atomicAdd(&stats[40u+index],1u);}
  return prior;
 }

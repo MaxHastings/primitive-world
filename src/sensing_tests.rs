@@ -242,7 +242,7 @@ fn generic_samples_count_all_bodies_and_do_not_expose_inventory() {
     assert_eq!(reference.regions[8].bodies, 1.0);
     for tick in [1, 19, 128] {
         s.tick = tick;
-        a.rng = tick * 1234;
+        a.rng = (tick * 1234) as u32;
         put(&s, &q, 0, a, &genes);
         // Change private inventory/energy, keeping externally observable facts fixed.
         let mut b = body([603.0, 902.0]);

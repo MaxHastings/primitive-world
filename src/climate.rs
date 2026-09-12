@@ -10,9 +10,9 @@ fn unit(mut seed: u32) -> f64 {
     seed = (seed ^ (seed >> 15)).wrapping_mul(0x846c_a68b);
     f64::from(seed ^ (seed >> 16)) / f64::from(u32::MAX)
 }
-fn component(tick: u32, seed: u32, period: u32, initial_range: [f64; 2]) -> f64 {
-    let epoch = tick / period;
-    let t = f64::from(tick % period) / f64::from(period);
+fn component(tick: u64, seed: u32, period: u32, initial_range: [f64; 2]) -> f64 {
+    let epoch = (tick / u64::from(period)) as u32;
+    let t = (tick % u64::from(period)) as f64 / f64::from(period);
     let t = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
     // Only the starting keyframe is conditioned. The ordinary interpolation
     // and every subsequent random keyframe are unchanged; no opening timer.
@@ -26,7 +26,7 @@ fn component(tick: u32, seed: u32, period: u32, initial_range: [f64; 2]) -> f64 
 }
 /// Random-like keyframes at unrelated long timescales, with C2 interpolation.
 /// These intervals are correlation scales, not durations of good/bad conditions.
-pub fn at(tick: u32, seed: u32, flourishing_start: bool) -> Climate {
+pub fn at(tick: u64, seed: u32, flourishing_start: bool) -> Climate {
     let wet = if flourishing_start {
         [0.8, 0.95]
     } else {
@@ -61,7 +61,7 @@ mod tests {
             let first = (0..=8_000_000)
                 .step_by(10_000)
                 .find(|&tick| {
-                    let c = at(tick, seed, true);
+                    let c = at(tick as u64, seed, true);
                     c.rainfall < 1.0 || !(0.25..=0.75).contains(&c.temperature)
                 })
                 .unwrap_or(8_000_000);
@@ -70,7 +70,7 @@ mod tests {
             // Once all starting keyframes are behind us, conditioning has no
             // remaining effect: the same ordinary seeded process continues.
             for tick in [6_100_033, 12_000_000, 24_000_000] {
-                assert_eq!(at(tick, seed, true), at(tick, seed, false));
+                assert_eq!(at(tick as u64, seed, true), at(tick as u64, seed, false));
             }
         }
         first_unfavorable.sort_unstable();
@@ -99,7 +99,7 @@ mod tests {
             let mut max = 0.0f32;
             let mut previous = at(0, seed, true);
             for tick in (1000..=24_000_000).step_by(1000) {
-                let now = at(tick, seed, true);
+                let now = at(tick as u64, seed, true);
                 assert!((0.10..=9.5).contains(&now.rainfall));
                 assert!((0.0..=1.0).contains(&now.temperature));
                 assert!((now.rainfall - previous.rainfall).abs() < 0.15);
@@ -110,10 +110,12 @@ mod tests {
             assert!(max / min > 2.0);
             for tick in [173_002, 1_100_008, 4_700_020, u32::MAX - 1] {
                 assert!(
-                    (at(tick + 1, seed, true).rainfall - at(tick, seed, true).rainfall).abs()
+                    (at(tick as u64 + 1, seed, true).rainfall
+                        - at(tick as u64, seed, true).rainfall)
+                        .abs()
                         < 0.0001
                 );
-                assert_eq!(at(tick, seed, true), at(tick, seed, true));
+                assert_eq!(at(tick as u64, seed, true), at(tick as u64, seed, true));
             }
             assert_ne!(at(0, seed, true), at(4_700_021, seed, true));
         }

@@ -7,10 +7,10 @@ use std::collections::HashMap;
 pub struct TravelStats {
     pub samples: u64,
     pub sample_intervals: u64,
-    pub first_tick: Option<u32>,
-    pub last_tick: Option<u32>,
-    pub min_interval_ticks: Option<u32>,
-    pub max_interval_ticks: Option<u32>,
+    pub first_tick: Option<u64>,
+    pub last_tick: Option<u64>,
+    pub min_interval_ticks: Option<u64>,
+    pub max_interval_ticks: Option<u64>,
     /// Each matched agent contributes once per consecutive sample interval.
     pub tracked_agent_intervals: u64,
     pub tracked_agent_ticks: u64,
@@ -31,12 +31,12 @@ struct Observation {
     distance_travelled: f32,
     packets_produced: u32,
     sensor_radius: f32,
-    birth_tick: u32,
+    birth_tick: u64,
 }
 
 #[derive(Default)]
 pub struct TravelObserver {
-    previous: HashMap<(u32, u32), Observation>,
+    previous: HashMap<(u64, u32), Observation>,
     pub stats: TravelStats,
 }
 
@@ -45,7 +45,7 @@ impl TravelObserver {
     /// the initial baseline and final partial interval. Missing/dead identities
     /// and new incarnations establish fresh baselines. Non-increasing timestamps
     /// are rejected without changing the observer.
-    pub fn observe(&mut self, tick: u32, agents: &[AgentGpu]) -> Result<(), String> {
+    pub fn observe(&mut self, tick: u64, agents: &[AgentGpu]) -> Result<(), String> {
         let elapsed = match self.stats.last_tick {
             Some(previous_tick) => Some(
                 tick.checked_sub(previous_tick)
@@ -65,9 +65,9 @@ impl TravelObserver {
                 self.stats.invalid_observations += 1;
                 continue;
             }
-            let identity = (agent.lineage_id, agent.generation);
+            let identity = (agent.identity(), agent.generation);
             if let (Some(elapsed), Some(previous)) = (elapsed, self.previous.get(&identity))
-                && previous.birth_tick == agent.birth_tick
+                && previous.birth_tick == agent.birth_time()
             {
                 if agent.distance_travelled >= previous.distance_travelled
                     && agent.packets_produced >= previous.packets_produced
@@ -76,7 +76,7 @@ impl TravelObserver {
                     let dy = agent.position[1] as f64 - previous.position[1] as f64;
                     let net = dx.hypot(dy);
                     self.stats.tracked_agent_intervals += 1;
-                    self.stats.tracked_agent_ticks += elapsed as u64;
+                    self.stats.tracked_agent_ticks += elapsed;
                     self.stats.path_distance +=
                         agent.distance_travelled as f64 - previous.distance_travelled as f64;
                     self.stats.net_displacement += net;
@@ -95,7 +95,7 @@ impl TravelObserver {
                     distance_travelled: agent.distance_travelled,
                     packets_produced: agent.packets_produced,
                     sensor_radius: agent.sensor_radius,
-                    birth_tick: agent.birth_tick,
+                    birth_tick: agent.birth_time(),
                 },
             );
         }

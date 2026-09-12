@@ -52,8 +52,9 @@ frequent recovery points at greater save overhead. Output samples every 4,096 ti
 A directory lock prevents two runners from advancing the same experiment.
 
 Entity capacity skips unallocated packet requests while simulation continues.
-The interactive game and rolling headless runs roll over accounting horizons
-automatically; explicit single-world diagnostics still report their boundary.
+The viewer and headless runner continue the same world across former 32-bit
+accounting, time, and identity boundaries using 64-bit storage. Only natural
+extinction automatically seeds another world.
 A failed executable, checkpoint validation, or disk write stops the runner and
 preserves its last completed receipt. Inspect the attempt logs before resuming.
 A backup `session.json.bak` retains the preceding receipt; the two most recent

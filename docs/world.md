@@ -4,7 +4,7 @@ This page describes the environment and the consequences of agent actions.
 For how organisms choose actions, see [agents](agents.md); for what survives
 extinction, see [evolution](evolution.md).
 
-Current model: `primitive-v45-depth-retention`, checkpoint format 58, founder-bank
+Current model: `primitive-v45-depth-retention`, checkpoint format 59, founder-bank
 format 21. Numeric costs are defaults, not universal constants: saved settings and
 explicit controls such as the live metabolism slider can change them. The
 [design principles](direction.md) distinguish physical rules from research goals.
@@ -159,8 +159,9 @@ ecological, sensory or learning cadence.
 There are 16,384 shared entity slots and a separate 4,096-record hereditary pool.
 Excess packet-manufacturing requests are counted and skipped without charge;
 fusion reuses a packet slot even at full capacity. The game keeps running.
-Accounting/tick horizons roll over to another world from the hereditary pool,
-without recording a natural extinction. This is an explicit gameplay policy.
+Cumulative telemetry, world time, and entity identities use 64-bit storage.
+Crossing a former 32-bit boundary continues the same world without pausing,
+reseeding, or suppressing reproduction.
 
 Current checkpoints preserve physiology, settings, genomes, learning, resources,
 hereditary pool/RNG streams, bounded history and assisted provenance. Derived

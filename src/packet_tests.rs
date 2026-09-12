@@ -194,7 +194,7 @@ fn pushed_packet_can_drift_into_compatible_fusion_range() {
         s.write_genome_slot(&q, 0, &fixed(0, [0.0; 2]));
         step(&mut s, &d, &q, 1);
         let m = s.metrics(&d, &q).unwrap();
-        assert_eq!(m.events[3], u32::from(pushed));
+        assert_eq!(m.events[3], u64::from(pushed));
         assert_eq!(m.packets, if pushed { 0 } else { 2 });
         if pushed {
             let after = s.agent_snapshot(&d, &q).unwrap();
@@ -495,7 +495,7 @@ fn packet_checkpoint_replays_genomes_resources_and_later_fusion() {
 }
 
 #[test]
-fn accounting_horizon_rolls_forward_without_extinction_or_losing_the_pool() {
+fn explicit_world_initialization_preserves_the_pool() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     s.settings.population = 4;
@@ -750,7 +750,7 @@ fn packet_physics_is_constant_across_world_ages_and_resume() {
 }
 
 #[test]
-fn pending_identity_rollover_keeps_ticking_without_allocating_or_fusing() {
+fn identity_low_word_rolls_into_high_word_without_stopping_reproduction() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     let mut producer = body([500.0, 500.0]);
@@ -776,15 +776,16 @@ fn pending_identity_rollover_keeps_ticking_without_allocating_or_fusing() {
     step(&mut s, &d, &q, 32);
     let counters = read::<u32>(&d, &q, &s.death_stats_buffer, DEATH_STATS_COUNT as usize);
     assert_eq!(s.tick, 32);
-    assert_eq!(counters[10], last_id);
-    assert_ne!(counters[36], 0);
-    assert_eq!(counters[3], 0);
-    assert_eq!(counters[19], 0);
+    assert!(counters[10] > 0 && counters[10] < last_id);
+    assert_eq!(counters[50], 1);
+    assert_eq!(counters[36], 0);
+    assert!(counters[3] > 0);
+    assert!(counters[19] > 0);
     let agents = s.agent_snapshot(&d, &q).unwrap();
-    assert_eq!(agents[0].packets_produced, 0);
-    assert_eq!(agents[1].alive, 2);
-    assert_eq!(agents[2].alive, 2);
-    assert!(agents[1].energy < 16.0);
+    assert!(agents[0].packets_produced > 0);
+    assert!(agents.iter().any(|a| a.alive == 1 && a.lineage_high == 1));
+    assert!(!s.refresh_engine_status(&d, &q).unwrap());
+    assert_eq!(s.progress.world, 1);
 }
 
 #[test]

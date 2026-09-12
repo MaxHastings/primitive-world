@@ -28,7 +28,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
   let index=id.y*GRID+id.x;
   let old_value=resources[index];
   if(params.mutation.z!=0.0){
-    let phase=f32(params.lifecycle.w%1000000u)/1000000.0;
+    let phase=f32(params.clock.y)/1000000.0;
     let blend=phase*phase*(3.0-2.0*phase);
     ground[index].habitat=mix(terrain[index].x,terrain[index].y,blend);
     ground[index].productivity=mix(terrain[index].z,terrain[index].w,blend);

@@ -102,9 +102,9 @@ counted and skipped without charge; fusion can reuse a packet slot. Contact
 arbitration uses a tick-varying permutation of storage slots. These choices can
 affect outcomes and are not biological discoveries.
 
-Rolling runs and the viewer continue into another world when accounting/tick
-horizons are reached, without reporting natural extinction. Single-world
-diagnostics report their stopping boundary. Autosave failures are reported and
+Cumulative telemetry, world time, and entity identities use 64-bit storage.
+Crossing a former 32-bit boundary continues the same living world, including
+reproduction. Autosave failures are reported and
 retried; they do not intentionally end the live experiment.
 
 Performance changes should distinguish cheaper execution from different biology.

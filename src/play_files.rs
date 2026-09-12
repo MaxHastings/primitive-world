@@ -4,7 +4,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-pub fn export_history(seed: u32, tick: u32, bytes: &[u8]) -> Result<PathBuf, String> {
+pub fn export_history(seed: u32, tick: u64, bytes: &[u8]) -> Result<PathBuf, String> {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?;

@@ -378,7 +378,7 @@ fn trace_random_juvenile_opportunities() {
                 .enumerate()
                 .filter(|(_, a)| a.ancestry_depth > 0)
             {
-                if a.alive == 1 && a.birth_tick == s.tick - 1 {
+                if a.alive == 1 && a.birth_time() == s.tick - 1 {
                     lives.entry(a.lineage_id).or_insert_with(|| Life {
                         lineage: a.lineage_id,
                         birth_tick: a.birth_tick,
@@ -742,7 +742,7 @@ fn continuous_ecology_history() {
             );
         }
         let parameters: Vec<_> = (tick..tick + 1000)
-            .map(|t| params_for(t, t, &s.settings, s.seed))
+            .map(|t| params_for(u64::from(t), u64::from(t), &s.settings, s.seed))
             .collect();
         q.write_buffer(&steps, 0, bytemuck::cast_slice(&parameters));
         let mut encoder = d.create_command_encoder(&Default::default());

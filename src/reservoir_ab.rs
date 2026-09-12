@@ -192,7 +192,7 @@ fn mature_parent_admission_copies_whole_producer_record_only_after_real_birth() 
         step(&mut s, &d, &q, 1);
         assert_eq!(s.metrics(&d, &q).unwrap().events[3], expected);
         let after = s.reservoir_snapshot(&d, &q).unwrap();
-        assert_eq!(after.2, before.2.wrapping_add(expected));
+        assert_eq!(after.2, before.2.wrapping_add(expected as u32));
         let changed: Vec<_> = (0..HEREDITARY_RESERVOIR_SIZE as usize)
             .filter(|&i| {
                 after.0[i * GENOME_SIZE..(i + 1) * GENOME_SIZE]

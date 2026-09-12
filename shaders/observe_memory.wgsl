@@ -41,14 +41,14 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
   let sequence=counter_add(8,1u);
   // amount is the selected action's score contribution from the recurrent state;
   // position stores old and new hidden-state norms for this diagnostic event.
-  events[sequence%65536u]=InteractionEvent(params.tick,i,counterfactual_action,MEMORY_SAMPLE,memory_effect,sequence,a.lineage_id,d.selected_action,vec2<f32>(sqrt(old_norm_sq),sqrt(new_norm_sq)),vec2<f32>(a.food,d.inputs[2]),d.selected_action,0u);
+  events[sequence%65536u]=InteractionEvent(params.tick,i,counterfactual_action,MEMORY_SAMPLE,memory_effect,sequence,a.lineage_id,d.selected_action,vec2<f32>(sqrt(old_norm_sq),sqrt(new_norm_sq)),vec2<f32>(a.food,d.inputs[2]),d.selected_action,0u,params.clock.x,a.lineage_high,0u,0u);
  }
 }
 
-// Accounting horizons are explicit engine limits, never ecological extinction.
+// Cumulative telemetry uses low/high words and never controls the ecology.
 // Food low-word counter 0 has the explicitly maintained high word at 14.
 fn counter_add(index:u32,value:u32)->u32 {
  let prior=atomicAdd(&stats[index],value);
- if(index!=0u && prior>0xffffffffu-value){atomicStore(&stats[36],1u);}
+ if(index!=0u && prior>0xffffffffu-value){atomicAdd(&stats[40u+index],1u);}
  return prior;
 }

@@ -7,7 +7,9 @@ pub(crate) const METRICS_SUMMARY_SIZE: u64 = 4096 * 64;
 struct CheckpointMetadata {
     settings: SimSettings,
     progress: crate::evolution::Progress,
-    environment_start_age: u32,
+    environment_start_age: u64,
+    #[serde(default)]
+    tick_high: u32,
     #[serde(default)]
     assisted: bool,
 }
@@ -15,14 +17,14 @@ struct CheckpointMetadata {
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub struct WorldMetrics {
     pub food_ingested: f64,
-    pub tick: u32,
+    pub tick: u64,
     pub living: u64,
     pub packets: u64,
-    pub painted_agents: u32,
+    pub painted_agents: u64,
     pub packet_energy: f64,
     pub mean_packet_size: f64,
-    pub failed_fusions: u32,
-    pub capacity_blocked_packets: u32,
+    pub failed_fusions: u64,
+    pub capacity_blocked_packets: u64,
     pub juveniles: u64,
     pub carried_food: f64,
     pub energy: f64,
@@ -30,24 +32,24 @@ pub struct WorldMetrics {
     pub dropped_food: f64,
     pub regenerated: f64,
     pub weather_loss: f64,
-    pub events: [u32; 8],
-    pub signals: u32,
-    pub exact_copy_births: u32,
+    pub events: [u64; 8],
+    pub signals: u64,
+    pub exact_copy_births: u64,
     pub stocked_agents: u64,
     pub hungry_agents: u64,
     pub moving_agents: u64,
     pub eating_agents: u64,
     pub harvested: f64,
     /// Packet production: immature, budget shortfall, produced, requested, eligible; then births.
-    pub birth_gates: [u32; 6],
-    pub action_ticks: [u32; 6],
-    pub invalid_outputs: u32,
-    pub force_attempts: u32,
+    pub birth_gates: [u64; 6],
+    pub action_ticks: [u64; 6],
+    pub invalid_outputs: u64,
+    pub force_attempts: u64,
     pub force_energy_spent: f64,
     pub forced_distance: f64,
     /// Births that expanded/retired an expressed unit, respectively.
-    pub topology_activations: u32,
-    pub topology_retirals: u32,
+    pub topology_activations: u64,
+    pub topology_retirals: u64,
     pub cognitive_write_energy: f64,
     pub cognitive_upkeep_energy: f64,
 }
@@ -56,7 +58,7 @@ pub struct WorldMetrics {
 /// structure is uploaded to the GPU or consulted by the decision pipeline.
 #[derive(Clone, Debug, Default, serde::Serialize)]
 pub struct EvolutionSnapshot {
-    pub tick: u32,
+    pub tick: u64,
     pub living: u64,
     pub individual_identities: u64,
     pub parent_lineages_present: u64,
@@ -140,9 +142,9 @@ impl Simulation {
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> Result<u32, String> {
+    ) -> Result<u64, String> {
         let stats = read_buffer(device, queue, &self.death_stats_buffer)?;
-        Ok(bytemuck::cast_slice::<u8, u32>(&stats)[8])
+        Ok(wide_counter(bytemuck::cast_slice(&stats), 8))
     }
 
     /// Vegetation only, for optional read-only journey diagnostics.
@@ -213,9 +215,9 @@ impl Simulation {
                 .map(|(_, v)| v.abs() as f64)
                 .sum::<f64>();
             snapshot.mean_learned_weight_magnitude += learned[slot] as f64;
-            lineages.insert(agent.lineage_id);
-            if agent.parent_lineage != 0 {
-                parent_lineages.insert(agent.parent_lineage);
+            lineages.insert(agent.identity());
+            if agent.parent_identity() != 0 {
+                parent_lineages.insert(agent.parent_identity());
             }
             snapshot.maximum_ancestry_depth =
                 snapshot.maximum_ancestry_depth.max(agent.ancestry_depth);
@@ -321,16 +323,15 @@ impl Simulation {
         }
         let counters: &[u32] = bytemuck::cast_slice(events);
         Ok(WorldMetrics {
-            food_ingested: (u64::from(counters[0]) + (u64::from(counters[14]) << 32)) as f64
-                / 1000.0,
+            food_ingested: wide_counter(counters, 0) as f64 / 1000.0,
             tick: self.tick,
             living: total[0],
             packets: total[8],
-            painted_agents: counters[11],
+            painted_agents: wide_counter(counters, 11),
             packet_energy: total[9] as f64 / 1000.0,
             mean_packet_size: total[10] as f64 / (1000.0 * (total[0] - total[8]).max(1) as f64),
-            failed_fusions: counters[38],
-            capacity_blocked_packets: counters[39],
+            failed_fusions: wide_counter(counters, 38),
+            capacity_blocked_packets: wide_counter(counters, 39),
             juveniles: total[1],
             carried_food: total[2] as f64 / 1000.0,
             energy: total[3] as f64 / 1000.0,
@@ -338,35 +339,31 @@ impl Simulation {
             dropped_food: total[5] as f64 / 1000.0,
             regenerated: total[6] as f64 / 1000.0,
             weather_loss: total[7] as f64 / 1000.0,
-            events: counters[..8]
-                .try_into()
-                .map_err(|_| "invalid event buffer")?,
-            signals: counters[9],
+            events: std::array::from_fn(|i| wide_counter(counters, i)),
+            signals: wide_counter(counters, 9),
             stocked_agents: total[11],
             hungry_agents: total[12],
             moving_agents: total[13],
             harvested: total[14] as f64 / 1000.0,
             eating_agents: total[15],
             birth_gates: [
-                counters[16],
-                counters[17],
-                counters[19],
-                counters[20],
-                counters[21],
-                counters[22],
+                wide_counter(counters, 16),
+                wide_counter(counters, 17),
+                wide_counter(counters, 19),
+                wide_counter(counters, 20),
+                wide_counter(counters, 21),
+                wide_counter(counters, 22),
             ],
-            action_ticks: counters[24..30]
-                .try_into()
-                .map_err(|_| "Invalid action counters")?,
-            invalid_outputs: counters[31],
-            force_attempts: counters[12],
-            force_energy_spent: counters[13] as f64 / 1000.0,
-            forced_distance: counters[15] as f64 / 1000.0,
-            exact_copy_births: counters[37],
-            topology_activations: counters[32],
-            topology_retirals: counters[33],
-            cognitive_write_energy: counters[34] as f64 / 1000.0,
-            cognitive_upkeep_energy: counters[35] as f64 / 1000.0,
+            action_ticks: std::array::from_fn(|i| wide_counter(counters, 24 + i)),
+            invalid_outputs: wide_counter(counters, 31),
+            force_attempts: wide_counter(counters, 12),
+            force_energy_spent: wide_counter(counters, 13) as f64 / 1000.0,
+            forced_distance: wide_counter(counters, 15) as f64 / 1000.0,
+            exact_copy_births: wide_counter(counters, 37),
+            topology_activations: wide_counter(counters, 32),
+            topology_retirals: wide_counter(counters, 33),
+            cognitive_write_energy: wide_counter(counters, 34) as f64 / 1000.0,
+            cognitive_upkeep_energy: wide_counter(counters, 35) as f64 / 1000.0,
         })
     }
 
@@ -378,6 +375,7 @@ impl Simulation {
             settings: self.settings.clone(),
             progress: self.progress.clone(),
             environment_start_age: self.environment_start_age,
+            tick_high: (self.tick >> 32) as u32,
             assisted: self.assisted,
         })
         .map_err(|e| e.to_string())
@@ -426,7 +424,7 @@ impl Simulation {
             })?;
         file.write_all(CHECKPOINT_MAGIC)
             .map_err(|e| e.to_string())?;
-        for n in [self.seed, self.tick, settings.len() as u32] {
+        for n in [self.seed, self.tick as u32, settings.len() as u32] {
             file.write_all(&n.to_le_bytes())
                 .map_err(|e| e.to_string())?;
         }
@@ -460,7 +458,7 @@ impl Simulation {
         &mut self,
         queue: &wgpu::Queue,
         file: impl Read,
-        expected: Option<(u32, u32, u32)>,
+        expected: Option<(u32, u64, u32)>,
     ) -> Result<(), String> {
         self.load_checkpoint_data(queue, file, expected, None)
     }
@@ -468,7 +466,7 @@ impl Simulation {
         &mut self,
         queue: &wgpu::Queue,
         file: impl Read,
-        expected: (u32, u32, u32),
+        expected: (u32, u64, u32),
         world: u64,
     ) -> Result<(), String> {
         self.load_checkpoint_data(queue, file, Some(expected), Some(world))
@@ -477,12 +475,13 @@ impl Simulation {
         &mut self,
         queue: &wgpu::Queue,
         mut file: impl Read,
-        expected: Option<(u32, u32, u32)>,
+        expected: Option<(u32, u64, u32)>,
         expected_world: Option<u64>,
     ) -> Result<(), String> {
         let mut magic = [0; 12];
         file.read_exact(&mut magic).map_err(|e| e.to_string())?;
-        if &magic != CHECKPOINT_MAGIC {
+        let legacy = &magic == b"PRIMWORLD058";
+        if &magic != CHECKPOINT_MAGIC && !legacy {
             return Err(format!(
                 "Unsupported checkpoint: expected {} format {}. Only current-format data can be loaded.",
                 MODEL_ID, CHECKPOINT_VERSION
@@ -491,10 +490,7 @@ impl Simulation {
         let mut fields = [0; 12];
         file.read_exact(&mut fields).map_err(|e| e.to_string())?;
         let seed = u32::from_le_bytes(fields[0..4].try_into().unwrap());
-        let tick = u32::from_le_bytes(fields[4..8].try_into().unwrap());
-        if tick > MAX_WORLD_TICKS {
-            return Err("Checkpoint exceeds world tick capacity".into());
-        }
+        let tick_low = u32::from_le_bytes(fields[4..8].try_into().unwrap());
         let settings_len = u32::from_le_bytes(fields[8..12].try_into().unwrap()) as usize;
         if settings_len > 16_777_216 {
             return Err("Invalid settings length".into());
@@ -503,6 +499,10 @@ impl Simulation {
         file.read_exact(&mut json).map_err(|e| e.to_string())?;
         let metadata: CheckpointMetadata =
             serde_json::from_slice(&json).map_err(|e| e.to_string())?;
+        let tick = u64::from(tick_low) | (u64::from(metadata.tick_high) << 32);
+        if tick > MAX_WORLD_TICKS || (legacy && metadata.tick_high != 0) {
+            return Err("Checkpoint exceeds its clock format capacity".into());
+        }
         let settings = metadata.settings;
         if metadata.environment_start_age > MAX_WORLD_TICKS {
             return Err("Checkpoint environment age exceeds tick capacity".into());
@@ -539,23 +539,50 @@ impl Simulation {
             &self.reservoir_rng_buffer,
             &self.ecology_buffer,
         ]);
-        for buffer in buffers.iter() {
+        for (index, buffer) in buffers.iter().enumerate() {
             let mut length = [0; 8];
             file.read_exact(&mut length).map_err(|e| e.to_string())?;
             let stored = u64::from_le_bytes(length);
             let expected = buffer.size();
-            if stored != expected {
+            let old_stride = std::mem::size_of::<AgentGpu>() - 16;
+            let legacy_size = if legacy && index == 0 {
+                old_stride as u64 * u64::from(MAX_AGENTS)
+            } else if legacy && index == 4 {
+                40 * 4
+            } else if legacy && index == 5 {
+                56 * u64::from(EVENT_RING_SIZE)
+            } else {
+                expected
+            };
+            if stored != legacy_size {
                 return Err("Checkpoint layout mismatch".into());
             }
-            let mut bytes = vec![0; expected as usize];
+            let mut bytes = vec![0; stored as usize];
             file.read_exact(&mut bytes).map_err(|e| e.to_string())?;
+            if legacy && index == 0 {
+                let mut expanded = Vec::with_capacity(expected as usize);
+                for body in bytes.chunks_exact(old_stride) {
+                    expanded.extend_from_slice(body);
+                    expanded.extend_from_slice(&[0; 16]);
+                }
+                bytes = expanded;
+            } else if legacy && index == 5 {
+                let mut expanded = Vec::with_capacity(expected as usize);
+                for event in bytes.chunks_exact(56) {
+                    expanded.extend_from_slice(event);
+                    expanded.extend_from_slice(&[0; 16]);
+                }
+                bytes = expanded;
+            } else if legacy && index == 4 {
+                bytes.resize(expected as usize, 0);
+            }
             data.push(bytes);
         }
         for a in data[0]
             .chunks_exact(std::mem::size_of::<AgentGpu>())
             .map(bytemuck::pod_read_unaligned::<AgentGpu>)
         {
-            if a.lived_ticks > tick
+            if u64::from(a.lived_ticks) > tick
                 || a.alive > 2
                 || a.action > 5
                 || !a.position[0].is_finite()
@@ -722,7 +749,7 @@ impl Simulation {
             );
             crate::brain::validate(&genome)?;
             if !reservoir_traits[slot].validate()
-                || reservoir_traits[slot].padding[0] > MAX_WORLD_TICKS
+                || u64::from(reservoir_traits[slot].padding[0]) > MAX_WORLD_TICKS
                 || reservoir_traits[slot].padding[1] != 0
             {
                 return Err("Invalid hereditary reservoir traits".into());
@@ -735,7 +762,7 @@ impl Simulation {
             }
         }
         let counters: &[u32] = bytemuck::cast_slice(&data[4]);
-        if counters[18] > tick || counters[30] > 1 {
+        if wide_counter(counters, 18) > tick || counters[30] > 1 {
             return Err("Invalid world completion counters".into());
         }
         if let Some(o) = &metadata.progress.completed {
@@ -743,8 +770,8 @@ impl Simulation {
                 .iter()
                 .any(|a| a.alive != 0);
             if alive
-                || o.duration != counters[18]
-                || o.births != counters[3]
+                || o.duration != wide_counter(counters, 18)
+                || o.births != wide_counter(counters, 3)
                 || o.maximum_generation != counters[23]
                 || o.food_ingested
                     != (u64::from(counters[0]) + (u64::from(counters[14]) << 32)) as f64 / 1000.0
@@ -775,14 +802,14 @@ impl Simulation {
         queue.write_buffer(&self.agent_buffers[1], 0, &data[0]);
         queue.write_buffer(&self.resource_display_buffer, 0, &data[1]);
         self.progress = metadata.progress;
-        self.progress.engine_saturated |= counters[36] != 0 || tick >= MAX_WORLD_TICKS;
+        self.progress.engine_saturated = tick >= MAX_WORLD_TICKS;
         self.settings = settings;
         self.seed = seed;
         self.tick = tick;
         self.environment_start_age = metadata.environment_start_age;
         self.assisted = counters[30] != 0 || metadata.assisted;
         self.current_buffer = 0;
-        self.terrain_epoch = u32::MAX;
+        self.terrain_epoch = u64::MAX;
         self.update_params(queue);
         Ok(())
     }
@@ -806,6 +833,10 @@ pub struct InteractionEvent {
     /// Other event kinds leave this zero.
     pub actual_action: u32,
     pub padding: u32,
+    pub tick_high: u32,
+    pub actor_high: u32,
+    pub other_high: u32,
+    pub wide_padding: u32,
 }
 impl Simulation {
     pub fn recent_events(
@@ -814,10 +845,10 @@ impl Simulation {
         queue: &wgpu::Queue,
     ) -> Result<Vec<InteractionEvent>, String> {
         let stats = read_buffer(device, queue, &self.death_stats_buffer)?;
-        let total = bytemuck::cast_slice::<u8, u32>(&stats)[8];
+        let total = wide_counter(bytemuck::cast_slice(&stats), 8);
         let data = read_buffer(device, queue, &self.event_buffer)?;
         let ring = bytemuck::cast_slice::<u8, InteractionEvent>(&data);
-        let start = total.saturating_sub(crate::simulation::EVENT_RING_SIZE);
+        let start = total.saturating_sub(u64::from(crate::simulation::EVENT_RING_SIZE));
         Ok((start..total)
             .map(|n| ring[n as usize % crate::simulation::EVENT_RING_SIZE as usize])
             .collect())

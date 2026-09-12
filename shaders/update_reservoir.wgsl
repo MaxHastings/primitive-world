@@ -23,7 +23,7 @@ fn copy_traits(a:Agent)->CognitiveTraits {
 
 fn valid_birth(slot:u32)->bool {
  if(slot>=INVALID){return false;}let child=agents[slot];
- return child.alive==ORGANISM && child.ancestry_depth>0u && child.birth_tick==params.tick && child.lived_ticks==0u;
+ return child.alive==ORGANISM && child.ancestry_depth>0u && (child.birth_tick==params.tick && child.birth_high==params.clock.x) && child.lived_ticks==0u;
 }
 fn replacement_slot(slot:u32)->u32 {
  let key=atomicLoad(&reservoir_rng)+slot;

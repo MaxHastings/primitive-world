@@ -9,14 +9,20 @@
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x == 0u) {
     let births=prefix[INVALID-1u];
-    if(births>free_prefix[INVALID-1u]){atomicAdd(&stats[39],births-free_prefix[INVALID-1u]);}
-    if(atomicLoad(&stats[10])>0xffffffffu-2u*INVALID-1u){atomicOr(&stats[36],2u);}
-    // Keep ticking while a rollover is pending, but do not allocate identities.
-    dispatch[0] = select((min(births,free_prefix[INVALID-1u])+63u)/64u,0u,atomicLoad(&stats[36])!=0u);
+    if(births>free_prefix[INVALID-1u]){counter_add(39u,births-free_prefix[INVALID-1u]);}
+    if(atomicLoad(&stats[10])>0xffffffffu-2u*INVALID-1u){atomicStore(&stats[10],0u);atomicAdd(&stats[50],1u);}
+    // Reserve headroom for this tick in one identity epoch before parallel allocation.
+    dispatch[0] = (min(births,free_prefix[INVALID-1u])+63u)/64u;
     dispatch[1] = 1u; dispatch[2] = 1u;
-    inheritance_dispatch[0]=select(min(births,free_prefix[INVALID-1u]),0u,atomicLoad(&stats[36])!=0u);
+    inheritance_dispatch[0]=min(births,free_prefix[INVALID-1u]);
     inheritance_dispatch[1]=1u;inheritance_dispatch[2]=1u;
   }
   if (id.x >= INVALID || flags[id.x] == 0u) { return; }
   indices[prefix[id.x] - 1u] = id.x;
+}
+
+fn counter_add(index:u32,value:u32)->u32 {
+ let prior=atomicAdd(&stats[index],value);
+ if(index!=0u && prior>0xffffffffu-value){atomicAdd(&stats[40u+index],1u);}
+ return prior;
 }

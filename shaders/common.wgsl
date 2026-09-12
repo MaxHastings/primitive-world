@@ -22,6 +22,7 @@ struct Agent {
  ancestry_depth:u32,packets_produced:u32,distance_travelled:f32,founder_family:u32,
  active_mask:u32,plasticity_rate:array<f32,HIDDEN_COUNT>,trace_retention:f32,learned_weight_retention:f32,
  hidden:array<f32,HIDDEN_COUNT>,lived_ticks:u32,parameter_mutation_rate:f32,parameter_mutation_step:f32,topology_mutation_rate:f32,angular_velocity:f32,
+ lineage_high:u32,parent_high:u32,birth_high:u32,signal_high:u32,
 };
 // Every local sample has the same physical channels.  It deliberately carries
 // no body id, nearest-body record, absolute bearing, or social classification.
@@ -34,11 +35,11 @@ struct Decision {
 };
 struct SimParams {
  world_size:vec4<f32>,resource_grid_size:u32,agent_count:u32,tick:u32,world_padding:u32,
- time_and_costs:vec4<f32>,resource_and_noise:vec4<f32>,sensor_and_padding:vec4<f32>,physical:vec4<f32>,lifecycle:vec4<u32>,mutation:vec4<f32>,environment:vec4<f32>,
+ time_and_costs:vec4<f32>,resource_and_noise:vec4<f32>,sensor_and_padding:vec4<f32>,physical:vec4<f32>,lifecycle:vec4<u32>,mutation:vec4<f32>,environment:vec4<f32>,clock:vec4<u32>,
 };
 struct Ground {dropped:atomic<u32>,extracted:atomic<u32>,remainder:f32,produced:u32,
  weather_loss:u32,collected:atomic<u32>,habitat:f32,productivity:f32,};
-struct InteractionEvent {tick:u32,actor:u32,other:u32,action:u32,amount:f32,sequence:u32,actor_lineage:u32,other_lineage:u32,position:vec2<f32>,context:vec2<f32>,actual_action:u32,padding:u32,};
+struct InteractionEvent {tick:u32,actor:u32,other:u32,action:u32,amount:f32,sequence:u32,actor_lineage:u32,other_lineage:u32,position:vec2<f32>,context:vec2<f32>,actual_action:u32,padding:u32,tick_high:u32,actor_high:u32,other_high:u32,wide_padding:u32,};
 fn unit_vector(v:vec2<f32>)->vec2<f32>{return v/max(length(v),0.0001);}
 fn body_to_world(v:vec2<f32>,heading:f32)->vec2<f32>{let c=cos(heading);let s=sin(heading);return vec2<f32>(c*v.x-s*v.y,s*v.x+c*v.y);}
 fn world_to_body(v:vec2<f32>,heading:f32)->vec2<f32>{return body_to_world(v,-heading);}

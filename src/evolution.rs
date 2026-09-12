@@ -13,8 +13,8 @@ pub const HISTORY_LIMIT: usize = 64;
 pub struct Outcome {
     pub world: u64,
     pub seed: u32,
-    pub duration: u32,
-    pub births: u32,
+    pub duration: u64,
+    pub births: u64,
     pub maximum_generation: u32,
     pub food_ingested: f64,
     pub food_collected: f64,
@@ -32,7 +32,7 @@ pub struct Progress {
     pub rng: u32,
     pub completed: Option<Outcome>,
     pub history: Vec<Outcome>,
-    /// An accounting horizon requests an automatic world rollover, not a pause.
+    /// A true identity/tick capacity limit pauses the world without reseeding.
     pub engine_saturated: bool,
 }
 
@@ -46,12 +46,12 @@ impl Progress {
             engine_saturated: false,
         }
     }
-    pub fn validate(&self, _population: u32, seed: u32, tick: u32) -> Result<(), String> {
+    pub fn validate(&self, _population: u32, seed: u32, tick: u64) -> Result<(), String> {
         let bad = |o: &Outcome| {
             o.world == 0
                 || o.duration == 0
                 || o.duration > MAX_WORLD_TICKS
-                || o.maximum_generation > o.births
+                || u64::from(o.maximum_generation) > o.births
                 || o.reservoir_occupancy != HEREDITARY_RESERVOIR_SIZE
                 || !o.food_ingested.is_finite()
                 || !o.food_collected.is_finite()
@@ -109,14 +109,14 @@ impl Simulation {
         }
         let bytes = read_buffer(device, queue, &self.death_stats_buffer)?;
         let counters: &[u32] = bytemuck::cast_slice(&bytes);
-        if self.settings.population == 0 || counters[18] == 0 {
+        if self.settings.population == 0 || wide_counter(counters, 18) == 0 {
             return Err("Only natural extinction completes a world".into());
         }
         let outcome = Outcome {
             world: self.progress.world,
             seed: self.seed,
-            duration: counters[18],
-            births: counters[3],
+            duration: wide_counter(counters, 18),
+            births: wide_counter(counters, 3),
             maximum_generation: counters[23],
             food_ingested: metrics.food_ingested,
             food_collected: metrics.harvested,
@@ -143,7 +143,7 @@ impl Simulation {
         self.rollover_world(device, queue)
     }
 
-    /// Continue gameplay across accounting horizons without claiming extinction.
+    /// Initialize the next world after a completed extinction.
     /// The same blind hereditary pool supplies the next world.
     pub fn rollover_world(
         &mut self,
@@ -191,12 +191,10 @@ impl Simulation {
 
     pub fn refresh_engine_status(
         &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
     ) -> Result<bool, String> {
-        let bytes = read_buffer(device, queue, &self.death_stats_buffer)?;
-        let counters: &[u32] = bytemuck::cast_slice(&bytes);
-        self.progress.engine_saturated |= counters[36] != 0 || self.tick >= MAX_WORLD_TICKS;
+        self.progress.engine_saturated = self.tick >= MAX_WORLD_TICKS;
         Ok(self.progress.engine_saturated)
     }
 

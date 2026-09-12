@@ -1,4 +1,4 @@
-"""Compare immutable v58 checkpoints without exporting inherited records.
+"""Compare immutable v58/v59 checkpoints without exporting inherited records.
 
 Usage: python tools/audit_reservoir_reentry.py INITIAL_CHECKPOINT LATER_CHECKPOINT
 Reports exact record membership, not hashes or chosen genotypes. No files change.
@@ -15,9 +15,11 @@ class Checkpoint:
     def __init__(self, path):
         self.file = Path(path).open("rb")
         self.data = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
-        assert self.data[:12] == b"PRIMWORLD058"
+        assert self.data[:12] in (b"PRIMWORLD058", b"PRIMWORLD059")
+        self.body_size = 296 if self.data[:12] == b"PRIMWORLD058" else 312
         self.seed, self.tick, length = struct.unpack_from("<III", self.data, 12)
         self.metadata = json.loads(self.data[24:24 + length])
+        self.tick |= self.metadata.get("tick_high", 0) << 32
         offset = 24 + length
         self.buffers = []
         for _ in range(18):
@@ -50,13 +52,13 @@ def body_layout():
         assert kind.strip() in ("f32", "u32")
         fields[name] = (offset, count * 4)
         offset += count * 4
-    assert offset == 296
+    assert offset == 312
     return fields, offset
 
 
 def audit(initial_path, later_path):
     initial, later = Checkpoint(initial_path), Checkpoint(later_path)
-    fields, body_size = body_layout()
+    fields, _ = body_layout()
     bank_stride = 1247 * 4
 
     def field(body, name):
@@ -80,7 +82,7 @@ def audit(initial_path, later_path):
         assert initial.metadata["settings"] == later.metadata["settings"]
         originals = set()
         for slot in range(4096):
-            body = initial.row(0, slot, body_size)
+            body = initial.row(0, slot, initial.body_size)
             assert integer(body, "alive") == 1 and integer(body, "ancestry_depth") == 0
             originals.add(genome(initial, slot) + traits(body))
         for slot in range(4096):
@@ -89,7 +91,7 @@ def audit(initial_path, later_path):
         new_pool_records = sum(record not in originals for record in pool_records)
         living_founders, new_living_founders = 0, 0
         for slot in range(16384):
-            body = later.row(0, slot, body_size)
+            body = later.row(0, slot, later.body_size)
             if integer(body, "alive") == 1 and integer(body, "ancestry_depth") == 0:
                 living_founders += 1
                 new_living_founders += genome(later, slot) + traits(body) not in originals

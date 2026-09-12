@@ -14,7 +14,7 @@ pub struct FounderBank {
     pub model: String,
     pub name: String,
     pub source_seed: u32,
-    pub source_tick: u32,
+    pub source_tick: u64,
     pub assisted: bool,
     pub genomes: Vec<Vec<f32>>,
     pub traits: Vec<CognitiveTraits>,

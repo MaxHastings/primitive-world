@@ -310,9 +310,9 @@ pub struct Simulation {
     pub progress: crate::evolution::Progress,
     pub settings: SimSettings,
     pub seed: u32,
-    pub tick: u32,
+    pub tick: u64,
     /// Retained only for old diagnostics; ecology no longer escalates by age.
-    pub environment_start_age: u32,
+    pub environment_start_age: u64,
     /// Environment/action time at this world's tick zero. This is separate
     /// from tick so every world's survival duration is measured from zero.
     pub assisted: bool,
@@ -360,7 +360,7 @@ pub struct Simulation {
     fertility_buffer: wgpu::Buffer,
     ecology_buffer: wgpu::Buffer,
     terrain_buffer: wgpu::Buffer,
-    terrain_epoch: u32,
+    terrain_epoch: u64,
     #[cfg(test)]
     separate_compute_passes: bool,
     #[cfg(test)]
@@ -1213,7 +1213,7 @@ impl Simulation {
         &mut self,
         queue: &wgpu::Queue,
         founders: Option<&[f32]>,
-        environment_start_age: u32,
+        environment_start_age: u64,
     ) {
         self.reset_with_population_at(queue, founders, None, environment_start_age);
     }
@@ -1222,7 +1222,7 @@ impl Simulation {
         queue: &wgpu::Queue,
         founders: Option<&[f32]>,
         founder_traits: Option<&[CognitiveTraits]>,
-        environment_start_age: u32,
+        environment_start_age: u64,
     ) {
         // Clear unused storage on the GPU; upload only the founding population.
         let mut clear = self.device.create_command_encoder(&Default::default());
@@ -1269,16 +1269,19 @@ impl Simulation {
             queue.write_buffer(b, 0, bytemuck::cast_slice(&data));
         }
         self.environment_start_age = environment_start_age;
-        let environment_epoch = environment_start_age / TERRAIN_EPOCH_TICKS;
-        let terrain_a =
-            build_habitat_at(self.seed, environment_epoch, self.settings.habitat_contrast);
-        let terrain_b = build_habitat_at(
+        let environment_epoch = environment_start_age / u64::from(TERRAIN_EPOCH_TICKS);
+        let terrain_a = build_habitat_at(
             self.seed,
-            environment_epoch + 1,
+            environment_epoch as u32,
             self.settings.habitat_contrast,
         );
-        let terrain_phase =
-            (environment_start_age % TERRAIN_EPOCH_TICKS) as f32 / TERRAIN_EPOCH_TICKS as f32;
+        let terrain_b = build_habitat_at(
+            self.seed,
+            (environment_epoch + 1) as u32,
+            self.settings.habitat_contrast,
+        );
+        let terrain_phase = (environment_start_age % u64::from(TERRAIN_EPOCH_TICKS)) as f32
+            / u64::from(TERRAIN_EPOCH_TICKS) as f32;
         let terrain_blend = terrain_phase * terrain_phase * (3.0 - 2.0 * terrain_phase);
         let habitat: Vec<_> = terrain_a
             .iter()
@@ -1461,7 +1464,7 @@ impl Simulation {
     ) {
         assert!(ticks <= 1024);
         assert!(
-            ticks <= MAX_WORLD_TICKS.saturating_sub(self.tick),
+            u64::from(ticks) <= MAX_WORLD_TICKS.saturating_sub(self.tick),
             "World tick capacity reached; save without scoring extinction"
         );
         if ticks == 0 {
@@ -1469,7 +1472,7 @@ impl Simulation {
         }
         let ps: Vec<_> = (0..ticks)
             .map(|n| {
-                let tick = self.tick + n;
+                let tick = self.tick + u64::from(n);
                 params_for(
                     tick,
                     configured_ecology_time(tick, &self.settings)
@@ -1511,12 +1514,12 @@ impl Simulation {
         for offset in 0..ticks {
             let environment_tick = configured_ecology_time(self.tick, &self.settings)
                 .saturating_add(self.environment_start_age);
-            let epoch = environment_tick / TERRAIN_EPOCH_TICKS;
+            let epoch = environment_tick / u64::from(TERRAIN_EPOCH_TICKS);
             if self.terrain_epoch != epoch && self.settings.evolving_landscape {
                 let staging = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("terrain update"),
                     contents: bytemuck::cast_slice(&crate::environment::rotate_grid(
-                        build_terrain_pair(self.seed, epoch, self.settings.habitat_contrast),
+                        build_terrain_pair(self.seed, epoch as u32, self.settings.habitat_contrast),
                         RESOURCE_GRID as usize,
                         self.settings.environment_rotation,
                     )),
@@ -1765,9 +1768,9 @@ impl Simulation {
         let current: SelectionOutput = bytemuck::pod_read_unaligned(&bytes);
         Ok((current.selected == previous.selected
             && current.agent.generation == previous.agent.generation
-            && current.agent.lineage_id == previous.agent.lineage_id
-            && current.agent.birth_tick == previous.agent.birth_tick)
-            .then_some(current))
+            && current.agent.identity() == previous.agent.identity()
+            && current.agent.birth_time() == previous.agent.birth_time())
+        .then_some(current))
     }
 
     pub fn apply_resource_shock(
@@ -1901,11 +1904,11 @@ impl Simulation {
         Some(result)
     }
 }
-fn configured_ecology_time(tick: u32, _s: &SimSettings) -> u32 {
+fn configured_ecology_time(tick: u64, _s: &SimSettings) -> u64 {
     tick
 }
 
-fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> SimParams {
+fn params_for(tick: u64, environment_tick: u64, s: &SimSettings, seed: u32) -> SimParams {
     let climate = crate::climate::at(environment_tick, seed, s.flourishing_start);
     let regional_epoch = environment_tick / 47_003;
     let local_epoch = environment_tick / 997;
@@ -1918,7 +1921,13 @@ fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> S
         ],
         resource_grid_size: RESOURCE_GRID,
         agent_count: MAX_AGENTS,
-        tick,
+        tick: tick as u32,
+        clock: [
+            (tick >> 32) as u32,
+            (environment_tick % u64::from(TERRAIN_EPOCH_TICKS)) as u32,
+            0,
+            0,
+        ],
         world_padding: u32::from(s.fractional_gathering),
         time_and_costs: [
             climate.rainfall,
@@ -1946,9 +1955,9 @@ fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> S
         ],
         lifecycle: [
             seed,
-            regional_epoch,
+            regional_epoch as u32,
             s.environment_rotation,
-            environment_tick,
+            environment_tick as u32,
         ],
         mutation: [
             BASE_MUTATION_PROBABILITY,
@@ -1957,9 +1966,9 @@ fn params_for(tick: u32, environment_tick: u32, s: &SimSettings, seed: u32) -> S
             s.active_unit_upkeep,
         ],
         environment: [
-            f32::from_bits(environment_tick % 47_003),
-            f32::from_bits(local_epoch),
-            f32::from_bits(environment_tick % 997),
+            f32::from_bits((environment_tick % 47_003) as u32),
+            f32::from_bits(local_epoch as u32),
+            f32::from_bits((environment_tick % 997) as u32),
             s.memory_write_energy,
         ],
     }
@@ -2362,13 +2371,13 @@ fn build_resources_with_coverage(habitat: &[f32], coverage: f32) -> Vec<u32> {
 }
 
 // Body development remains age-dependent; these constants never track world age.
-pub(crate) fn juvenile_gathering_floor(_tick: u32) -> f32 {
+pub(crate) fn juvenile_gathering_floor(_tick: u64) -> f32 {
     0.01
 }
-pub(crate) fn packet_upkeep(_tick: u32) -> f32 {
+pub(crate) fn packet_upkeep(_tick: u64) -> f32 {
     0.02
 }
-pub(crate) fn packet_fusion_radius(_tick: u32) -> f32 {
+pub(crate) fn packet_fusion_radius(_tick: u64) -> f32 {
     2.0
 }
 
