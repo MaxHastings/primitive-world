@@ -34,6 +34,9 @@ pub struct WorldMetrics {
     pub weather_loss: f64,
     pub events: [u64; 8],
     pub signals: u64,
+    /// Number of living agents that observed a non-zero local signal.
+    /// Unlike `signals` (emissions), this counts receiver-side observations.
+    pub signal_observations: u64,
     pub exact_copy_births: u64,
     pub stocked_agents: u64,
     pub hungry_agents: u64,
@@ -341,6 +344,9 @@ impl Simulation {
             weather_loss: total[7] as f64 / 1000.0,
             events: std::array::from_fn(|i| wide_counter(counters, i)),
             signals: wide_counter(counters, 9),
+            // Counter slot 30 is the one-bit assisted marker. Its high word
+            // (slot 70) is reserved for this independent cumulative count.
+            signal_observations: u64::from(counters[70]),
             stocked_agents: total[11],
             hungry_agents: total[12],
             moving_agents: total[13],

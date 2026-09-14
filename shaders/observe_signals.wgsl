@@ -12,6 +12,11 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
   // Diagnostics observe the same anonymous aggregate field cognition sees.
   if(!any_signal && abs(p.regions[k].signal)>0.0){
    any_signal=true;
+   // Keep receiver-side observations separate from the event-ring sequence.
+   // Counter slot 70 is reserved for this purpose: slot 30's low word is the
+   // one-bit assisted provenance marker, so its otherwise-unused high word is
+   // safe to use as a monotonically increasing observation total.
+   atomicAdd(&stats[70u],1u);
    let sequence=counter_add(8,1u);
    events[sequence%65536u]=InteractionEvent(params.tick,i,INVALID,SIGNAL_OBSERVED,p.regions[k].signal,sequence,a.lineage_id,d.selected_action,a.position,vec2<f32>(0.0),d.selected_action,0u,params.clock.x,a.lineage_high,0u,0u);
   }

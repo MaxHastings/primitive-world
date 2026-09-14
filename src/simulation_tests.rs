@@ -1572,6 +1572,7 @@ fn transfer_and_signal_are_local_and_payload_is_controller_owned() {
         .find(|v| v[1] > 0.0)
         .unwrap();
     near(observed[4], (-0.7f32).tanh());
+    assert_eq!(s.metrics(&d, &q).unwrap().signal_observations, 1);
 }
 
 #[test]
@@ -1724,6 +1725,7 @@ fn zero_signal_is_present_local_and_does_not_claim_a_physical_pair() {
         decisions[2].inputs[SAMPLE_BASE..].iter().all(|v| *v == 0.0),
         "No remote signal leakage"
     );
+    assert_eq!(s.metrics(&d, &q).unwrap().signal_observations, 0);
 }
 
 #[test]
