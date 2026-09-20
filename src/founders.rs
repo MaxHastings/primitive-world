@@ -5,7 +5,7 @@ use crate::simulation::{
     observability::read_buffer,
 };
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -105,6 +105,26 @@ impl Simulation {
         self.settings.founder_genomes = bank.genomes;
         self.settings.founder_traits = bank.traits;
         Ok(())
+    }
+
+    /// Load a small, versioned founder bank checked into the repository. Names
+    /// are deliberately mapped to one file below `preseeds/` so a wallpaper
+    /// launch cannot accidentally read an arbitrary path.
+    pub fn load_preseed(&mut self, name: &str) -> Result<(), String> {
+        if name.is_empty()
+            || !name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+        {
+            return Err("Invalid pre-seed name; use letters, numbers, '-', '_' or '.'".into());
+        }
+        let path = PathBuf::from("preseeds").join(format!("{name}.json"));
+        self.load_founders(&path).map_err(|e| {
+            format!(
+                "Could not load pre-seed '{name}' from {}: {e}",
+                path.display()
+            )
+        })
     }
 
     pub fn export_founders(

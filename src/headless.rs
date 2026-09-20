@@ -3,7 +3,7 @@ use crate::simulation::{
 };
 use std::{collections::HashMap, io::Write, path::Path};
 pub const HELP: &str = "Primitive World
-Run: primitive_world [--seed N] [--founders PATH]
+Run: primitive_world [--seed N] [--founders PATH | --pre-seed NAME]
 Headless: --headless --ticks N --sample N --output PATH
 Windowed viewer: --viewer opens New Game / Load Game. On Windows, no arguments resumes wallpaper.
 Wallpaper viewer: --wallpaper uses the desktop host as a native-resolution habitat.
@@ -17,6 +17,7 @@ Playback: --view-fps 10|30|60|120|144|240 (default 30; wallpaper defaults to mon
          --population N --regeneration X --no-force --no-signals --static-landscape
          --metabolic-cost X (stationary upkeep) --movement-cost X --motor-gain X
          --checkpoint PATH --save-checkpoint PATH --export-founders PATH
+         --pre-seed NAME loads a versioned bank from preseeds/NAME.json for a fresh world.
 Headless observers:
          --families (fresh worlds, 1..200000 ticks; diagnostic only)
          --journeys PATH [--journey-sample N] (read-only sampled JSONL evidence)
@@ -63,6 +64,7 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
         "--environment-rotation",
         "--seed",
         "--founders",
+        "--pre-seed",
         "--ticks",
         "--sample",
         "--output",
@@ -149,6 +151,12 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
     if out.contains_key("--resume") && out.contains_key("--load-game") {
         return Err("--resume and --load-game are mutually exclusive".into());
     }
+    if out.contains_key("--founders") && out.contains_key("--pre-seed") {
+        return Err("Use either --founders or --pre-seed, not both".into());
+    }
+    if out.contains_key("--resume") && out.contains_key("--pre-seed") {
+        return Err("--pre-seed starts a fresh world; it cannot be combined with --resume".into());
+    }
     if out.contains_key("--communication-trace") && !out.contains_key("--single-world") {
         return Err("--communication-trace requires --single-world".into());
     }
@@ -225,6 +233,7 @@ pub fn configure(sim: &mut Simulation, args: &[String]) -> Result<(), String> {
             "--environment-rotation",
             "--habitat-contrast",
             "--founders",
+            "--pre-seed",
             "--seed",
             "--population",
             "--regeneration",
@@ -273,6 +282,9 @@ pub fn configure(sim: &mut Simulation, args: &[String]) -> Result<(), String> {
     sim.settings.evolving_landscape = !a.contains_key("--static-landscape");
     if let Some(v) = a.get("--founders") {
         sim.load_founders(Path::new(v))?;
+    }
+    if let Some(v) = a.get("--pre-seed") {
+        sim.load_preseed(v)?;
     }
     sim.settings.validate()
 }
