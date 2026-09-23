@@ -6,6 +6,11 @@ hundreds. It is not judged by TPS, packet count, births, or ancestry depth
 alone. The [execution record](fast-evolution-execution.md) defines the
 integrated release and manual outcome metrics.
 
+The owner later selected a [20/40/40 restart-diversity trial](restart-diversity-trial.md)
+on the continuing four-unit wallpaper. It changes only the mix of founders at
+future world rollovers and is not evidence that the original retained design
+was wrong or that the new mix improves closed-chain evolution.
+
 | Rank | Decision | Basis | Remaining risk |
 | ---: | --- | --- | --- |
 | 1 | Preserve v45's entire evolved population through an isolated v46 import. | The complete v45 checkpoint contains living bodies/packets, both genome banks, lifetime weights/traces, and reservoir. A converter round-tripped a copied 542-entity, 2.654B-total-tick source. | Imported agents can still face changed dynamics; the source and frozen copy remain recoverable. |

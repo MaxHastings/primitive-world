@@ -65,6 +65,55 @@ pub fn random_plasticity(rng: &mut u32) -> ([f32; HIDDEN], f32, f32, f32, f32, f
         topology_mutation_rate,
     )
 }
+/// Restart-only radiation-style exploration applied to a pool-record copy.
+/// Four fifths of expressed genes, the circuit topology, and packet size retain
+/// their selected values. Ordinary births use the inherited mutation controls.
+pub fn mutate_founder_heavily(g: &mut [f32], traits: &mut CognitiveTraits, seed: u32) {
+    let mut rng = seed;
+    let mut expressed = expressed_indices(traits.active_mask);
+    for choice in 0..expressed.len().div_ceil(5) {
+        let selected = choice + (draw(&mut rng) * (expressed.len() - choice) as f32) as usize;
+        expressed.swap(choice, selected);
+        let index = expressed[choice];
+        g[index] = (g[index] + (draw(&mut rng) * 2.0 - 1.0) * 0.35).clamp(-4.0, 4.0);
+    }
+    let active: Vec<_> = (0..HIDDEN)
+        .filter(|&h| traits.active_mask & (1 << h) != 0)
+        .collect();
+    for _ in 0..2 {
+        let h = active[(draw(&mut rng) * active.len() as f32) as usize];
+        traits.plasticity_rate[h] =
+            (traits.plasticity_rate[h] + (draw(&mut rng) * 2.0 - 1.0) * 0.04).clamp(-0.2, 0.2);
+    }
+    traits.trace_retention =
+        (traits.trace_retention + (draw(&mut rng) * 2.0 - 1.0) * 0.04).clamp(0.0, 0.9999);
+    traits.learned_weight_retention =
+        (traits.learned_weight_retention + (draw(&mut rng) * 2.0 - 1.0) * 0.04).clamp(0.0, 0.9999);
+}
+
+fn expressed_indices(mask: u32) -> Vec<usize> {
+    let mut expressed = Vec::with_capacity(GENOME_SIZE);
+    for h in 0..HIDDEN {
+        if active(mask, h) {
+            expressed.push(NODE_BIAS + h);
+            expressed.push(GATE_BIAS + h);
+            for k in 0..INPUTS {
+                expressed.push(INPUT_BASE + h * INPUTS + k);
+            }
+            for k in 0..HIDDEN {
+                if active(mask, k) {
+                    expressed.push(RECURRENT_BASE + h * HIDDEN + k);
+                    expressed.push(GATE_BASE + h * HIDDEN + k);
+                }
+            }
+            for o in 0..OUTPUTS {
+                expressed.push(OUTPUT_BASE + o * HIDDEN + h);
+            }
+        }
+    }
+    expressed.extend(OUTPUT_BIAS..OUTPUT_BIAS + OUTPUTS);
+    expressed
+}
 pub fn validate(g: &[f32]) -> Result<(), String> {
     if g.len() != GENOME_SIZE || g.iter().any(|v| !v.is_finite() || v.abs() > 4.0) {
         return Err(format!(
@@ -74,7 +123,6 @@ pub fn validate(g: &[f32]) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(test)]
 pub fn active(mask: u32, unit: usize) -> bool {
     mask & (1u32 << unit) != 0
 }
@@ -186,26 +234,7 @@ fn mutate_expressed(g: &mut [f32], traits: &mut CognitiveTraits, rng: &mut u32) 
     let magnitude = (BASE_MUTATION_MAGNITUDE * *parameter_mutation_step).max(0.000_001);
     let draws =
         usize::from(draw(rng) < (BASE_MUTATION_PROBABILITY * *parameter_mutation_rate).min(1.0));
-    let mut expressed = Vec::with_capacity(GENOME_SIZE);
-    for h in 0..HIDDEN {
-        if active(mask, h) {
-            expressed.push(NODE_BIAS + h);
-            expressed.push(GATE_BIAS + h);
-            for k in 0..INPUTS {
-                expressed.push(INPUT_BASE + h * INPUTS + k);
-            }
-            for k in 0..HIDDEN {
-                if active(mask, k) {
-                    expressed.push(RECURRENT_BASE + h * HIDDEN + k);
-                    expressed.push(GATE_BASE + h * HIDDEN + k);
-                }
-            }
-            for o in 0..OUTPUTS {
-                expressed.push(OUTPUT_BASE + o * HIDDEN + h);
-            }
-        }
-    }
-    expressed.extend(OUTPUT_BIAS..OUTPUT_BIAS + OUTPUTS);
+    let expressed = expressed_indices(mask);
     for _ in 0..draws {
         let choice = (draw(rng) * expressed.len() as f32) as usize;
         let index = expressed[choice];
@@ -336,6 +365,29 @@ mod tests {
         assert!(validate(&vec![0.0; 1686]).is_err());
         child[0] = f32::NAN;
         assert!(validate(&child).is_err());
+    }
+
+    #[test]
+    fn heavy_restart_mutation_changes_one_fifth_of_expressed_genes() {
+        let mut genome = [0.0; GENOME_SIZE];
+        let mut traits = AgentGpu::default().cognitive_traits();
+        traits.active_mask = 0b111;
+        let original = traits;
+        let mut repeat = genome;
+        let mut repeat_traits = traits;
+        mutate_founder_heavily(&mut genome, &mut traits, 123);
+        mutate_founder_heavily(&mut repeat, &mut repeat_traits, 123);
+        assert_eq!(genome, repeat);
+        assert_eq!(traits, repeat_traits);
+        assert_eq!(traits.active_mask, original.active_mask);
+        assert_eq!(traits.packet_size, original.packet_size);
+        let altered = genome.iter().filter(|&&weight| weight != 0.0).count();
+        assert_eq!(
+            altered,
+            expressed_indices(original.active_mask).len().div_ceil(5)
+        );
+        assert!(genome.iter().all(|&weight| weight.abs() <= 0.35));
+        assert!(traits.validate());
     }
 
     #[test]

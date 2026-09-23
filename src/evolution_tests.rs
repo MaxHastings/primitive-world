@@ -399,7 +399,7 @@ fn simultaneous_births_replace_whole_reservoir_records_deterministically() {
 fn reservoir_and_world_transitions_resume_without_observer_selection() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
-    s.settings.population = 4;
+    s.settings.population = 10;
     s.settings.metabolic_cost = 100.0;
     s.reset(&q);
     let (_, mut stored, _) = s.reservoir_snapshot(&d, &q).unwrap();
@@ -414,7 +414,7 @@ fn reservoir_and_world_transitions_resume_without_observer_selection() {
     s.save_checkpoint(&d, &q, &path).unwrap();
     let observations = s.progress.clone();
     s.advance_world(&d, &q).unwrap();
-    let founders = s.read_genomes(&d, &q, 4).unwrap();
+    let founders = s.read_genomes(&d, &q, 10).unwrap();
     let bodies = s.agent_snapshot(&d, &q).unwrap();
     let seed = s.seed;
     assert_eq!(s.reservoir_snapshot(&d, &q).unwrap(), original);
@@ -435,13 +435,18 @@ fn reservoir_and_world_transitions_resume_without_observer_selection() {
     }
     s.advance_world(&d, &q).unwrap();
     assert_eq!(s.seed, seed);
-    assert_eq!(s.read_genomes(&d, &q, 4).unwrap(), founders);
+    assert_eq!(s.read_genomes(&d, &q, 10).unwrap(), founders);
     assert_eq!(
         bytemuck::cast_slice::<AgentGpu, u8>(&s.agent_snapshot(&d, &q).unwrap()),
         bytemuck::cast_slice::<AgentGpu, u8>(&bodies)
     );
-    for (g, body) in founders.chunks_exact(GENOME_SIZE).zip(bodies.iter()) {
-        assert!(
+    for (row, (g, body)) in founders
+        .chunks_exact(GENOME_SIZE)
+        .zip(bodies.iter())
+        .enumerate()
+        .take(10)
+    {
+        let from_pool =
             original
                 .0
                 .chunks_exact(GENOME_SIZE)
@@ -450,8 +455,14 @@ fn reservoir_and_world_transitions_resume_without_observer_selection() {
                     let mut inherited = *traits;
                     inherited.padding = [0; 2];
                     stored == g && inherited == body.cognitive_traits()
-                })
+                });
+        assert_eq!(
+            from_pool,
+            row % crate::evolution::FOUNDER_MIX_PERIOD == 1
+                || row % crate::evolution::FOUNDER_MIX_PERIOD == 2
         );
+        crate::brain::validate(g).unwrap();
+        assert!(body.cognitive_traits().validate());
         assert_eq!(body.hidden, [0.0; HIDDEN]);
         assert_eq!(body.ancestry_depth, 0);
         assert_eq!(body.cognitive_traits().padding, [0; 2]);

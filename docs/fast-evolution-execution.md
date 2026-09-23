@@ -1,8 +1,9 @@
 # Primitive World v46: integrated release and handoff
 
 Status: v46 began running from the imported 2.654B-tick v45 source at MAX.
-The owner subsequently ran `BIO_DT=3` and then selected `BIO_DT=4` for a
-long adaptation trial on the continuing v46 wallpaper at MAX. The first integrated release below records
+The owner subsequently ran `BIO_DT=3`, selected `BIO_DT=4`, and then selected
+the [20/40/40 restart-diversity trial](restart-diversity-trial.md) for the
+continuing v46 wallpaper at MAX. The first integrated release below records
 the earlier `BIO_DT=2` architecture and evidence.
 The owner then chose to restore the 512² food field. The 512-grid wallpaper
 is running from an explicitly expanded v46 checkpoint with its population,

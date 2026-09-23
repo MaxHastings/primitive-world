@@ -2092,7 +2092,11 @@ fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
 }
 /// Interleaved diagnostic founder banks use even/odd slots for the two lineages.
 pub(crate) fn diagnostic_ancestry_group(founder_family: u32) -> u32 {
-    if founder_family % 2 == 0 { 1 } else { 2 }
+    if founder_family.is_multiple_of(2) {
+        1
+    } else {
+        2
+    }
 }
 fn build_agents_with_traits(
     seed: u32,

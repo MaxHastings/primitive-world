@@ -7,6 +7,9 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 pub const HISTORY_LIMIT: usize = 64;
+/// Every five founder slots contain one fresh random, two unchanged pool, and
+/// two heavily mutated copies of pool records.
+pub(crate) const FOUNDER_MIX_PERIOD: usize = 5;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -133,7 +136,7 @@ impl Simulation {
         Ok(())
     }
 
-    /// Start a fresh ecology with uniformly sampled, unchanged reservoir entries.
+    /// Start a fresh ecology with retained and novel founders.
     pub fn advance_world(
         &mut self,
         device: &wgpu::Device,
@@ -144,7 +147,8 @@ impl Simulation {
     }
 
     /// Initialize the next world after a completed extinction.
-    /// The same blind hereditary pool supplies the next world.
+    /// 20% are new random genomes, 40% unchanged pool samples, and 40% heavily
+    /// mutated pool copies. The pool itself changes only through ordinary births.
     pub fn rollover_world(
         &mut self,
         device: &wgpu::Device,
@@ -159,7 +163,34 @@ impl Simulation {
         let stored_traits: &[CognitiveTraits] = bytemuck::cast_slice(&stored_traits);
         let mut genomes = vec![0.0; count * GENOME_SIZE];
         let mut traits = Vec::with_capacity(count);
+        let mut fresh_genome_rng = self.progress.rng ^ 0x184a_2321;
+        let mut fresh_trait_rng = self.progress.rng ^ 0x6d2b_79f5;
         for row in 0..count {
+            if row.is_multiple_of(FOUNDER_MIX_PERIOD) {
+                genomes[row * GENOME_SIZE..(row + 1) * GENOME_SIZE]
+                    .copy_from_slice(&random_genome(&mut fresh_genome_rng));
+                let active_mask = crate::brain::random_active_mask(&mut fresh_trait_rng);
+                let (
+                    plasticity_rate,
+                    trace_retention,
+                    learned_weight_retention,
+                    parameter_mutation_rate,
+                    parameter_mutation_step,
+                    topology_mutation_rate,
+                ) = crate::brain::random_plasticity(&mut fresh_trait_rng);
+                traits.push(CognitiveTraits {
+                    active_mask,
+                    padding: [0; 2],
+                    packet_size: crate::brain::random_packet_size(&mut fresh_trait_rng),
+                    plasticity_rate,
+                    trace_retention,
+                    learned_weight_retention,
+                    parameter_mutation_rate,
+                    parameter_mutation_step,
+                    topology_mutation_rate,
+                });
+                continue;
+            }
             let slot = (next(&mut self.progress.rng) >> 20) as usize;
             genomes[row * GENOME_SIZE..row * GENOME_SIZE + GENOME_BANK_STRIDE].copy_from_slice(
                 &bank0[slot * GENOME_BANK_STRIDE..(slot + 1) * GENOME_BANK_STRIDE],
@@ -175,6 +206,17 @@ impl Simulation {
             }
             let mut body_traits = stored_traits[slot];
             body_traits.padding = [0; 2]; // Pool evidence is not inherited physiology.
+            if row % FOUNDER_MIX_PERIOD >= 3 {
+                crate::brain::mutate_founder_heavily(
+                    &mut genomes[row * GENOME_SIZE..(row + 1) * GENOME_SIZE],
+                    &mut body_traits,
+                    next(&mut self.progress.rng),
+                );
+                crate::brain::validate(&genomes[row * GENOME_SIZE..(row + 1) * GENOME_SIZE])?;
+                if !body_traits.validate() {
+                    return Err("Invalid heavily mutated founder traits".into());
+                }
+            }
             traits.push(body_traits);
         }
         self.progress.world = self
