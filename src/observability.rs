@@ -575,7 +575,10 @@ impl Simulation {
             2
         } else if &magic == b"PRIMWORLD063" {
             3
-        } else if &magic == b"PRIMWORLD064" || &magic == b"PRIMWORLD065" {
+        } else if &magic == b"PRIMWORLD064"
+            || &magic == b"PRIMWORLD065"
+            || &magic == b"PRIMWORLD066"
+        {
             4
         } else if &magic == CHECKPOINT_MAGIC {
             BIO_DT

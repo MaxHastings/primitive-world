@@ -6,10 +6,11 @@ hundreds. It is not judged by TPS, packet count, births, or ancestry depth
 alone. The [execution record](fast-evolution-execution.md) defines the
 integrated release and manual outcome metrics.
 
-The owner later selected a [20/40/40 restart-diversity trial](restart-diversity-trial.md)
-on the continuing four-unit wallpaper. It changes only the mix of founders at
-future world rollovers and is not evidence that the original retained design
-was wrong or that the new mix improves closed-chain evolution.
+The owner first selected a 20/40/40 founder trial, then chose a
+[single cubic restart curve](restart-diversity-trial.md) for the continuing
+four-unit wallpaper. It changes founders only at future world rollovers.
+Neither founder diversity nor the previous fixed mix establishes an increase
+in useful closed-chain evolution per real hour.
 
 | Rank | Decision | Basis | Remaining risk |
 | ---: | --- | --- | --- |

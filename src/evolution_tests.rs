@@ -440,10 +440,10 @@ fn reservoir_and_world_transitions_resume_without_observer_selection() {
         bytemuck::cast_slice::<AgentGpu, u8>(&s.agent_snapshot(&d, &q).unwrap()),
         bytemuck::cast_slice::<AgentGpu, u8>(&bodies)
     );
-    for (row, (g, body)) in founders
+    let mut exact_pool_founders = 0;
+    for (g, body) in founders
         .chunks_exact(GENOME_SIZE)
         .zip(bodies.iter())
-        .enumerate()
         .take(10)
     {
         let from_pool =
@@ -456,18 +456,37 @@ fn reservoir_and_world_transitions_resume_without_observer_selection() {
                     inherited.padding = [0; 2];
                     stored == g && inherited == body.cognitive_traits()
                 });
-        assert_eq!(
-            from_pool,
-            row % crate::evolution::FOUNDER_MIX_PERIOD == 1
-                || row % crate::evolution::FOUNDER_MIX_PERIOD == 2
-        );
+        exact_pool_founders += usize::from(from_pool);
         crate::brain::validate(g).unwrap();
         assert!(body.cognitive_traits().validate());
         assert_eq!(body.hidden, [0.0; HIDDEN]);
         assert_eq!(body.ancestry_depth, 0);
         assert_eq!(body.cognitive_traits().padding, [0; 2]);
     }
+    assert!(exact_pool_founders >= 1);
     std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn cubic_restart_curve_covers_both_endpoints() {
+    let count = 8192;
+    assert_eq!(crate::evolution::founder_redraw_probability(0, count), 0.0);
+    assert_eq!(
+        crate::evolution::founder_redraw_probability(count - 1, count),
+        1.0
+    );
+    let p = |fraction: f32| {
+        crate::evolution::founder_redraw_probability(
+            ((count - 1) as f32 * fraction).round() as usize,
+            count,
+        )
+    };
+    assert!((0.12..0.13).contains(&p(0.5)));
+    assert!((0.72..0.74).contains(&p(0.9)));
+    assert!((1..count).all(
+        |rank| crate::evolution::founder_redraw_probability(rank - 1, count)
+            < crate::evolution::founder_redraw_probability(rank, count)
+    ));
 }
 
 #[test]
@@ -489,8 +508,8 @@ fn profile_restart_mutation_distance_on_saved_pool() {
         let mut mutant = source.to_vec();
         let mut traits = stored_traits[slot];
         traits.padding = [0; 2];
-        crate::brain::mutate_founder_heavily(&mut mutant, &mut traits, seed);
         let expressed = crate::brain::expressed_indices(traits.active_mask);
+        crate::brain::mix_founder_with_fresh(&mut mutant, &mut traits, 0.5, seed);
         let (mut mutation_distance, mut fresh_distance) = (0.0f64, 0.0f64);
         let mut identical = 0usize;
         for index in &expressed {
@@ -509,8 +528,8 @@ fn profile_restart_mutation_distance_on_saved_pool() {
         "saved-pool normalized mutation distance: p10={:.3}, median={:.3}, p90={:.3}; unchanged expressed fraction median={:.3}",
         ratios[12], ratios[64], ratios[115], shared[64]
     );
-    assert!((0.35..=0.65).contains(&ratios[64]));
-    assert!((0.74..=0.76).contains(&shared[64]));
+    assert!((0.60..=0.80).contains(&ratios[64]));
+    assert!((0.45..=0.55).contains(&shared[64]));
 }
 
 #[test]

@@ -65,29 +65,81 @@ pub fn random_plasticity(rng: &mut u32) -> ([f32; HIDDEN], f32, f32, f32, f32, f
         topology_mutation_rate,
     )
 }
-/// Restart-only radiation-style exploration applied to a pool-record copy.
-/// Three quarters of expressed genes, the circuit topology, and packet size retain
-/// their selected values. Ordinary births use the inherited mutation controls.
-pub fn mutate_founder_heavily(g: &mut [f32], traits: &mut CognitiveTraits, seed: u32) {
+/// Move one pool-record copy toward an independent fresh founder. Probability
+/// zero is an exact inherited copy; probability one is completely fresh.
+/// Ordinary births use their own inherited mutation controls.
+pub fn mix_founder_with_fresh(
+    g: &mut [f32],
+    traits: &mut CognitiveTraits,
+    probability: f32,
+    seed: u32,
+) {
+    debug_assert!((0.0..=1.0).contains(&probability));
+    if probability == 0.0 {
+        return;
+    }
     let mut rng = seed;
     let fresh = random_genome(&mut rng);
-    let mut expressed = expressed_indices(traits.active_mask);
-    for choice in 0..expressed.len().div_ceil(4) {
-        let selected = choice + (draw(&mut rng) * (expressed.len() - choice) as f32) as usize;
-        expressed.swap(choice, selected);
-        let index = expressed[choice];
-        g[index] = fresh[index];
+    let fresh_mask = random_active_mask(&mut rng);
+    let (fresh_rates, fresh_trace, fresh_learned, fresh_rate, fresh_step, fresh_topology) =
+        random_plasticity(&mut rng);
+    let fresh_packet_size = random_packet_size(&mut rng);
+    if probability == 1.0 {
+        g.copy_from_slice(&fresh);
+        *traits = CognitiveTraits {
+            active_mask: fresh_mask,
+            padding: [0; 2],
+            packet_size: fresh_packet_size,
+            plasticity_rate: fresh_rates,
+            trace_retention: fresh_trace,
+            learned_weight_retention: fresh_learned,
+            parameter_mutation_rate: fresh_rate,
+            parameter_mutation_step: fresh_step,
+            topology_mutation_rate: fresh_topology,
+        };
+        return;
     }
-    let (fresh_rates, fresh_trace, fresh_learned, _, _, _) = random_plasticity(&mut rng);
-    let active: Vec<_> = (0..HIDDEN)
-        .filter(|&h| traits.active_mask & (1 << h) != 0)
-        .collect();
-    let h = active[(draw(&mut rng) * active.len() as f32) as usize];
-    traits.plasticity_rate[h] = fresh_rates[h];
-    traits.trace_retention = (traits.trace_retention + fresh_trace) * 0.5;
-    traits.learned_weight_retention = (traits.learned_weight_retention + fresh_learned) * 0.5;
+    for (gene, new_gene) in g.iter_mut().zip(fresh) {
+        if draw(&mut rng) < probability {
+            *gene = new_gene;
+        }
+    }
+    for (rate, new_rate) in traits.plasticity_rate.iter_mut().zip(fresh_rates) {
+        if draw(&mut rng) < probability {
+            *rate = new_rate;
+        }
+    }
+    let structural_probability = probability * probability;
+    for unit in 0..HIDDEN {
+        let bit = 1 << unit;
+        if draw(&mut rng) < structural_probability {
+            traits.active_mask = (traits.active_mask & !bit) | (fresh_mask & bit);
+        }
+    }
+    if traits.active_mask == 0 {
+        traits.active_mask = fresh_mask;
+    }
+    if draw(&mut rng) < structural_probability {
+        traits.packet_size = fresh_packet_size;
+    }
+    if draw(&mut rng) < probability {
+        traits.trace_retention = fresh_trace;
+    }
+    if draw(&mut rng) < probability {
+        traits.learned_weight_retention = fresh_learned;
+    }
+    if draw(&mut rng) < structural_probability {
+        traits.parameter_mutation_rate = fresh_rate;
+    }
+    if draw(&mut rng) < structural_probability {
+        traits.parameter_mutation_step = fresh_step;
+    }
+    if draw(&mut rng) < structural_probability {
+        traits.topology_mutation_rate = fresh_topology;
+    }
 }
 
+#[cfg(test)]
 pub(crate) fn expressed_indices(mask: u32) -> Vec<usize> {
     let mut expressed = Vec::with_capacity(GENOME_SIZE);
     for h in 0..HIDDEN {
@@ -120,6 +172,7 @@ pub fn validate(g: &[f32]) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 pub fn active(mask: u32, unit: usize) -> bool {
     mask & (1u32 << unit) != 0
 }
@@ -365,25 +418,44 @@ mod tests {
     }
 
     #[test]
-    fn heavy_restart_mutation_redraws_one_quarter_of_expressed_genes() {
-        let mut genome = [0.0; GENOME_SIZE];
+    fn restart_curve_has_exact_endpoints_and_reproducible_middle() {
+        let mut genome = random_genome(&mut 17);
         let mut traits = AgentGpu::default().cognitive_traits();
         traits.active_mask = 0b111;
-        let original = traits;
+        let inherited = genome;
+        let inherited_traits = traits;
+        mix_founder_with_fresh(&mut genome, &mut traits, 0.0, 123);
+        assert_eq!(genome, inherited);
+        assert_eq!(traits, inherited_traits);
         let mut repeat = genome;
         let mut repeat_traits = traits;
-        mutate_founder_heavily(&mut genome, &mut traits, 123);
-        mutate_founder_heavily(&mut repeat, &mut repeat_traits, 123);
+        mix_founder_with_fresh(&mut genome, &mut traits, 0.5, 123);
+        mix_founder_with_fresh(&mut repeat, &mut repeat_traits, 0.5, 123);
         assert_eq!(genome, repeat);
         assert_eq!(traits, repeat_traits);
-        assert_eq!(traits.active_mask, original.active_mask);
-        assert_eq!(traits.packet_size, original.packet_size);
-        let altered = genome.iter().filter(|&&weight| weight != 0.0).count();
-        assert_eq!(
-            altered,
-            expressed_indices(original.active_mask).len().div_ceil(4)
-        );
-        assert!(genome.iter().all(|&weight| weight.abs() <= 0.85));
+        let altered = genome
+            .iter()
+            .zip(inherited)
+            .filter(|(a, b)| **a != *b)
+            .count();
+        assert!((GENOME_SIZE * 4 / 10..GENOME_SIZE * 6 / 10).contains(&altered));
+        assert!(traits.validate());
+        let mut fresh_rng = 123;
+        let expected = random_genome(&mut fresh_rng);
+        let expected_mask = random_active_mask(&mut fresh_rng);
+        let (rates, trace, learned, mutation_rate, mutation_step, topology_rate) =
+            random_plasticity(&mut fresh_rng);
+        let packet_size = random_packet_size(&mut fresh_rng);
+        mix_founder_with_fresh(&mut genome, &mut traits, 1.0, 123);
+        assert_eq!(genome, expected);
+        assert_eq!(traits.active_mask, expected_mask);
+        assert_eq!(traits.plasticity_rate, rates);
+        assert_eq!(traits.trace_retention, trace);
+        assert_eq!(traits.learned_weight_retention, learned);
+        assert_eq!(traits.parameter_mutation_rate, mutation_rate);
+        assert_eq!(traits.parameter_mutation_step, mutation_step);
+        assert_eq!(traits.topology_mutation_rate, topology_rate);
+        assert_eq!(traits.packet_size, packet_size);
         assert!(traits.validate());
     }
 

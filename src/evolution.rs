@@ -7,9 +7,23 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 pub const HISTORY_LIMIT: usize = 64;
-/// Every five founder slots contain one fresh random, two unchanged pool, and
-/// two heavily mutated copies of pool records.
-pub(crate) const FOUNDER_MIX_PERIOD: usize = 5;
+/// A single continuous restart curve, biased toward inherited founders.
+pub(crate) fn founder_redraw_probability(rank: usize, count: usize) -> f32 {
+    if count <= 1 {
+        return 0.0;
+    }
+    let position = rank as f32 / (count - 1) as f32;
+    position * position * position
+}
+
+fn shuffled_founder_ranks(count: usize, rng: &mut u32) -> Vec<usize> {
+    let mut ranks: Vec<_> = (0..count).collect();
+    for end in (1..count).rev() {
+        let chosen = (next(rng) as usize) % (end + 1);
+        ranks.swap(end, chosen);
+    }
+    ranks
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -31,7 +45,7 @@ pub struct Outcome {
 #[serde(deny_unknown_fields)]
 pub struct Progress {
     pub world: u64,
-    /// CPU RNG used solely to draw fresh founders from the reservoir.
+    /// CPU RNG for reservoir sampling and shuffled founder severity.
     pub rng: u32,
     pub completed: Option<Outcome>,
     pub history: Vec<Outcome>,
@@ -147,8 +161,9 @@ impl Simulation {
     }
 
     /// Initialize the next world after a completed extinction.
-    /// 20% are new random genomes, 40% unchanged pool samples, and 40% heavily
-    /// mutated pool copies. The pool itself changes only through ordinary births.
+    /// Every founder samples the pool, then follows one cubic path from an
+    /// exact inherited copy to a wholly fresh genome. The pool itself changes
+    /// only through ordinary births.
     pub fn rollover_world(
         &mut self,
         device: &wgpu::Device,
@@ -163,34 +178,8 @@ impl Simulation {
         let stored_traits: &[CognitiveTraits] = bytemuck::cast_slice(&stored_traits);
         let mut genomes = vec![0.0; count * GENOME_SIZE];
         let mut traits = Vec::with_capacity(count);
-        let mut fresh_genome_rng = self.progress.rng ^ 0x184a_2321;
-        let mut fresh_trait_rng = self.progress.rng ^ 0x6d2b_79f5;
+        let ranks = shuffled_founder_ranks(count, &mut self.progress.rng);
         for row in 0..count {
-            if row.is_multiple_of(FOUNDER_MIX_PERIOD) {
-                genomes[row * GENOME_SIZE..(row + 1) * GENOME_SIZE]
-                    .copy_from_slice(&random_genome(&mut fresh_genome_rng));
-                let active_mask = crate::brain::random_active_mask(&mut fresh_trait_rng);
-                let (
-                    plasticity_rate,
-                    trace_retention,
-                    learned_weight_retention,
-                    parameter_mutation_rate,
-                    parameter_mutation_step,
-                    topology_mutation_rate,
-                ) = crate::brain::random_plasticity(&mut fresh_trait_rng);
-                traits.push(CognitiveTraits {
-                    active_mask,
-                    padding: [0; 2],
-                    packet_size: crate::brain::random_packet_size(&mut fresh_trait_rng),
-                    plasticity_rate,
-                    trace_retention,
-                    learned_weight_retention,
-                    parameter_mutation_rate,
-                    parameter_mutation_step,
-                    topology_mutation_rate,
-                });
-                continue;
-            }
             let slot = (next(&mut self.progress.rng) >> 20) as usize;
             genomes[row * GENOME_SIZE..row * GENOME_SIZE + GENOME_BANK_STRIDE].copy_from_slice(
                 &bank0[slot * GENOME_BANK_STRIDE..(slot + 1) * GENOME_BANK_STRIDE],
@@ -206,16 +195,15 @@ impl Simulation {
             }
             let mut body_traits = stored_traits[slot];
             body_traits.padding = [0; 2]; // Pool evidence is not inherited physiology.
-            if row % FOUNDER_MIX_PERIOD >= 3 {
-                crate::brain::mutate_founder_heavily(
-                    &mut genomes[row * GENOME_SIZE..(row + 1) * GENOME_SIZE],
-                    &mut body_traits,
-                    next(&mut self.progress.rng),
-                );
-                crate::brain::validate(&genomes[row * GENOME_SIZE..(row + 1) * GENOME_SIZE])?;
-                if !body_traits.validate() {
-                    return Err("Invalid heavily mutated founder traits".into());
-                }
+            crate::brain::mix_founder_with_fresh(
+                &mut genomes[row * GENOME_SIZE..(row + 1) * GENOME_SIZE],
+                &mut body_traits,
+                founder_redraw_probability(ranks[row], count),
+                next(&mut self.progress.rng),
+            );
+            crate::brain::validate(&genomes[row * GENOME_SIZE..(row + 1) * GENOME_SIZE])?;
+            if !body_traits.validate() {
+                return Err("Invalid mixed founder traits".into());
             }
             traits.push(body_traits);
         }
