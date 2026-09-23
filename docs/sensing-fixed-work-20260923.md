@@ -64,3 +64,21 @@ expectations. One failing metabolic assertion produced the identical 9.88 vs
 equivalence tests and copied evolved-checkpoint comparison passed. This is a
 mechanical performance result, not evidence that a long wallpaper run retains
 more useful strategies per real hour.
+
+## Packaged wallpaper handoff
+
+The existing wallpaper took its normal save-before-close path at world 55,
+local tick 2,326,066, cumulative v46 macro step 65,643,306, with 390 living
+entities. Its complete receipt and checkpoint were copied byte-for-byte to an
+ignored rollout archive, and the previous packaged executable was backed up
+inside the isolated v46 app directory. The new shader passed an additional
+one-step comparison on that exact stopped checkpoint: 334 organisms and 56
+packets, maximum organism input difference 2.38e-7, zero action changes.
+
+The packaged v46 wallpaper then resumed with `--wallpaper --resume --view-speed
+MAX`. An initial window-title reading showed world 55, 115 FPS, and 7,294
+biological units/s. Population was 153 at that instant, down from the stopped
+receipt's 390. A subsequent short check showed 868 living in the same world
+at 145 FPS and 5,310 biological units/s. Those snapshots show a rebound, not
+a sustained improvement in reproductive success or throughput. The v45
+checkout and saves were not touched.
