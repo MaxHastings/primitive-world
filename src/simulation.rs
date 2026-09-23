@@ -1595,7 +1595,7 @@ impl Simulation {
             batch.dispatch(&self.passes["free"], s, groups, 1);
             batch.scan(&self.passes, "free", MAX_AGENTS);
             batch.dispatch(&self.passes["free_compact"], 0, groups, 1);
-            if (self.tick + 1) % 4 == 0 {
+            if (self.tick + 1).is_multiple_of(4) {
                 batch.dispatch(
                     &self.passes["resource"],
                     0,

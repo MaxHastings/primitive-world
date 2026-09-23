@@ -17,4 +17,6 @@ starting a fresh world; it cannot be combined with `--resume` or a checkpoint.
 
 `evolved-sample.json` is one naturally living descendant sampled from the
 long-running experiment around world 753. Its provenance fields are retained
-inside the bank, and its format/model are validated before use.
+inside the bank. Its numerical genome and inherited traits are unchanged from
+the v45 sample; the bank header identifies the v46 model that loads it. The
+format/model are validated before use.

@@ -167,6 +167,14 @@ failures; running the same tests with the prior full-scan shader produced the
 same three failures. The two focused fusion/checkpoint continuation tests
 passed with both shader versions.
 
+The full local release test suite was also run before the main-branch handoff:
+130 passed, 45 failed, and 35 were ignored. Many failures assert v45's
+one-unit physiology, one-packet production, or per-tick ecology values; some
+exact GPU-state comparisons and behavioral fixtures still need separate v46
+review. This is an unresolved GPU-test migration, not a clean full-suite pass.
+The repository's automated CPU check excludes `simulation::tests::`; that
+check and the Python tool tests passed locally.
+
 ## Longer manual wallpaper run
 
 Record wall time, macro-steps/s, biological units/s, FPS, live organisms and

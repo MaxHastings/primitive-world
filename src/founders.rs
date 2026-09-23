@@ -216,6 +216,15 @@ mod tests {
     }
 
     #[test]
+    fn checked_in_evolved_preseed_loads_in_current_model() {
+        let bank: FounderBank =
+            serde_json::from_str(include_str!("../preseeds/evolved-sample.json")).unwrap();
+        bank.validate().unwrap();
+        assert_eq!(bank.genomes.len(), 1);
+        assert_eq!(bank.traits.len(), 1);
+    }
+
+    #[test]
     fn bank_validation_rejects_unknown_models_formats_and_invalid_genomes() {
         assert!(bank("unrelated-model").validate().is_err());
         assert!(bank("primitive-v3").validate().is_err());
