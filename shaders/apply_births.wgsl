@@ -28,17 +28,32 @@ fn fresh(p:Agent,pi:u32,ci:u32)->Agent {
 }
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id:vec3<u32>){
- let rank=id.x;if(rank>=min(free_prefix[INVALID-1u],birth_prefix[INVALID-1u])){return;}
- let parent_rank=(rank+hash_u32(params.tick)%birth_prefix[INVALID-1u])%birth_prefix[INVALID-1u];
- let pi=parents[parent_rank];let ci=free_indices[rank];var p=agents[pi];let d=decisions[pi];
- if(p.alive!=ORGANISM||agents[ci].alive!=0u||d.selected_action!=PRODUCE_PACKET||p.energy<p.packet_size){return;}
- var packet=fresh(p,pi,ci);packet.alive=PACKET;packet.energy=p.packet_size;
- packet.position=wrap_world(p.position+body_to_world(d.placement,p.heading)*2.0,params.world_size.xy);
- // Deposited packets have no propulsion or inherited body velocity.
- packet.parent_lineage=p.lineage_id;packet.parent_high=p.lineage_high;packet.ancestry_depth=p.ancestry_depth;
- p.energy-=p.packet_size;p.spent+=p.packet_size;p.packets_produced++;
+ let pi=id.x;if(pi>=INVALID){return;}
+ var first=0u;if(pi>0u){first=birth_prefix[pi-1u];}
+ let count=birth_prefix[pi]-first;
+ if(count==0u){return;}
+ let total=min(birth_prefix[INVALID-1u],INVALID);
+ let rotation=hash_u32(params.tick)%total;
+ var p=agents[pi];let d=decisions[pi];
+ if(p.alive!=ORGANISM||d.selected_action!=PRODUCE_PACKET){return;}
+ for(var sub=0u;sub<count;sub++){
+  let parent_rank=first+sub;
+  if(parent_rank>=total){break;}
+  let rank=(parent_rank+total-rotation)%total;
+  if(rank>=free_prefix[INVALID-1u]||p.energy<p.packet_size){continue;}
+  let ci=free_indices[rank];if(agents[ci].alive!=0u){continue;}
+  var packet=fresh(p,pi,ci);packet.alive=PACKET;packet.energy=p.packet_size;
+  // Materialize one paid packet at each held-action substep along the parent's
+  // swept trajectory, without assigning it a direct mate or identity cue.
+  let fraction=f32(sub+1u)/f32(count);
+  packet.position=wrap_world(p.position-p.moved+p.moved*fraction+body_to_world(d.placement,p.heading)*2.0,params.world_size.xy);
+  packet.parent_lineage=p.lineage_id;packet.parent_high=p.lineage_high;packet.ancestry_depth=p.ancestry_depth;
+  packet.closed_depth=p.closed_depth;packet.v46_natural=p.v46_natural;
+  p.energy-=p.packet_size;p.spent+=p.packet_size;p.packets_produced++;
+  agents[ci]=packet;counter_add(19,1u);
+ }
  if(p.energy<=0.0){p.alive=0u;counter_add(1,1u);}
- agents[pi]=p;agents[ci]=packet;counter_add(19,1u);
+ agents[pi]=p;
 }
 @compute @workgroup_size(64)
 fn fusion(@builtin(global_invocation_id) id:vec3<u32>){
@@ -57,6 +72,12 @@ fn fusion(@builtin(global_invocation_id) id:vec3<u32>){
  child.heading=6.283185307*random01(child.rng);
  child.parent_lineage=p.parent_lineage;child.parent_high=p.parent_high;
  child.ancestry_depth=max(p.ancestry_depth,q.ancestry_depth)+1u;
+ child.v46_natural=1u;
+ child.closed_depth=max(p.closed_depth+u32(p.v46_natural==1u),q.closed_depth+u32(q.v46_natural==1u));
+ let natural_donors=u32(p.v46_natural==1u)+u32(q.v46_natural==1u);
+ wide_add(80u,81u,natural_donors);
+ wide_add(82u,83u,u32(natural_donors>0u));
+ atomicMax(&stats[84],child.closed_depth);
  atomicMax(&stats[23],child.ancestry_depth);
  agents[qi]=child;counter_add(3,1u);counter_add(22,1u);
 }
@@ -64,4 +85,8 @@ fn counter_add(index:u32,value:u32)->u32 {
  let prior=atomicAdd(&stats[index],value);
  if(index!=0u && prior>0xffffffffu-value){atomicAdd(&stats[40u+index],1u);}
  return prior;
+}
+fn wide_add(low:u32,high:u32,value:u32){
+ let prior=atomicAdd(&stats[low],value);
+ if(prior>0xffffffffu-value){atomicAdd(&stats[high],1u);}
 }

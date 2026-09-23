@@ -1,122 +1,114 @@
-# Fast evolution: ranked design decisions
+# Primitive World v46: decisions and evidence
 
-This is the decision record for a new `primitive-v46-fast-evolution` model. The
-ranking is **expected evolutionary gain per engineering effort**, not the order
-in which source files must be edited. The aim is more naturally closed
-reproductive transitions per wall-clock hour in an interactive world, not a
-large TPS number obtained from sparse or trivial organisms.
+The design is judged by **useful naturally closed reproductive chains per
+real hour**, with a familiar wallpaper and a population commonly in the
+hundreds. It is not judged by TPS, packet count, births, or ancestry depth
+alone. The [execution record](fast-evolution-execution.md) defines the
+integrated release and manual outcome metrics.
 
-The measurements below are from v45 and identify expensive work. They do not
-measure v46 speedups. A saved 582-organism, 53-packet world ran at 2,660
-synchronized headless ticks/s and 2,353 wallpaper ticks/s. Its GPU batch took
-about 308 µs/tick; independently sampled kernels took about 66 µs sensing, 53
-µs fusion inheritance, 51 µs ecology, 23 µs plasticity, and 18 µs decisions.
-Those kernel samples overlap other work and are **not additive savings**. See
-[the reference profile](gpu-tick-performance.md#saved-world-layer-profile).
+| Rank | Decision | Basis | Remaining risk |
+| ---: | --- | --- | --- |
+| 1 | Preserve v45's entire evolved population through an isolated v46 import. | The complete v45 checkpoint contains living bodies/packets, both genome banks, lifetime weights/traces, and reservoir. A converter round-tripped a copied 542-entity, 2.654B-total-tick source. | Imported agents can still face changed dynamics; the source and frozen copy remain recoverable. |
+| 2 | Use BIO_DT=2 with two physical substeps and paid three-packet reproductive bursts. | BIO_DT=3 lost population and viable fusion rate in matched short replay. BIO_DT=2 with a paid burst retained 504 living and 133 births at 3,000 biological units; the same run later reached closed depth three. | Burst strategy may alter long-run selection; only a wallpaper-hour run can decide. |
+| 3 | Keep one full local-plasticity write per decision; exponentiate retention across biological time. | Tripling write injection caused mass packet production and energy loss within ten macro-steps in the imported fixture. Removing it restored the old early action distribution. | Adaptation per biological unit is lower than v45; a stronger variant needs lineage evidence. |
+| 4 | Restore 512² ecology stores and real 512² food probes; retain the eight-unit growth cadence. | The owner prefers v45's fine food field. Virtual 512 positions over 256 stores preserved sector coverage but could not restore within-cell information. A one-time 256→512 expansion preserved exact natural food, dropped food, and pending extraction totals; direct v45 import now carries its 512-grid ecology byte-for-byte. | Ecology now costs more GPU time; fine-cell competition and slower growth cadence still change selection and need a long wallpaper run. |
+| 5 | Use moving-pair swept torus contacts and measured displacement broad phase. | Final-position contact can miss encounters with longer macro-steps. The implementation queries relative closest approach across periodic images. | Dense high-motion scenes may cost more GPU time; short runs do not bound the worst case. |
+| 6 | Keep packet-owned immutable genome copies and stable existing slots for the first release. | Existing copy-by-value already preserves the genotype after producer death and slot reuse. The imported 500-entity world runs at roughly 2.8–3.2K macro-steps/s headless in short probes; no handle-pool gain has been measured. | Dense arrays and full body copies constrain the speed target; a handle pool plus reclamation is a later engineering experiment. |
+| 7 | Distinct v46 model/save/wallpaper boundary and exact closed-chain counters. | Normal v46 load rejected v45; conversion, save/reload, and short closed-chain continuation worked. Cross-version singleton prevents overlap; stop/tray/startup/log/save lookup are v46-scoped. A live packaged restart exposed and fixed filename-based resume selection; retention now protects the most advanced receipt. The 512-grid format uses checkpoint magic 62 and receipt version 6. Its packaged wallpaper resumed from accumulated decision 6,456,821 at MAX. | A world rollover occurred soon after the 512-grid handoff; the manual run must verify sustained population and chain retention. |
+| 8 | Exit fusion's exact-copy telemetry comparison at the first mismatch. | On a copied 531-entity v46 checkpoint, short selective GPU samples fell from about 100 to 60 µs per controller decision for `inherit_fusion`. A 1,000-decision headless replay took 0.790 s in the packaged reference and 0.750 s in the candidate, with identical population, packet, birth, and exact-copy counts. | The wall-time difference is one concurrent-wallpaper sample; it is not a sustained throughput or evolutionary-fitness result. |
 
-With `BIO_DT=3`, **5× effective biological throughput** requires about 1.67×
-the old raw step rate at a comparable population; **10×** requires about 3.33×.
-At the historical wallpaper rate of 2,353 ticks/s, those illustrative thresholds
-are roughly 3,922 and 7,843 v46 macro-steps/s. Actual comparisons must use
-matched workloads and include births, maturations, and successful descendant
-reproduction; multiplying a declining-population microbenchmark by three is
-not evidence of evolutionary improvement.
+## Measured versus inferred
 
-## Commit to these changes
+**Measured v45 baseline:** 2,660 headless ticks/s and 2,353 wallpaper ticks/s
+in an earlier 582-organism/53-packet profile on RTX 4070 SUPER. The sampled
+GPU batch was about 308 µs/tick; sensing, fusion inheritance, ecology,
+plasticity, and decision samples were about 66, 53, 51, 23, and 18 µs/tick.
+Those samples are not additive. See
+[the baseline](fast-evolution-baseline.md) and
+[GPU performance record](gpu-tick-performance.md#saved-world-layer-profile).
 
-| Rank | Change | Why it is high value | Cost or biological risk | Decision |
-| ---: | --- | --- | --- | --- |
-| 1 | `BIO_DT=3` with one held decision per macro-step | Directly triples biological time per step if raw step rate holds; maturity moves from ~1,800 to ~600 decisions without removing childhood | Poor scaling can distort energy, learning, or contacts; swept toroidal motion/contact is required | **Build** as the defining v46 change |
-| 2 | 256×256 ecology, integrated every four macro-steps | Replaces 262,144 per-tick cells and a measured ~51 µs kernel with one-quarter as many cells at one-quarter the cadence; preserves a 2,048-ish world | Food cell size doubles; each cell represents four times the area, so capacity, stock, extraction, and growth need area-aware accounting | **Build** with food, capacity/fertility, and climate pressure |
-| 3 | Fixed-cost local sensing from shared fields | Existing sensing is the largest sampled kernel (~66 µs), and cost currently rises with the number of nearby food cells and bodies | Fields blur individual events; the sixteen directional/radial samples must still distinguish food, bodies, approach, proximity, and signed signals | **Build** fields once, sample sixteen times per organism |
-| 4 | Separate compact packets and dense live organisms | Avoid cognitive/body work and storage traffic for packets and thousands of empty slots; 500–1,000 organisms currently share 16,384 heavyweight slots | Largest implementation change; stable slot assumptions in inspection, birth, and save must become 64-bit identity references | **Build** despite cost because it enables durable scaling |
-| 5 | Immutable genotype handles in packets and reservoir | Packet manufacture should not copy a 2,494-float genome; inheritance was ~53 µs in the saved-world kernel sample and can be worse in packet-heavy worlds | Pool ownership, reclamation, saves, and recombination must be correct after producer death | **Build**; materialize a new genotype only at a viable birth |
-| 6 | Remove temporary perception/decision buffers where useful | Field sensing can feed the brain directly and avoid storing every input for a later pass | Over-fusing can increase register pressure and regress performance; retain only values needed for learning, physics, and inspection | **Build opportunistically**, with the new data layout |
-| 7 | Simplify lifetime plasticity | Input plasticity is the largest learned matrix, but the sampled plasticity pass is only ~23 µs | Removing an entire learning route is a meaningful scientific change, and other redesigns already shrink the input vector | **Defer**; keep input/recurrent/gate/output learning in base v46 |
-| 8 | Decouple rendering from simulation and make observation cheap | Wallpaper can render at normal display cadence without retaining every diagnostic record or synchronizing each macro-step | Inspection must remain responsive and show the selected stable identity | **Build** as part of wallpaper integration |
-| 9 | Track reproductive transitions and opportunity metrics | Prevents optimization toward empty, disconnected, or merely prolific worlds | Some counters and periodic sampling have overhead; keep detailed readback outside hot passes | **Build** minimal persistent counters and sampled reports |
+**Measured short replay on the earlier 256-grid variant:** The exact copied v45 source retained 528 living
+and produced 182 viable births over 3,000 biological units in 1.03 seconds
+of headless simulation. The final v46 configuration retained 504 living
+and produced 133 viable births over 3,000 biological units; at 12,000 units
+it retained 520 living, recorded 612 births, 295 closed births, and maximum
+closed depth three in 1.90 seconds of simulation. These are separate
+deterministic trajectories from the same copied source, not statistical
+estimates. They establish that a closed chain is possible and the population
+is stable over this short horizon. They do not establish a wallpaper-hour
+gain or strategy usefulness.
 
-Ranks 2–6 are not independent multipliers. Ecology and sensing both touch food
-storage; packet handles and dense packet storage interact. Measure the integrated
-build against v45, not a sum of hypothetical per-layer gains. The source
-implementation may do rank 4 before rank 3 or 5 to establish the new storage
-contract. Keep full plasticity in base v46; the smaller input count reduces its
-input matrix without removing that learning capability.
+**Measured 512-grid handoff checks:** A 3,654,631-step v46 checkpoint was
+expanded without changing its tick, 270 living entities, learned state, or
+genome buffers. Natural food, dropped food, and pending extraction totals were
+exact before and after. From that identical state, 1,000-decision headless
+continuations took 0.525 s on 256² and 0.614 s on 512², ending with 262 and
+221 living. This is one short divergent trajectory, not an estimate of
+long-run strategy retention. The direct v45 import into the 512-grid format
+also validated, with the same 2.654B-tick source hash and no food regridding.
 
-## Keep because they create evolutionary opportunity
+**Inference:** BIO_DT=2 should allow earlier maturation in controller
+decisions. The paid burst can preserve physical packet supply, and closed
+births per wall hour may increase if the wallpaper sustains a comparable
+population. Neither conclusion is guaranteed by the short replay.
 
-These are design constraints rather than speed candidates:
+**September 2026 targeted speed follow-up:** At 512² food resolution, `consume`
+cost about 19–34 µs per controller decision, while sensing and fusion inheritance
+cost about 119–177 and 89–116 µs respectively in short timestamp probes of a
+copied live checkpoint. Sparse feeding could save only a few percent even if
+the entire consumption pass disappeared. Two sensing arithmetic substitutions
+showed no reliable gain and were removed. The retained fusion change skips
+remaining read-only genome comparisons once exact inherited equality is
+already false. It does not change genes, learning, ecology, rendering, or
+the definition of exact-copy telemetry. Short candidate/reference replay
+showed equal 576 living, 97 packets, 76,050 cumulative births, and 624 exact
+copies at 1,000 decisions; tiny food and energy differences are consistent with
+the existing unordered GPU interaction/reduction behavior. The measured
+headless simulation-time difference was about 5.1% in this one paired sample.
 
-| Capability | Decision and reason |
-| --- | --- |
-| 1–16 expressed recurrent units and latent inactive hereditary weights | **Keep.** The evolved snapshot happened to use mostly four units; that does not prove a four- or eight-unit ceiling can reach future strategies. |
-| Local memory and unsupervised learning | **Keep.** Hidden state, input/recurrent/gate/output fast weights, traces, and inherited learning traits remain. No reward or success label is given to a brain. |
-| Childhood near 1,800 biological units and lifespan near 9,000–11,000 | **Keep.** The step count changes, not the duration of development or the need to survive it. |
-| Energy budget, foraging, digestion, depletion, climate, scarcity, and old age | **Keep.** Automatic abundance would make reproduction cheap and erase selection pressure. |
-| Physical, paid, decaying packets and spatial fusion | **Keep.** A direct `mate()` action would remove an important open-ended coordination problem. |
-| Signed local signals, anonymous transfer, and physical force | **Keep.** They permit cooperation, exploitation, and conventions without authored meanings or kin targeting. |
-| Roughly 500–1,000 ordinary living organisms and original logical world scale | **Keep as calibration goals.** Interactions must remain common; no population clamp is added. |
-| Modular recombination, mutation, topology change, and hereditary reservoir | **Keep the opportunities.** The reservoir can hold immutable genotype references. Its selection rule and provenance must be explicit. |
+**BIO_DT=4 and adaptation-ramp probe (headless only):** The copied 512-grid
+v46 import was replayed with equal biological time. A direct BIO_DT=4 variant
+kept ecological updates about eight biological units apart and allowed up to
+five fully paid packets per production decision. At 3,000 biological units it
+had 386 living and five viable births, versus BIO_DT=2's 418 living and 35
+births. In single-world continuations, the BIO_DT=4 world became extinct at
+18,896 biological units with 31 births; BIO_DT=2 lasted 51,192 units with
+495 births. Over 100,000 biological units with normal reservoir rollover,
+direct BIO_DT=4 completed three worlds and ended in world four with five
+living; BIO_DT=2 completed one world and had 1,447 living in world two.
 
-## Set aside for the first v46 release
+A separate 200,000-unit ramp gradually mixed 2/3-unit decisions, then 3/4,
+with ecology scheduled by elapsed biological time. It was held at four for
+another 100,000 units. The ramp recovered repeatedly after world restarts
+and ended with 635 living in world eight, but had completed seven worlds; its
+late four-unit worlds did not demonstrate sustained inherited-chain retention.
+These are individual GPU trajectories from one imported checkpoint, not a
+population-level fitness estimate. The owner chose to keep BIO_DT=2. The
+packaged wallpaper, v45 source, and v46 saves were untouched by the probes.
 
-| Idea | Why it is tempting | Why we are not choosing it now |
-| --- | --- | --- |
-| `BIO_DT=2` or 4 | Two may protect contacts; four may compress time further | Three is a useful first balance. Compare two/three/four only after the integrated model has a working life cycle. `BIO_DT=10` risks missing too many decisions and encounters. |
-| Ecology cadence 2 or 8 | Could improve responsiveness or save more GPU work | Four is the starting point. Choose another cadence only if depletion/recovery or timing data justifies it. |
-| Eight-unit maximum brain | Smaller neural buffers and less worst-case work | Long-term search headroom may be lost, while the evolved saved population already expressed mostly four units. Treat eight as a separate biological variant. |
-| Recurrent/output-only, low-rank, or per-unit plasticity | Could shrink learned state, especially the input matrix | Learning is central to the experiment; the sampled 23 µs pass does not justify another mandatory biological change in the first cut. Revisit if cognition becomes the measured bottleneck. |
-| Smaller physical world or 100-organism target | Higher encounter frequency or superficially faster steps | Changes spatial selection and may hide loss of social opportunity; benchmark separately, never use population collapse to claim speed. |
-| Remove packets, childhood, metabolic pressure, or force births | Would raise births/second quickly | Makes successful reproduction easier by rule rather than increasing computational evolutionary search. |
-| Directed food, mate, child, or signal semantics | Could improve apparent behavior immediately | Authors the strategy that evolution is supposed to discover. |
-| Full v45 trajectory parity | Gives a strong exact-regression target | V46 deliberately changes biology; test capability, conservation, save safety, and a closed life cycle instead. |
-| Reproduce every ecological intermediate or all 107 inputs | Avoids any information change | Retains large hidden costs that agents cannot directly exploit; keep useful gradients and senses instead. |
-| Fuse every GPU kernel | Fewer dispatches | Register pressure and repeated work can outweigh dispatch savings. Fuse sensory sampling and cognition only where it reduces actual memory traffic. |
-| Lower wallpaper FPS, disable drawing, or turn off inspection | Easy benchmark gain | Wallpaper use is a requirement. Rendering can be decoupled, with measured overhead reported. |
-| CPU rewrite, CUDA-only engine, or half-precision everywhere | May offer specialized speed or simpler code | Replaces a functioning cross-platform GPU path or risks numerical/capability changes before the high-value model changes are exhausted. |
+## Explicit alternatives deferred
 
-## Contracts that make the five bets clean
+- **BIO_DT=3:** More biological time per decision, but lower realized
+  reproductive closure and major early population loss in the imported
+  fixture. Revisit only with better intra-step encounter and controller
+  treatment, not as a TPS shortcut.
+- **BIO_DT=4 or a 2→4 ramp:** Faster biological clock in the short replay,
+  but much weaker direct reproductive closure and repeated later-world
+  failures in the ramp probe. Neither is selected for the live wallpaper.
+- **Threefold plasticity injection:** Immediately destabilized imported
+  controllers. One observation currently makes one learned write.
+- **256-grid food or shared body/signal fields:** The coarse food store loses
+  within-cell information even if virtual probes preserve sector coverage.
+  Retain exact 107 channels and real 512-cell food probes. The independent
+  body contact grid remains 256².
+- **Genome handle pool, light packet records, in-place body update, dense
+  compaction:** Potentially valuable GPU work, but requires a separate
+  ownership/checkpoint migration with measured benefit. Packet genomes
+  currently have independent by-value ownership, so safety does not
+  require a handle pool.
+- **Increasing packet contact radius:** A 3.2-unit probe only modestly
+  improved short BIO_DT=3 births and changed physical ecology; the release
+  retains the 2.0-unit radius.
 
-1. **BIO_DT is a units contract, not a speed label.** The simulation stores both
-   macro-step count and biological time. Every continuous rate declares its
-   units; retention/damping use `rate.powf(BIO_DT)`. Packet expiry, climate
-   epochs, observation windows, and statistics use biological time where they
-   represent biological duration. Swept contact tests use both endpoints and
-   toroidal wrapping. A 3× larger represented time interval does not by itself
-   guarantee 3× more successful evolutionary transitions.
-2. **Ecology conserves world-scale opportunity.** Quartering the number of cells
-   must not quarter total food mass or productivity. Each v46 cell represents
-   four v45 cell areas. Give stock, carrying capacity, regrowth, extraction, and
-   dropped-food accounting explicit units per area or per cell. Check total
-   resource budget and local depletion/recovery, then tune population through
-   ecology rather than a population controller.
-3. **Fields are senses, contacts remain physical.** A field sample can blur
-   individual organisms, but actual transfer, force, and packet fusion use a
-   spatial contact structure with swept trajectories. Keep signed signals local
-   and verify emission can be detected by another agent even after field
-   aggregation. No field reveals identity or global position.
-4. **Dense means live-scaled work.** Avoid a full heavyweight copy or sort of
-   every entity at every step just to achieve contiguous indices. Compact at
-   safe boundaries or use an equivalent dense active representation. Stable
-   64-bit identity, not GPU index, connects inspection, lineage, events, and
-   saves. The genotype pool retains every handle owned by organisms, packets,
-   or reservoir records until a safe reclamation boundary.
-5. **Closed depth is distinct from birth depth.** A newborn gets ancestry
-   metadata, but a successful reproductive transition is counted only when a
-   naturally born organism matured and contributed heredity to a viable later
-   birth. Persist both transition count and maximum such depth across saves and
-   world rollover, with provenance for any founder/reservoir restart.
-
-## Minimum evidence for a usable build
-
-This is a short mechanical check, not a months-long test program: release build,
-fresh headless and wallpaper launch, v46 save/resume, v45-save rejection, stable
-inspection, a controlled closed reproductive loop using only legal senses/actions,
-and one sustained population/throughput sample. The user's subsequent wallpaper
-run determines whether open evolution produces deep descendant chains. Report
-that outcome as observed; do not infer it from packet or birth counts alone.
-
-If the integrated build is slower than expected, inspect the new layer costs and
-population before choosing another simplification. The next 2× should target
-the measured bottleneck, not automatically lower neural capacity or organism
-count.
+No population clamp, direct mating, authored signal meaning, identity-based
+cognition, or reward oracle belongs in v46.

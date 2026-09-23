@@ -894,15 +894,21 @@ fn overview(ui: &mut egui::Ui, state: &mut AppState, action: &mut Action) {
             ui.strong(state.births.to_string());
             ui.end_row();
 
-            ui.label("World tick");
+            ui.label("World macro-step");
             ui.strong(state.simulation.tick.to_string());
             ui.end_row();
-            ui.label("Ticks / second");
+            ui.label("Biological units");
+            ui.strong((state.simulation.tick * u64::from(model::BIO_DT)).to_string());
+            ui.end_row();
+            ui.label("Macro-steps / second");
             ui.strong(state.ticks_last_second.to_string());
+            ui.end_row();
+            ui.label("Biological units / second");
+            ui.strong((state.ticks_last_second * model::BIO_DT).to_string());
             ui.end_row();
         });
     ui.small(format!(
-        "Actual {:.1}x · target {} (1x = 60 ticks/s)",
+        "Actual {:.1}x macro · target {} (1x = 60 macro-steps/s)",
         state.ticks_last_second as f32 / playback::BASE_TPS as f32,
         playback::SPEED_LABELS[state.speed_index]
     ));

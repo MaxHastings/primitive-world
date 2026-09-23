@@ -352,6 +352,7 @@ pub struct Simulation {
     pub(crate) trace_buffer: wgpu::Buffer,
     pub(crate) learned_summary_buffer: wgpu::Buffer,
     pub agent_buffers: [wgpu::Buffer; 2],
+    motion_bound_buffer: wgpu::Buffer,
     pub resource_buffer: wgpu::Buffer,
     pub resource_display_buffer: wgpu::Buffer,
     pub ground_buffer: wgpu::Buffer,
@@ -375,6 +376,7 @@ pub struct Simulation {
     #[cfg(test)]
     audit_indices: wgpu::Buffer,
     pub(crate) active_indices: wgpu::Buffer,
+    #[cfg_attr(not(test), allow(dead_code))]
     birth_dispatch: wgpu::Buffer,
     inheritance_dispatch: wgpu::Buffer,
     #[cfg(test)]
@@ -467,12 +469,29 @@ impl Simulation {
             buffer(device, "bodies A", agent_size),
             buffer(device, "bodies B", agent_size),
         ];
-        let resource_buffer = buffer(device, "food", 512 * 512 * 4);
-        let resource_display_buffer = buffer(device, "food display", 512 * 512 * 4);
-        let ground_buffer = buffer(device, "ground", 512 * 512 * 32);
-        let fertility_buffer = buffer(device, "soil", 512 * 512 * 4);
-        let ecology_buffer = buffer(device, "water nutrient detritus", 512 * 512 * 16);
-        let terrain_buffer = buffer(device, "terrain", 512 * 512 * 16);
+        let motion_bound_buffer = buffer(device, "maximum swept displacement", 4);
+        let resource_buffer = buffer(device, "food", u64::from(RESOURCE_GRID * RESOURCE_GRID) * 4);
+        let resource_display_buffer = buffer(
+            device,
+            "food display",
+            u64::from(RESOURCE_GRID * RESOURCE_GRID) * 4,
+        );
+        let ground_buffer = buffer(
+            device,
+            "ground",
+            u64::from(RESOURCE_GRID * RESOURCE_GRID) * 32,
+        );
+        let fertility_buffer = buffer(device, "soil", u64::from(RESOURCE_GRID * RESOURCE_GRID) * 4);
+        let ecology_buffer = buffer(
+            device,
+            "water nutrient detritus",
+            u64::from(RESOURCE_GRID * RESOURCE_GRID) * 16,
+        );
+        let terrain_buffer = buffer(
+            device,
+            "terrain",
+            u64::from(RESOURCE_GRID * RESOURCE_GRID) * 16,
+        );
         let perception_buffer = buffer(
             device,
             "observations",
@@ -771,7 +790,7 @@ impl Simulation {
             "body",
             "../shaders/update_agents.wgsl",
             "main",
-            "rrrw uwwrw".replace(' ', "").as_str(),
+            "rrrw uwwrww".replace(' ', "").as_str(),
             pair(|s| vec![
                 &agent_buffers[s],
                 &decision_buffer,
@@ -781,7 +800,8 @@ impl Simulation {
                 &birth_flags,
                 &death_stats_buffer,
                 &active_indices,
-                &event_buffer
+                &event_buffer,
+                &motion_bound_buffer
             ])
         );
         passes.insert(
@@ -791,7 +811,7 @@ impl Simulation {
                 "body_live",
                 &live_source(include_str!("../shaders/update_agents.wgsl"), 7),
                 "main",
-                "rrrw uwwrw".replace(' ', "").as_str(),
+                "rrrw uwwrww".replace(' ', "").as_str(),
                 pair(|s| {
                     vec![
                         &agent_buffers[s],
@@ -803,6 +823,7 @@ impl Simulation {
                         &death_stats_buffer,
                         &active_indices,
                         &event_buffer,
+                        &motion_bound_buffer,
                     ]
                 }),
             ),
@@ -813,7 +834,7 @@ impl Simulation {
                 &name,
                 "../shaders/interactions.wgsl",
                 entry,
-                "wrwuw wwrrw".replace(' ', "").as_str(),
+                "wrwuw wwrrwr".replace(' ', "").as_str(),
                 pair(|s| vec![
                     &agent_buffers[s],
                     &decision_buffer,
@@ -825,6 +846,7 @@ impl Simulation {
                     &cell_offsets,
                     &indices,
                     &birth_flags,
+                    &motion_bound_buffer,
                 ])
             );
         }
@@ -1147,6 +1169,7 @@ impl Simulation {
             trace_buffer,
             learned_summary_buffer,
             agent_buffers,
+            motion_bound_buffer,
             resource_buffer,
             resource_display_buffer,
             ground_buffer,
@@ -1315,6 +1338,7 @@ impl Simulation {
             .collect();
         // Initial physical stocks describe an established landscape, not an
         // age-dependent subsidy. Subsequent climate acts through stored water.
+        // Water is intensive; mineral and detritus are amounts per food cell.
         let ecology = vec![[0.7f32, 3.0, 0.3, 0.0]; (RESOURCE_GRID * RESOURCE_GRID) as usize];
         queue.write_buffer(&self.ecology_buffer, 0, bytemuck::cast_slice(&ecology));
         let food = crate::environment::rotate_grid(
@@ -1571,7 +1595,14 @@ impl Simulation {
             batch.dispatch(&self.passes["free"], s, groups, 1);
             batch.scan(&self.passes, "free", MAX_AGENTS);
             batch.dispatch(&self.passes["free_compact"], 0, groups, 1);
-            batch.dispatch(&self.passes["resource"], 0, 64, 64);
+            if (self.tick + 1) % 4 == 0 {
+                batch.dispatch(
+                    &self.passes["resource"],
+                    0,
+                    RESOURCE_GRID / 8,
+                    RESOURCE_GRID / 8,
+                );
+            }
             if linked {
                 batch.dispatch(&self.passes["linked_clear"], s, 1024, 1);
                 batch.dispatch(&self.passes["linked_link"], s, groups, 1);
@@ -1604,6 +1635,7 @@ impl Simulation {
             );
             batch.flush(e);
             e.clear_buffer(&self.birth_flags, 0, None);
+            e.clear_buffer(&self.motion_bound_buffer, 0, None);
             batch.indirect(&self.passes["body_live"], s, &self.active_indices);
             // Decisions act with the previous lifetime state.  Only after the
             // body update do local traces and fast weights change, and their
@@ -1636,7 +1668,9 @@ impl Simulation {
             }
             batch.scan(&self.passes, "birth", MAX_AGENTS);
             batch.dispatch(&self.passes["birth_compact"], 0, groups, 1);
-            batch.indirect(&self.passes["birth"], d, &self.birth_dispatch);
+            // One invocation owns each parent and may emit several fully paid
+            // packets; parallel rank invocations would race on parent energy.
+            batch.dispatch(&self.passes["birth"], d, groups, 1);
             #[cfg(test)]
             let inheritance_args = if self.reference_inheritance {
                 &self.birth_dispatch
@@ -1818,7 +1852,7 @@ impl Simulation {
             }),
         );
         let mut e = device.create_command_encoder(&Default::default());
-        self.dispatch(&mut e, "shock", 0, 64, 64);
+        self.dispatch(&mut e, "shock", 0, RESOURCE_GRID / 8, RESOURCE_GRID / 8);
         e.copy_buffer_to_buffer(
             &self.resource_buffer,
             0,
@@ -1848,7 +1882,7 @@ impl Simulation {
             }),
         );
         let mut e = device.create_command_encoder(&Default::default());
-        self.dispatch(&mut e, "paint", 0, 64, 64);
+        self.dispatch(&mut e, "paint", 0, RESOURCE_GRID / 8, RESOURCE_GRID / 8);
         e.copy_buffer_to_buffer(
             &self.resource_buffer,
             0,
@@ -1930,7 +1964,7 @@ impl Simulation {
     }
 }
 fn configured_ecology_time(tick: u64, _s: &SimSettings) -> u64 {
-    tick
+    tick.saturating_mul(u64::from(BIO_DT))
 }
 
 fn params_for(tick: u64, environment_tick: u64, s: &SimSettings, seed: u32) -> SimParams {
@@ -1950,7 +1984,7 @@ fn params_for(tick: u64, environment_tick: u64, s: &SimSettings, seed: u32) -> S
         clock: [
             (tick >> 32) as u32,
             (environment_tick % u64::from(TERRAIN_EPOCH_TICKS)) as u32,
-            0,
+            BIO_DT,
             0,
         ],
         world_padding: u32::from(s.fractional_gathering),

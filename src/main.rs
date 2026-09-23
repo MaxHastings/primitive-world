@@ -51,7 +51,6 @@ struct AppState {
     profile_log: Option<profile_log::ProfileLog>,
     capture_path: Option<std::path::PathBuf>,
     wallpaper: bool,
-    wallpaper_size: Option<[f32; 2]>,
     assisted: bool,
     ui: ui::UiState,
     experiment: Option<experiments::Experiment>,
@@ -258,7 +257,6 @@ impl AppState {
         let mut state = Self {
             capture_path: std::env::var_os("PRIMITIVE_CAPTURE_FRAME").map(Into::into),
             wallpaper,
-            wallpaper_size,
             assisted: false,
             ui: ui::UiState::new(command_line_world),
             experiment: None,
@@ -534,20 +532,20 @@ impl AppState {
     fn update_title(&self) {
         if self.ui.screen != ui::Screen::Play {
             self.window.set_title(&format!(
-                "Primitive World {} | Main menu",
+                "Primitive World v46 {} | Main menu",
                 env!("CARGO_PKG_VERSION")
             ));
             return;
         }
         self.window.set_title(&format!(
-            "Primitive World {} | {} / {} living | {:.1} FPS | World {} | {} target | {:.1}x actual{}",
+            "Primitive World v46 {} | {} / {} living | {:.1} FPS | World {} | {} target | {} bio/s{}",
             env!("CARGO_PKG_VERSION"),
             self.living_agents,
             MAX_AGENTS,
             self.render_fps,
             self.simulation.progress.world,
             playback::SPEED_LABELS[self.speed_index],
-            self.ticks_last_second as f32 / playback::BASE_TPS as f32,
+            self.ticks_last_second * model::BIO_DT,
             if self.paused { " | PAUSED" } else { "" }
         ));
     }
@@ -718,6 +716,8 @@ impl AppState {
             self.ticks_last_second = (self.ticks_window_accumulated as f32 / seconds) as u32;
             if let Some(profile) = &mut self.profile_log {
                 profile.emit(serde_json::json!({"seconds": seconds, "tps": self.ticks_last_second,
+                    "biological_units_per_second": self.ticks_last_second * model::BIO_DT,
+                    "biological_units": self.simulation.tick * u64::from(model::BIO_DT),
                     "fps": self.render_fps, "living": self.living_agents, "tick": self.simulation.tick,
                     "world": self.simulation.progress.world, "speed": playback::SPEED_LABELS[self.speed_index],
                     "width": self.config.width, "height": self.config.height, "render_hz": self.render_hz,
@@ -814,7 +814,7 @@ impl ApplicationHandler for App {
         let wallpaper = launch_arguments().iter().any(|arg| arg == "--wallpaper");
         let mut attributes = WindowAttributes::default()
             .with_visible(false)
-            .with_title(format!("Primitive World {}", env!("CARGO_PKG_VERSION")))
+            .with_title(format!("Primitive World v46 {}", env!("CARGO_PKG_VERSION")))
             .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 820.0))
             .with_min_inner_size(winit::dpi::LogicalSize::new(900.0, 620.0));
         if wallpaper {
@@ -840,7 +840,7 @@ impl ApplicationHandler for App {
         #[cfg(windows)]
         if wallpaper && (!state.ui.has_world || state.tray.is_none()) {
             let message = if state.tray.is_none() {
-                "The wallpaper tray controls could not start. See %LOCALAPPDATA%\\PrimitiveWorld\\logs\\wallpaper.log for details."
+                "The wallpaper tray controls could not start. See %LOCALAPPDATA%\\PrimitiveWorldV46\\logs\\wallpaper.log for details."
             } else {
                 &state.file_status
             };

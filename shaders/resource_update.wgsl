@@ -27,6 +27,8 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
   if(id.x>=GRID || id.y>=GRID){return;}
   let index=id.y*GRID+id.x;
   let old_value=resources[index];
+  // This pass runs once per four macro-steps, each worth BIO_DT biological units.
+  let dt=f32(params.clock.z)*4.0;
   if(params.mutation.z!=0.0){
     let phase=f32(params.clock.y)/1000000.0;
     let blend=phase*phase*(3.0-2.0*phase);
@@ -51,15 +53,16 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
   let drainage=max(pools.x-0.12,0.0)*0.00006*permeability*(0.4+0.6*elevation);
   let transpiration=f32(old_value)/1000.0*0.000015*(0.4+temperature);
   // Rain is external input; evaporation/drainage/runoff leave this local store.
-  pools.x=clamp(pools.x+rain-evaporation-drainage-transpiration,0.0,2.0);
-  let decomposed=min(pools.z,pools.z*0.00003*min(pools.x,1.0)*(0.3+temperature));
+  pools.x=clamp(pools.x+dt*(rain-evaporation-drainage-transpiration),0.0,2.0);
+  let decomposed=min(pools.z,pools.z*(1.0-pow(1.0-0.00003*min(pools.x,1.0)*(0.3+temperature),dt)));
   pools.z-=decomposed;
-  pools.y+=decomposed+max(8.0-pools.y,0.0)*0.000004*permeability;
+  pools.y+=decomposed+max(8.0-pools.y,0.0)*0.000004*dt*permeability;
   let moisture=pools.x/(0.25+pools.x);
   let thermal=max(0.08,1.0-2.0*abs(temperature-0.5));
   let nutrient=pools.y/(0.3+pools.y);
   let extracted=f32(atomicExchange(&ground[index].extracted,0u))/1000.0;
-  let soil=clamp(fertility[index]+(0.55*min(pools.x,1.5)-fertility[index])*0.00008-extracted*0.004,0.02,1.0);
+  let soil_recovery=1.0-pow(1.0-0.00008,dt);
+  let soil=clamp(fertility[index]+(0.55*min(pools.x,1.5)-fertility[index])*soil_recovery-extracted*0.004,0.02,1.0);
   fertility[index]=soil;
   // Habitable coverage follows water, mineral and temperature continuously.
   // Retentive, less permeable substrate provides refuges without refuge modes.
@@ -75,8 +78,8 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
   let capacity=(0.25+0.75*soil)*1000.0*geography;
   // Existing vegetation recedes gradually; material transfers to detritus.
   let old_food=f32(old_value);
-  let delta=select(min(min(growth*14.0,pools.y*1000.0),max(capacity-old_food,0.0)),
-    -(old_food-capacity)*0.01,old_food>capacity);
+  let delta=select(min(min(growth*14.0*dt,pools.y*1000.0),max(capacity-old_food,0.0)),
+    -(old_food-capacity)*(1.0-pow(0.99,dt)),old_food>capacity);
   let accumulation=ground[index].remainder+delta;
   let whole=floor(accumulation);
   ground[index].remainder=min(accumulation-whole,0.99999994);

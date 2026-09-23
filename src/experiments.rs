@@ -11,7 +11,7 @@ use std::{
 
 // Bound receipt reads, including files that grow during reading.
 const RECEIPT_LIMIT: u64 = 64 * 1024 * 1024;
-const RECEIPT_VERSION: u32 = 4;
+const RECEIPT_VERSION: u32 = 6;
 /// Enough recovery points for one half-hour of normal autosaves, without
 /// letting a long-running wallpaper consume unbounded storage.
 const SNAPSHOTS_PER_EXPERIMENT: usize = 6;
@@ -120,15 +120,15 @@ pub fn save_root() -> PathBuf {
         return path.into();
     }
     if let Some(path) = std::env::var_os("LOCALAPPDATA") {
-        return PathBuf::from(path).join("PrimitiveWorld/experiments");
+        return PathBuf::from(path).join("PrimitiveWorldV46/experiments");
     }
     if let Some(path) = std::env::var_os("XDG_DATA_HOME") {
-        return PathBuf::from(path).join("primitive-world/experiments");
+        return PathBuf::from(path).join("primitive-world-v46/experiments");
     }
     if let Some(path) = std::env::var_os("HOME") {
-        return PathBuf::from(path).join(".local/share/primitive-world/experiments");
+        return PathBuf::from(path).join(".local/share/primitive-world-v46/experiments");
     }
-    PathBuf::from("saves/experiments")
+    PathBuf::from("saves/v46/experiments")
 }
 
 pub fn create(name: &str, origin: &str) -> Result<Experiment, String> {
@@ -199,11 +199,13 @@ struct Snapshot {
     receipt: PathBuf,
     checkpoint: PathBuf,
     saved_at_ms: u64,
+    total_ticks: u64,
     bytes: u64,
 }
 
-/// Remove only complete, current-format snapshot pairs. The newest valid save
-/// of every experiment is protected even when the global budget is exceeded.
+/// Remove only complete, current-format snapshot pairs. The
+/// furthest-progressed valid save of every experiment is protected even when
+/// the global budget is exceeded.
 pub fn prune(root: &Path) -> Result<PruneReport, String> {
     if !root.exists() {
         return Ok(PruneReport::default());
@@ -215,7 +217,9 @@ pub fn prune(root: &Path) -> Result<PruneReport, String> {
             continue;
         }
         let mut snapshots = snapshots_in(&directory)?;
-        snapshots.sort_unstable_by_key(|snapshot| std::cmp::Reverse(snapshot.saved_at_ms));
+        snapshots.sort_unstable_by_key(|snapshot| {
+            std::cmp::Reverse((snapshot.total_ticks, snapshot.saved_at_ms))
+        });
         experiments.push(snapshots);
     }
 
@@ -299,6 +303,7 @@ fn snapshots_in(directory: &Path) -> Result<Vec<Snapshot>, String> {
             receipt,
             checkpoint,
             saved_at_ms: saved.record.saved_at_ms,
+            total_ticks: saved.record.total_ticks,
             bytes,
         });
     }
@@ -374,8 +379,9 @@ fn read_record_data(reader: impl Read) -> Result<SaveRecord, String> {
     serde_json::from_slice(&bytes).map_err(|e| e.to_string())
 }
 
-/// One latest valid receipt per experiment. Interrupted saves are skipped, with
-/// a visible warning; a previous complete receipt remains available.
+/// One furthest-progressed valid receipt per experiment. A stale wallpaper
+/// restart can create a newer save from an older checkpoint, so wall-clock
+/// recency alone is insufficient for choosing the continuation.
 pub fn list(root: &Path) -> Result<(Vec<SavedExperiment>, usize), String> {
     if !root.exists() {
         return Ok((Vec::new(), 0));
@@ -387,7 +393,7 @@ pub fn list(root: &Path) -> Result<(Vec<SavedExperiment>, usize), String> {
         if !directory.is_dir() {
             continue;
         }
-        let mut receipts: Vec<_> = std::fs::read_dir(&directory)
+        let receipts: Vec<_> = std::fs::read_dir(&directory)
             .map_err(|e| e.to_string())?
             .filter_map(Result::ok)
             .map(|e| e.path())
@@ -397,15 +403,22 @@ pub fn list(root: &Path) -> Result<(Vec<SavedExperiment>, usize), String> {
                         .is_some_and(|x| x.to_string_lossy().starts_with("save-"))
             })
             .collect();
-        receipts.sort_unstable_by(|a, b| b.cmp(a));
+        let mut best: Option<SavedExperiment> = None;
         for path in receipts {
             match read_record(&path) {
                 Ok(saved) => {
-                    saves.push(saved);
-                    break;
+                    if best.as_ref().is_none_or(|previous| {
+                        (saved.record.total_ticks, saved.record.saved_at_ms)
+                            > (previous.record.total_ticks, previous.record.saved_at_ms)
+                    }) {
+                        best = Some(saved);
+                    }
                 }
                 Err(_) => invalid += 1,
             }
+        }
+        if let Some(saved) = best {
+            saves.push(saved);
         }
     }
     saves.sort_by_key(|x| std::cmp::Reverse(x.record.saved_at_ms));
@@ -491,6 +504,67 @@ mod tests {
     }
 
     #[test]
+    fn resume_prefers_progress_over_import_name_and_newer_stale_fork() {
+        let root = std::env::temp_dir().join(format!("primitive-resume-{}", stamp().unwrap()));
+        let directory = root.join("experiment-import");
+        std::fs::create_dir_all(&directory).unwrap();
+        for (name, saved_at_ms, total_ticks) in [
+            ("save-import", 1, 0),
+            ("save-advanced", 2, 425_403),
+            ("save-stale-fork", 3, 81_120),
+        ] {
+            let checkpoint = format!("{name}.checkpoint");
+            std::fs::write(directory.join(&checkpoint), b"fixture").unwrap();
+            publish_record(
+                &directory.join(format!("{name}.json")),
+                &SaveRecord {
+                    version: RECEIPT_VERSION,
+                    model: crate::model::MODEL_ID.into(),
+                    name: "Imported".into(),
+                    origin: "Test".into(),
+                    checkpoint,
+                    saved_at_ms,
+                    seed: 1,
+                    tick: total_ticks,
+                    living: 1,
+                    world: 1,
+                    total_ticks,
+                },
+            )
+            .unwrap();
+        }
+        for index in 0..7_u64 {
+            let name = format!("save-more-stale-{index}");
+            let checkpoint = format!("{name}.checkpoint");
+            std::fs::write(directory.join(&checkpoint), b"fixture").unwrap();
+            publish_record(
+                &directory.join(format!("{name}.json")),
+                &SaveRecord {
+                    version: RECEIPT_VERSION,
+                    model: crate::model::MODEL_ID.into(),
+                    name: "Imported".into(),
+                    origin: "Test".into(),
+                    checkpoint,
+                    saved_at_ms: 4 + index,
+                    seed: 1,
+                    tick: 81_121 + index,
+                    living: 1,
+                    world: 1,
+                    total_ticks: 81_121 + index,
+                },
+            )
+            .unwrap();
+        }
+        assert_eq!(prune(&root).unwrap().removed_snapshots, 4);
+        assert!(directory.join("save-advanced.checkpoint").is_file());
+        let (saves, invalid) = list(&root).unwrap();
+        assert_eq!(invalid, 0);
+        assert_eq!(saves.len(), 1);
+        assert_eq!(saves[0].record.tick, 425_403);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn library_poll_never_waits_for_slow_work_and_reports_worker_failure() {
         let (sender, receiver) = mpsc::channel();
         let mut scan = LibraryScan {
@@ -547,7 +621,7 @@ mod tests {
         std::fs::create_dir_all(&folder).unwrap();
         std::fs::write(folder.join("save-100.checkpoint"), b"fixture").unwrap();
         let mut record = SaveRecord {
-            version: 4,
+            version: RECEIPT_VERSION,
             model: crate::model::MODEL_ID.into(),
             name: "Line A".into(),
             origin: "Random".into(),

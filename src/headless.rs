@@ -1,3 +1,4 @@
+use crate::model::BIO_DT;
 use crate::simulation::{
     CHECKPOINT_VERSION, EVENT_RING_SIZE, MAX_AGENTS, MAX_WORLD_TICKS, MODEL_ID, Simulation,
 };
@@ -13,7 +14,7 @@ Save cleanup: --prune-saves retains the newest six snapshots per experiment and 
 Headless rolling worlds: --headless --ticks N [--checkpoint PATH] [--save-checkpoint NEW_PATH]
 Use --headless --single-world for diagnostics that stop at extinction.
   --load-game RECEIPT.json opens a saved experiment in the viewer.
-Playback: --view-fps 10|30|60|120|144|240 (default 30; wallpaper defaults to monitor refresh) --compute-budget 10..100 (default 100)\n  1x targets 60 ticks/second; MAX is uncapped. Budget controls work/idle time, not hardware power.\nOptions: --viewer (regular window; double-click on Windows resumes wallpaper) --wallpaper --habitat-contrast X (0..1) --environment-rotation N (0..3)
+Playback: --view-fps 10|30|60|120|144|240 (default 30; wallpaper defaults to monitor refresh) --compute-budget 10..100 (default 100)\n  1x targets 60 macro-steps/second; MAX is uncapped. Each macro-step spans two biological units. Budget controls work/idle time, not hardware power.\nOptions: --viewer (regular window; double-click on Windows resumes wallpaper) --wallpaper --habitat-contrast X (0..1) --environment-rotation N (0..3)
          --population N --regeneration X --no-force --no-signals --static-landscape
          --metabolic-cost X (stationary upkeep) --movement-cost X --motor-gain X
          --checkpoint PATH --save-checkpoint PATH --export-founders PATH
@@ -596,8 +597,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
     if let Some(path) = a.get("--save-checkpoint") {
         sim.save_checkpoint(&device, &queue, Path::new(path))?;
     }
+    let wall_seconds = start.elapsed().as_secs_f64();
     let report = serde_json::json!({"schema":3,"build_version":env!("CARGO_PKG_VERSION"),"model":MODEL_ID,"checkpoint_version":CHECKPOINT_VERSION,"capacity":MAX_AGENTS,"seed":sim.seed,
   "initial_tick":initial_tick,"requested_ticks":ticks,"elapsed_ticks":sim.tick-initial_tick,"adapter":format!("{info:?}"),
+  "biological_units_per_macro_step":BIO_DT,
+  "initial_biological_units":initial_tick*u64::from(BIO_DT),
+  "elapsed_biological_units":(sim.tick-initial_tick)*u64::from(BIO_DT),
+  "biological_units_per_wall_second":(sim.tick-initial_tick) as f64*f64::from(BIO_DT)/wall_seconds,
   "termination_reason":if sim.progress.engine_saturated {"engine_capacity"} else if extinct {"extinction"} else if sim.tick >= MAX_WORLD_TICKS {"tick_capacity"} else {"tick_limit"},
   "extinction_detection_max_delay_ticks":31,
   "initial_settings":settings,"final_settings":sim.settings,"history_limit":4096,"history":history,"evolution":evolution,
@@ -605,7 +611,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
   "family_report":family_report,
   "survivor_observer":survivors.as_ref().map(|s| serde_json::json!({"source_tick":s.bank.source_tick,"source_population":s.source_population,"sampled_bodies":s.bodies.len(),"period":survivor_sample,"selection":s.selection})),
   "journey_observer":journey_file.as_ref().map(|_| journeys.report(journey_sample as u32)),
-  "famine_at":famine,"restore_at":restore,"famine_radius":famine_radius,"famine_delta":famine_delta,"wall_seconds":start.elapsed().as_secs_f64(),"founder_export":export,
+  "famine_at":famine,"restore_at":restore,"famine_radius":famine_radius,"famine_delta":famine_delta,"wall_seconds":wall_seconds,"founder_export":export,
   "population_completion":population_completion,
   "scope":"Explicit single-world diagnostic. Observations do not affect population selection."});
     file.write_all(&serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?)

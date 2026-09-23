@@ -9,14 +9,16 @@
 // SPATIAL_ITERATION
 // Exact reference paths remain available for paired performance probes.
 const HOISTED_ROTATION:bool=true;
-fn food_at_index(i:u32)->f32{return f32(resources[i]+min(atomicLoad(&ground[i].dropped),8000u))/1000.0;}
+// Preserve v45's food positions and per-cell information for imported controllers.
+fn food_at(cell:vec2<u32>)->f32{return f32(resources[cell.y*512u+cell.x]+min(atomicLoad(&ground[cell.y*512u+cell.x].dropped),8000u))/1000.0;}
 fn perception_to_body(v:vec2<f32>,heading:f32,c:f32,s:f32)->vec2<f32>{if(!HOISTED_ROTATION){return world_to_body(v,heading);}return vec2<f32>(c*v.x-s*v.y,s*v.x+c*v.y);}
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id:vec3<u32>){
  let i=id.x;if(i>=params.agent_count){return;}let a=agents[i];var p:Perception;
  if(a.alive!=ORGANISM){perceptions[i]=p;return;}
  let body_heading=-a.heading;let body_c=cos(body_heading);let body_s=sin(body_heading);
- p.resource_here=food_at_index(ground_index(a.position,params.world_size.xy));
+ let here=ground_index(a.position,params.world_size.xy);
+ p.resource_here=f32(resources[here]+min(atomicLoad(&ground[here].dropped),8000u))/1000.0;
  let r=a.sensor_radius;let r2=r*r;let near2=r2*0.25;
  // Integrate every food-cell center in the local disk. Grid resolution,
  // rather than isolated probes, determines the remaining spatial aliasing.
@@ -31,7 +33,7 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>){
    let delta=torus_delta(a.position,center,params.world_size.xy);
    let distance2=dot(delta,delta);if(distance2>r2){continue;}
    let region=sensory_sector(perception_to_body(delta,a.heading,body_c,body_s))+select(0u,8u,distance2>near2);
-   p.regions[region].food+=food_at_index(cell.y*512u+cell.x);cells[region]++;
+   p.regions[region].food+=food_at(cell);cells[region]++;
   }
  }
  for(var k=0u;k<16u;k++){p.regions[k].food/=f32(max(1u,cells[k]));}

@@ -11,7 +11,7 @@
 fn demand(i:u32)->u32 {
  let a=agents[i];let d=decisions[i];
  if(a.alive!=ORGANISM || d.invalid!=0u){return 0u;}
- let exact=params.resource_and_noise.x*clamp(d.outputs[1],0.0,1.0)*gathering_fraction(a.age,params.sensor_and_padding.y,params.world_size.z);
+ let exact=f32(params.clock.z)*params.resource_and_noise.x*clamp(d.outputs[1],0.0,1.0)*gathering_fraction(a.age,params.sensor_and_padding.y,params.world_size.z);
  var requested=u32(exact);
  if(params.world_padding!=0u){
   // Stateless, reproducible rounding: no additional RNG-state consumption or

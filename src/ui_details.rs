@@ -231,6 +231,13 @@ pub fn stats(ui: &mut egui::Ui, state: &mut AppState) {
             "Mean inherited packet size: {:.2} · failed fusions: {}",
             m.mean_packet_size, m.failed_fusions
         ));
+        ui.small(format!(
+            "V46 natural maturations: {} · genetic parent contributions: {} · closed births: {} · closed depth: {}",
+            m.natural_maturations,
+            m.natural_parent_contributions,
+            m.closed_births,
+            m.maximum_closed_depth
+        ));
         ui.label(format!(
             "Food: {:.1} vegetation / {:.1} dropped / {:.1} carried",
             m.vegetation, m.dropped_food, m.carried_food

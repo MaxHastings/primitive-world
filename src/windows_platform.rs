@@ -54,7 +54,7 @@ use windows_sys::Win32::{
 use winit::window::Window;
 
 const STARTUP_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-const STARTUP_VALUE: &str = "PrimitiveWorld";
+const STARTUP_VALUE: &str = "PrimitiveWorldV46";
 const MUTEX_NAME: &str = "Local\\PrimitiveWorld.Wallpaper.Singleton";
 const DESKTOP_MESSAGE: u32 = 0x052C;
 const DESKTOP_MESSAGE_WPARAM: usize = 0xD;
@@ -138,8 +138,8 @@ pub struct Tray {
 
 impl Tray {
     pub fn new() -> Result<Self, String> {
-        let class = wide("PrimitiveWorldTrayWindow");
-        let window_name = wide("Primitive World");
+        let class = wide("PrimitiveWorldV46TrayWindow");
+        let window_name = wide("Primitive World v46");
         // SAFETY: the class structure contains valid pointers for the duration
         // of registration and uses a process-local callback.
         unsafe {
@@ -189,7 +189,7 @@ impl Tray {
         icon.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
         icon.uCallbackMessage = TRAY_CALLBACK;
         icon.hIcon = unsafe { LoadIconW(null_mut(), IDI_APPLICATION) };
-        let tip = wide("Primitive World wallpaper");
+        let tip = wide("Primitive World v46 wallpaper");
         let tip_len = tip.len().min(icon.szTip.len());
         icon.szTip[..tip_len].copy_from_slice(&tip[..tip_len]);
         // SAFETY: window and icon data are valid for the tray registration.
@@ -286,9 +286,9 @@ impl Tray {
     pub fn set_paused(&mut self, paused: bool) {
         if TRAY_PAUSED.swap(paused, Ordering::AcqRel) != paused {
             let tip = wide(if paused {
-                "Primitive World - Paused"
+                "Primitive World v46 - Paused"
             } else {
-                "Primitive World - Running"
+                "Primitive World v46 - Running"
             });
             self.icon.szTip.fill(0);
             self.icon.szTip[..tip.len()].copy_from_slice(&tip);
@@ -306,7 +306,7 @@ impl Tray {
         for (dest, src) in icon
             .szInfoTitle
             .iter_mut()
-            .zip("Primitive World".encode_utf16())
+            .zip("Primitive World v46".encode_utf16())
         {
             *dest = src;
         }
@@ -604,7 +604,7 @@ unsafe extern "system" fn find_wallpaper_host(hwnd: HWND, data: LPARAM) -> i32 {
 unsafe extern "system" fn find_wallpaper_child(hwnd: HWND, data: LPARAM) -> i32 {
     let mut title = [0u16; 512];
     let len = unsafe { GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32) };
-    if String::from_utf16_lossy(&title[..len.max(0) as usize]).starts_with("Primitive World ") {
+    if String::from_utf16_lossy(&title[..len.max(0) as usize]).starts_with("Primitive World v46 ") {
         // SAFETY: EnumWindows owns this live vector for the synchronous traversal.
         unsafe {
             (*(data as *mut Vec<HWND>)).push(hwnd);
@@ -1098,7 +1098,7 @@ pub fn open_wallpaper_log() -> Result<std::fs::File, String> {
     let root = std::env::var_os("LOCALAPPDATA")
         .map(std::path::PathBuf::from)
         .ok_or("Windows did not provide a local application data directory")?
-        .join("PrimitiveWorld")
+        .join("PrimitiveWorldV46")
         .join("logs");
     std::fs::create_dir_all(&root).map_err(|e| format!("Could not create log folder: {e}"))?;
     let file = std::fs::OpenOptions::new()

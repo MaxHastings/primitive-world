@@ -23,6 +23,7 @@ struct Agent {
  active_mask:u32,plasticity_rate:array<f32,HIDDEN_COUNT>,trace_retention:f32,learned_weight_retention:f32,
  hidden:array<f32,HIDDEN_COUNT>,lived_ticks:u32,parameter_mutation_rate:f32,parameter_mutation_step:f32,topology_mutation_rate:f32,angular_velocity:f32,
  lineage_high:u32,parent_high:u32,birth_high:u32,signal_high:u32,
+ closed_depth:u32,v46_natural:u32,
 };
 // Every local sample has the same physical channels.  It deliberately carries
 // no body id, nearest-body record, absolute bearing, or social classification.

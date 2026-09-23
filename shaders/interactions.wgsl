@@ -8,6 +8,7 @@
 @group(0) @binding(7) var<storage,read> offsets:array<u32>;
 @group(0) @binding(8) var<storage,read> indices:array<u32>;
 @group(0) @binding(9) var<storage,read_write> births:array<u32>;
+@group(0) @binding(10) var<storage,read> motion_bound:array<u32>;
 // SPATIAL_ITERATION
 // A tick-varying permutation assigns unique keys, independent of packet size.
 fn priority(i:u32)->u32{return (i*4051u+hash_u32(params.tick))%INVALID;}
@@ -15,7 +16,10 @@ fn contact(i:u32)->u32{
  let a=agents[i];let radius=select(INTERACTION_RADIUS,params.physical.w,a.alive==PACKET);
  let size=params.world_size.xy/256.0;let base=vec2<i32>(floor(wrap_world(a.position,params.world_size.xy)/size));
  var best=INVALID;var best2=radius*radius+1.0;
- let reach=vec2<i32>(ceil(vec2<f32>(radius)/size));
+ // Any pair that touched during the step has final separation at most contact
+ // radius plus both swept displacements. The bound is measured, not guessed.
+ let broad_radius=radius+2.0*f32(motion_bound[0])/1000.0;
+ let reach=min(vec2<i32>(ceil(vec2<f32>(broad_radius)/size)),vec2<i32>(128));
  for(var oy=-reach.y;oy<=reach.y;oy++){for(var ox=-reach.x;ox<=reach.x;ox++){
   let cell=vec2<u32>(wrap_grid_index(base.x+ox,256),wrap_grid_index(base.y+oy,256));let ci=cell.y*256u+cell.x;
   for(var k=spatial_first(ci);k!=spatial_end(ci);k=spatial_next(k)){
@@ -24,7 +28,18 @@ fn contact(i:u32)->u32{
    // Force can contact any live entity. Transfer and fusion have separate eligibility.
    if(a.alive==ORGANISM&&decisions[i].selected_action==TRANSFER&&b.alive!=ORGANISM){continue;}
    if(a.alive==PACKET&&(b.alive!=PACKET||(a.parent_lineage==b.parent_lineage && a.parent_high==b.parent_high))){continue;}
-   let delta=torus_delta(a.position,b.position,params.world_size.xy);let distance2=dot(delta,delta);
+   let start_delta=(b.position-b.moved)-(a.position-a.moved);
+   let relative_motion=b.moved-a.moved;
+   var distance2=3.4e38;
+   for(var image_y=-1;image_y<=1;image_y++){
+    for(var image_x=-1;image_x<=1;image_x++){
+     let offset=vec2<f32>(f32(image_x),f32(image_y))*params.world_size.xy;
+     let initial=start_delta+offset;
+     let t=clamp(-dot(initial,relative_motion)/max(dot(relative_motion,relative_motion),0.000001),0.0,1.0);
+     let closest=initial+t*relative_motion;
+     distance2=min(distance2,dot(closest,closest));
+    }
+   }
    if(distance2>radius*radius||distance2>best2){continue;}
    if(distance2==best2&&best!=INVALID&&priority(j)>=priority(best)){continue;}
    best=j;best2=distance2;
@@ -81,7 +96,11 @@ fn production(@builtin(global_invocation_id) id:vec3<u32>){
  counter_add(20,1u);
  let mature=a.age>=params.sensor_and_padding.y;let funded=a.energy>=a.packet_size;
  counter_add(16,u32(!mature));counter_add(17,u32(!funded));
- births[i]=u32(mature&&funded);counter_add(21,births[i]);
+ // A held reproductive action may place a short burst of physical packets.
+ // Each placement pays the full inherited packet-size cost; low reserves or
+ // capacity stop the burst. The extra placement offsets coarser contact timing.
+ births[i]=select(0u,min(params.clock.z+1u,u32(floor(a.energy/a.packet_size))),mature&&funded);
+ counter_add(21,births[i]);
 }
 fn record(actor:u32,other:u32,action:u32,amount:f32,position:vec2<f32>){
  let sequence=counter_add(8,1u);events[sequence%65536u]=InteractionEvent(params.tick,actor,other,action,amount,sequence,agents[actor].lineage_id,agents[other].lineage_id,position,vec2<f32>(0.0),0u,0u,params.clock.x,agents[actor].lineage_high,agents[other].lineage_high,0u);

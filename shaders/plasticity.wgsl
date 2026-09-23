@@ -15,6 +15,7 @@ fn trace_input(k:u32)->u32{return k;}
 fn trace_hidden(h:u32)->u32{return INPUT_COUNT+h;}
 fn trace_output(o:u32)->u32{return INPUT_COUNT+HIDDEN_COUNT+o;}
 
+fn macro_retention(r:f32)->f32{return pow(r,f32(params.clock.z));}
 fn update_fast(slot:u32,index:u32,pre:f32,post:f32,rate:f32,retention:f32,change:ptr<function,f32>){
  let old=fast_value(slot,index);
  let next=clamp(retention*old+rate*pre*post,-1.0,1.0);
@@ -59,14 +60,18 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
     }
    }else{for(var at=h;at<HIDDEN_COUNT*INPUT_COUNT;at+=32u){if(unit_active(mask,at/INPUT_COUNT)){learned_inputs[at]=fast_value(i,at);}}}
   }
-  let retention=after[i].trace_retention;
+  let retention=macro_retention(after[i].trace_retention);
   for(var k=h;k<INPUT_COUNT;k+=32u){let at=trace_base+k;let old=traces[at];let value=clamp(retention*old+(1.0-retention)*decisions[i].inputs[k],-1.0,1.0);change+=abs(value-old);traces[at]=value;input_traces[k]=value;}
   if(unit_active(mask,h)){let at=trace_base+INPUT_COUNT+h;let old=traces[at];let value=clamp(retention*old+(1.0-retention)*decisions[i].hidden[h],-1.0,1.0);change+=abs(value-old);traces[at]=value;hidden_traces[h]=value;}
   if(h<OUTPUT_COUNT){let at=trace_base+INPUT_COUNT+HIDDEN_COUNT+h;let old=traces[at];let activation=tanh(decisions[i].outputs[h]);output_activity[h]=activation;let value=clamp(retention*old+(1.0-retention)*activation,-1.0,1.0);change+=abs(value-old);traces[at]=value;}
  }
  workgroupBarrier();
  if(decisions[i].invalid==0u && unit_active(mask,h)){
-  let rate=after[i].plasticity_rate[h];let retention=after[i].learned_weight_retention;
+  let base_retention=after[i].learned_weight_retention;
+  // One observation drives one local write. Multiplying this injection by
+  // BIO_DT destabilized imported controllers even though retention spans time.
+  let rate=after[i].plasticity_rate[h];
+  let retention=macro_retention(base_retention);
   let candidate=decisions[i].candidate[h];
   for(var k=0u;k<INPUT_COUNT;k++){
    if(COALESCED_INPUTS){let at=fast_input(h,k);let old=learned_inputs[at];let next=clamp(retention*old+rate*input_traces[k]*candidate,-1.0,1.0);change+=abs(next-old);learned_inputs[at]=next;}

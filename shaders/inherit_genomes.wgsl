@@ -94,14 +94,18 @@ fn mutate_child(ci:u32,pi:u32,seed:u32) {
   && child.parameter_mutation_rate==parent.parameter_mutation_rate && child.parameter_mutation_step==parent.parameter_mutation_step
   && child.topology_mutation_rate==parent.topology_mutation_rate;
  for(var h=0u;h<HIDDEN_COUNT;h++){exact=exact && child.plasticity_rate[h]==parent.plasticity_rate[h];}
- for(var k=0u;k<GENOME_SIZE;k++){exact=exact && bitcast<u32>(gene(ci,k))==bitcast<u32>(gene(pi,k));}
+ for(var k=0u;k<GENOME_SIZE;k++){
+  if(!exact){break;}
+  exact=exact && bitcast<u32>(gene(ci,k))==bitcast<u32>(gene(pi,k));
+ }
  counter_add(37,u32(exact));
  agents[ci]=child;
 }
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id:vec3<u32>) {
  let rank=id.x;if(rank>=min(free_prefix[INVALID-1u],birth_prefix[INVALID-1u])){return;}
- let parent_rank=(rank+hash_u32(params.tick)%birth_prefix[INVALID-1u])%birth_prefix[INVALID-1u];
+ let total=min(birth_prefix[INVALID-1u],INVALID);
+ let parent_rank=(rank+hash_u32(params.tick)%total)%total;
  let pi=parents[parent_rank];let ci=free_indices[rank];let child=agents[ci];
  if(child.alive==0u || (child.birth_tick!=params.tick || child.birth_high!=params.clock.x) || child.birth_parent_slot!=pi){return;}
  for(var k=0u;k<GENOME_SIZE;k++){set_gene(ci,k,gene(pi,k));}
@@ -111,7 +115,8 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
 @compute @workgroup_size(64)
 fn parallel(@builtin(workgroup_id) id:vec3<u32>, @builtin(local_invocation_index) lane:u32) {
  let rank=id.x;if(rank>=min(free_prefix[INVALID-1u],birth_prefix[INVALID-1u])){return;}
- let parent_rank=(rank+hash_u32(params.tick)%birth_prefix[INVALID-1u])%birth_prefix[INVALID-1u];
+ let total=min(birth_prefix[INVALID-1u],INVALID);
+ let parent_rank=(rank+hash_u32(params.tick)%total)%total;
  let pi=parents[parent_rank];let ci=free_indices[rank];let child=agents[ci];
  if(child.alive==0u || (child.birth_tick!=params.tick || child.birth_high!=params.clock.x) || child.birth_parent_slot!=pi){return;}
  for(var k=lane;k<GENOME_SIZE;k+=64u){set_gene(ci,k,gene(pi,k));}

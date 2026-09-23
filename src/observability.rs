@@ -55,6 +55,12 @@ pub struct WorldMetrics {
     pub topology_retirals: u64,
     pub cognitive_write_energy: f64,
     pub cognitive_upkeep_energy: f64,
+    /// Viable v46 children with at least one natural-born mature genetic parent.
+    pub closed_births: u64,
+    /// Genetic parent contributions to viable children; a two-parent birth may add two.
+    pub natural_parent_contributions: u64,
+    pub natural_maturations: u64,
+    pub maximum_closed_depth: u32,
 }
 
 /// A read-only population snapshot for studying evolution. Nothing in this
@@ -370,6 +376,10 @@ impl Simulation {
             topology_retirals: wide_counter(counters, 33),
             cognitive_write_energy: wide_counter(counters, 34) as f64 / 1000.0,
             cognitive_upkeep_energy: wide_counter(counters, 35) as f64 / 1000.0,
+            closed_births: u64::from(counters[82]) | (u64::from(counters[83]) << 32),
+            natural_parent_contributions: u64::from(counters[80]) | (u64::from(counters[81]) << 32),
+            natural_maturations: u64::from(counters[85]) | (u64::from(counters[86]) << 32),
+            maximum_closed_depth: counters[84],
         })
     }
 
@@ -486,8 +496,10 @@ impl Simulation {
     ) -> Result<(), String> {
         let mut magic = [0; 12];
         file.read_exact(&mut magic).map_err(|e| e.to_string())?;
-        let legacy = &magic == b"PRIMWORLD058";
-        if &magic != CHECKPOINT_MAGIC && !legacy {
+        // V46 is a distinct model. Historical checkpoints enter only through
+        // the explicit, read-only migration path, never normal resume.
+        let legacy = false;
+        if &magic != CHECKPOINT_MAGIC {
             return Err(format!(
                 "Unsupported checkpoint: expected {} format {}. Only current-format data can be loaded.",
                 MODEL_ID, CHECKPOINT_VERSION
@@ -591,6 +603,9 @@ impl Simulation {
             if u64::from(a.lived_ticks) > tick
                 || a.alive > 2
                 || a.action > 5
+                || a.v46_natural > 1
+                || a.closed_depth > a.ancestry_depth
+                || (a.v46_natural == 0 && a.closed_depth != 0)
                 || !a.position[0].is_finite()
                 || !a.position[1].is_finite()
                 || !(0.0..=settings.habitat_width).contains(&a.position[0])

@@ -42,8 +42,8 @@ fn main(@builtin(workgroup_id) group:vec3<u32>, @builtin(local_invocation_index)
  x[0]=a.energy/100.0;x[1]=a.food/8.0;x[2]=p.resource_here;x[3]=a.age/10000.0;let self_velocity=world_to_body(a.velocity,a.heading);x[4]=self_velocity.x/1.2;x[5]=self_velocity.y/1.2;
  // Raw body state and consequences only: no named outcome, action, or
  // cooldown inputs.
- x[6]=select(0.0,(a.energy-bitcast<f32>(a.physical_previous[0]))/100.0,a.lived_ticks!=0u);
- x[7]=select(0.0,(a.food-bitcast<f32>(a.physical_previous[1]))/8.0,a.lived_ticks!=0u);
+ x[6]=select(0.0,(a.energy-bitcast<f32>(a.physical_previous[0]))/(100.0*f32(params.clock.z)),a.lived_ticks!=0u);
+ x[7]=select(0.0,(a.food-bitcast<f32>(a.physical_previous[1]))/(8.0*f32(params.clock.z)),a.lived_ticks!=0u);
  let moved=world_to_body(a.moved,a.heading);x[8]=moved.x/1.2;x[9]=moved.y/1.2;
  x[10]=p.nearby_count/16.0;
  }

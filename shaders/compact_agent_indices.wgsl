@@ -18,7 +18,10 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     inheritance_dispatch[1]=1u;inheritance_dispatch[2]=1u;
   }
   if (id.x >= INVALID || flags[id.x] == 0u) { return; }
-  indices[prefix[id.x] - 1u] = id.x;
+  let first=prefix[id.x]-flags[id.x];
+  for(var n=0u;n<flags[id.x];n++){
+    if(first+n<INVALID){indices[first+n]=id.x;}
+  }
 }
 
 fn counter_add(index:u32,value:u32)->u32 {

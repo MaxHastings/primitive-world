@@ -1,10 +1,10 @@
 //! primitive-world: body-relative sensing, chosen gathering, automatic digestion.
 use bytemuck::{Pod, Zeroable};
 /// Persistence accepts only this model's controller and lifetime-state layout.
-pub const MODEL_ID: &str = "primitive-v45-depth-retention";
-pub const FOUNDER_BANK_VERSION: u32 = 21;
-pub const CHECKPOINT_VERSION: u32 = 59;
-pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD059";
+pub const MODEL_ID: &str = "primitive-v46-fast-evolution";
+pub const FOUNDER_BANK_VERSION: u32 = 22;
+pub const CHECKPOINT_VERSION: u32 = 62;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD062";
 /// Fixed rolling hereditary storage; independent of body-engine capacity.
 pub const HEREDITARY_RESERVOIR_SIZE: u32 = 4_096;
 /// Incremental maintenance paid for each expressed recurrent unit.
@@ -14,17 +14,19 @@ pub const DEFAULT_MEMORY_WRITE_ENERGY: f32 = 0.0001;
 /// Blind per-birth connection mutation probability and bounded magnitude.
 pub const BASE_MUTATION_PROBABILITY: f32 = 0.25;
 pub const BASE_MUTATION_MAGNITUDE: f32 = 0.03;
+/// Biological units represented by one controller decision and macro-step.
+pub const BIO_DT: u32 = 2;
 pub const TERRAIN_EPOCH_TICKS: u32 = 1_000_000;
 pub const MAX_AGENTS: u32 = 16_384;
 /// Leave headroom for bounded tick arithmetic and observer windows.
-pub const MAX_WORLD_TICKS: u64 = u64::MAX - 1_000_001;
+pub const MAX_WORLD_TICKS: u64 = (u64::MAX - 1_000_001) / BIO_DT as u64;
 pub const LIVE_WORKGROUP_SIZE: usize = 8;
 pub const RESOURCE_GRID: u32 = 512;
 pub const OCCUPANCY_GRID: u32 = 256;
 pub const SPATIAL_CELL_COUNT: u32 = OCCUPANCY_GRID * OCCUPANCY_GRID;
 pub const WORLD_SIZE: f32 = 2048.0;
 /// Cumulative physical and cognitive accounting counters.
-pub const DEATH_STATS_COUNT: u32 = 80;
+pub const DEATH_STATS_COUNT: u32 = 96;
 pub const EVENT_RING_SIZE: u32 = 65_536;
 pub const SECTORS: usize = 8;
 pub const BEARING_NAMES: [&str; SECTORS] = [
@@ -187,6 +189,10 @@ pub struct AgentGpu {
     pub parent_high: u32,
     pub birth_high: u32,
     pub signal_high: u32,
+    /// Consecutive v46 natural parent transitions on this genetic path.
+    pub closed_depth: u32,
+    /// One only for an organism born by a viable physical fusion in v46.
+    pub v46_natural: u32,
 }
 impl Default for AgentGpu {
     fn default() -> Self {

@@ -137,7 +137,7 @@ impl AppState {
         self.load_experiment(experiments::read_record(path)?)
     }
 
-    /// A size conversion creates a separate experiment; the source is never saved over.
+    /// Preserve the saved habitat and living population across monitor changes.
     fn resume_wallpaper_experiment(
         &mut self,
         saved: experiments::SavedExperiment,
@@ -149,44 +149,7 @@ impl AppState {
             (saved.record.seed, saved.record.tick, saved.record.living),
             saved.record.world,
         )?;
-        let [width, height] = self
-            .wallpaper_size
-            .ok_or("Wallpaper dimensions unavailable")?;
-        let source = self.simulation.settings.clone();
-        if (source.habitat_width - width).abs() < 1.0
-            && (source.habitat_height - height).abs() < 1.0
-        {
-            self.activate_experiment(saved.experiment())?;
-        } else {
-            let mut survivors = None;
-            survivor_observer::observe(
-                &mut survivors,
-                &self.simulation,
-                &self.device,
-                &self.queue,
-            )?;
-            let bank = survivors.ok_or("Saved world has no living genomes; open it in the normal viewer to continue evolution")?.bank;
-            self.simulation.settings.habitat_width = width;
-            self.simulation.settings.habitat_height = height;
-            self.simulation.settings.founder_name = format!(
-                "descendants of {} world {} at tick {}",
-                saved.record.name, saved.record.world, saved.record.tick
-            );
-            self.simulation.settings.founder_genomes = bank.genomes;
-            self.simulation.settings.founder_traits = bank.traits;
-            self.simulation.settings.validate()?;
-            self.simulation.reset(&self.queue);
-            let experiment = experiments::create(
-                "Native wallpaper evolution",
-                &format!(
-                    "Descendants from {} at world {}, tick {}; source receipt retained",
-                    saved.directory.display(),
-                    saved.record.world,
-                    saved.record.tick
-                ),
-            )?;
-            self.activate_experiment(experiment)?;
-        }
+        self.activate_experiment(saved.experiment())?;
         self.paused = false;
         eprintln!(
             "Wallpaper resumed: world {}, tick {}, {} living; playback {}",

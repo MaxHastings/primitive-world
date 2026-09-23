@@ -32,13 +32,9 @@ fn resource_at(cell: vec2<u32>) -> f32 {
 // Bilinear interpolation keeps the underlying values unchanged while making
 // patch edges continuous in screen space.
 fn sample_resource(uv: vec2<f32>) -> f32 {
-  let grid = clamp(
-    uv * f32(GRID) - vec2<f32>(0.5),
-    vec2<f32>(0.0),
-    vec2<f32>(f32(GRID - 1u) - 0.001),
-  );
-  let lower = vec2<u32>(floor(grid));
-  let upper = min(lower + vec2<u32>(1u), vec2<u32>(GRID - 1u));
+  let grid = uv * f32(GRID) - vec2<f32>(0.5);
+  let lower = vec2<u32>((vec2<i32>(floor(grid)) + vec2<i32>(i32(GRID))) % i32(GRID));
+  let upper = (lower + vec2<u32>(1u)) % GRID;
   let blend = fract(grid);
   let top = mix(
     resource_at(vec2<u32>(lower.x, lower.y)),
@@ -84,7 +80,7 @@ fn fs(input: VertexOutput) -> @location(0) vec4<f32> {
     let density = min(f32(atomicLoad(&occupancy[occupancy_cell.y * AGENT_GRID + occupancy_cell.x])) / 24.0, 1.0);
     tint = mix(vec3<f32>(0.01, 0.02, 0.10), vec3<f32>(0.92, 0.12, 0.04), smoothstep(0.0, 0.9, density));
   }
-  let dropped = f32(ground_words[(cell.y*GRID+cell.x)*2u].x)/1000.0;
+  let dropped = f32(ground_words[(cell.y*GRID+cell.x)*2u].x)/SCALE;
   // Painted/death-dropped food shares the natural food palette. Add a small
   // brightness lift for visibility without turning it into a different color.
   tint = min(tint + vec3<f32>(0.06, 0.10, 0.04) * clamp(dropped / 2.0, 0.0, 0.8), vec3<f32>(1.0));

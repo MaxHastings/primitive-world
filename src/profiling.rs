@@ -122,6 +122,29 @@ fn profile_checkpoint_selective() {
     ))
     .unwrap();
     let mut s = Simulation::new(&d, &q, 42);
+    if std::env::var_os("PRIMITIVE_PROFILE_REFERENCE_FUSION").is_some() {
+        let name = "inherit_fusion";
+        let compute = s.passes.get_mut(name).unwrap();
+        let layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("fusion equality reference"),
+            bind_group_layouts: &[&compute.pipeline.get_bind_group_layout(0)],
+            push_constant_ranges: &[],
+        });
+        let source =
+            include_str!("../shaders/inherit_genomes.wgsl").replace("if(!exact){break;}", "");
+        let shader = d.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("fusion equality reference"),
+            source: wgpu::ShaderSource::Wgsl(shader_source(&source).into()),
+        });
+        compute.pipeline = d.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("fusion equality reference"),
+            layout: Some(&layout),
+            module: &shader,
+            entry_point: Some("fusion"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+    }
     let trace = Rc::new(RefCell::new(DispatchTrace {
         queries: d.create_query_set(&wgpu::QuerySetDescriptor {
             label: None,
@@ -138,7 +161,7 @@ fn profile_checkpoint_selective() {
         mapped_at_creation: false,
     });
     let mapped = readback(&d, 32768);
-    let names = [
+    let available = [
         "baseline",
         "perceive_live",
         "inherit_fusion",
@@ -174,6 +197,24 @@ fn profile_checkpoint_selective() {
         "advance_reservoir",
         "alive",
     ];
+    let names: Vec<&str> = std::env::var("PRIMITIVE_PROFILE_ONLY")
+        .ok()
+        .map(|selected| {
+            selected
+                .split(',')
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(|name| {
+                    available
+                        .iter()
+                        .copied()
+                        .find(|available| *available == name)
+                        .unwrap_or_else(|| panic!("Unknown profile pass: {name}"))
+                })
+                .collect()
+        })
+        .unwrap_or_else(|| available.to_vec());
+    assert!(!names.is_empty());
     let mut captures = Vec::new();
     for repeat in 0..3 {
         let order: Vec<_> = if repeat % 2 == 0 {
