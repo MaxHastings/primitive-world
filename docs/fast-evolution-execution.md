@@ -172,7 +172,9 @@ The full local release test suite was also run before the main-branch handoff:
 one-unit physiology, one-packet production, or per-tick ecology values; some
 exact GPU-state comparisons and behavioral fixtures still need separate v46
 review. This is an unresolved GPU-test migration, not a clean full-suite pass.
-The repository's automated CPU check excludes `simulation::tests::`; that
+The repository's automated CPU check excludes `simulation::tests::` and the
+GPU-only `simulation::funnel_audit::` module. The earlier filter accidentally
+ran a funnel GPU test on GitHub's unsupported HLSL path. The corrected CPU
 check and the Python tool tests passed locally.
 
 ## Longer manual wallpaper run
