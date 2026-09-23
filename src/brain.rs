@@ -66,32 +66,29 @@ pub fn random_plasticity(rng: &mut u32) -> ([f32; HIDDEN], f32, f32, f32, f32, f
     )
 }
 /// Restart-only radiation-style exploration applied to a pool-record copy.
-/// Four fifths of expressed genes, the circuit topology, and packet size retain
+/// Three quarters of expressed genes, the circuit topology, and packet size retain
 /// their selected values. Ordinary births use the inherited mutation controls.
 pub fn mutate_founder_heavily(g: &mut [f32], traits: &mut CognitiveTraits, seed: u32) {
     let mut rng = seed;
+    let fresh = random_genome(&mut rng);
     let mut expressed = expressed_indices(traits.active_mask);
-    for choice in 0..expressed.len().div_ceil(5) {
+    for choice in 0..expressed.len().div_ceil(4) {
         let selected = choice + (draw(&mut rng) * (expressed.len() - choice) as f32) as usize;
         expressed.swap(choice, selected);
         let index = expressed[choice];
-        g[index] = (g[index] + (draw(&mut rng) * 2.0 - 1.0) * 0.35).clamp(-4.0, 4.0);
+        g[index] = fresh[index];
     }
+    let (fresh_rates, fresh_trace, fresh_learned, _, _, _) = random_plasticity(&mut rng);
     let active: Vec<_> = (0..HIDDEN)
         .filter(|&h| traits.active_mask & (1 << h) != 0)
         .collect();
-    for _ in 0..2 {
-        let h = active[(draw(&mut rng) * active.len() as f32) as usize];
-        traits.plasticity_rate[h] =
-            (traits.plasticity_rate[h] + (draw(&mut rng) * 2.0 - 1.0) * 0.04).clamp(-0.2, 0.2);
-    }
-    traits.trace_retention =
-        (traits.trace_retention + (draw(&mut rng) * 2.0 - 1.0) * 0.04).clamp(0.0, 0.9999);
-    traits.learned_weight_retention =
-        (traits.learned_weight_retention + (draw(&mut rng) * 2.0 - 1.0) * 0.04).clamp(0.0, 0.9999);
+    let h = active[(draw(&mut rng) * active.len() as f32) as usize];
+    traits.plasticity_rate[h] = fresh_rates[h];
+    traits.trace_retention = (traits.trace_retention + fresh_trace) * 0.5;
+    traits.learned_weight_retention = (traits.learned_weight_retention + fresh_learned) * 0.5;
 }
 
-fn expressed_indices(mask: u32) -> Vec<usize> {
+pub(crate) fn expressed_indices(mask: u32) -> Vec<usize> {
     let mut expressed = Vec::with_capacity(GENOME_SIZE);
     for h in 0..HIDDEN {
         if active(mask, h) {
@@ -368,7 +365,7 @@ mod tests {
     }
 
     #[test]
-    fn heavy_restart_mutation_changes_one_fifth_of_expressed_genes() {
+    fn heavy_restart_mutation_redraws_one_quarter_of_expressed_genes() {
         let mut genome = [0.0; GENOME_SIZE];
         let mut traits = AgentGpu::default().cognitive_traits();
         traits.active_mask = 0b111;
@@ -384,9 +381,9 @@ mod tests {
         let altered = genome.iter().filter(|&&weight| weight != 0.0).count();
         assert_eq!(
             altered,
-            expressed_indices(original.active_mask).len().div_ceil(5)
+            expressed_indices(original.active_mask).len().div_ceil(4)
         );
-        assert!(genome.iter().all(|&weight| weight.abs() <= 0.35));
+        assert!(genome.iter().all(|&weight| weight.abs() <= 0.85));
         assert!(traits.validate());
     }
 

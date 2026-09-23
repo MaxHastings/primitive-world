@@ -471,6 +471,49 @@ fn reservoir_and_world_transitions_resume_without_observer_selection() {
 }
 
 #[test]
+#[ignore = "requires PRIMITIVE_RESTART_DISTANCE_CHECKPOINT"]
+fn profile_restart_mutation_distance_on_saved_pool() {
+    let path = std::env::var("PRIMITIVE_RESTART_DISTANCE_CHECKPOINT").unwrap();
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.load_checkpoint(&q, std::path::Path::new(&path)).unwrap();
+    let (genes, stored_traits, _) = s.reservoir_snapshot(&d, &q).unwrap();
+    let mut ratios = Vec::new();
+    let mut shared = Vec::new();
+    for sample in 0..128usize {
+        let slot = sample * 32;
+        let source = &genes[slot * GENOME_SIZE..(slot + 1) * GENOME_SIZE];
+        let seed = 0x9e37_79b9 ^ slot as u32;
+        let mut fresh_rng = seed;
+        let fresh = crate::brain::random_genome(&mut fresh_rng);
+        let mut mutant = source.to_vec();
+        let mut traits = stored_traits[slot];
+        traits.padding = [0; 2];
+        crate::brain::mutate_founder_heavily(&mut mutant, &mut traits, seed);
+        let expressed = crate::brain::expressed_indices(traits.active_mask);
+        let (mut mutation_distance, mut fresh_distance) = (0.0f64, 0.0f64);
+        let mut identical = 0usize;
+        for index in &expressed {
+            let change = f64::from(mutant[*index] - source[*index]);
+            let all_new = f64::from(fresh[*index] - source[*index]);
+            mutation_distance += change * change;
+            fresh_distance += all_new * all_new;
+            identical += usize::from(mutant[*index] == source[*index]);
+        }
+        ratios.push((mutation_distance / fresh_distance).sqrt());
+        shared.push(identical as f64 / expressed.len() as f64);
+    }
+    ratios.sort_by(f64::total_cmp);
+    shared.sort_by(f64::total_cmp);
+    eprintln!(
+        "saved-pool normalized mutation distance: p10={:.3}, median={:.3}, p90={:.3}; unchanged expressed fraction median={:.3}",
+        ratios[12], ratios[64], ratios[115], shared[64]
+    );
+    assert!((0.35..=0.65).contains(&ratios[64]));
+    assert!((0.74..=0.76).contains(&shared[64]));
+}
+
+#[test]
 fn capacity_skips_packet_requests_without_stopping_gameplay() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);

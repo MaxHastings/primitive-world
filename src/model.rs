@@ -3,8 +3,8 @@ use bytemuck::{Pod, Zeroable};
 /// Persistence accepts only this model's controller and lifetime-state layout.
 pub const MODEL_ID: &str = "primitive-v46-fast-evolution";
 pub const FOUNDER_BANK_VERSION: u32 = 22;
-pub const CHECKPOINT_VERSION: u32 = 65;
-pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD065";
+pub const CHECKPOINT_VERSION: u32 = 66;
+pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD066";
 /// Fixed rolling hereditary storage; independent of body-engine capacity.
 pub const HEREDITARY_RESERVOIR_SIZE: u32 = 4_096;
 /// Incremental maintenance paid for each expressed recurrent unit.
