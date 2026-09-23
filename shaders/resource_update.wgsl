@@ -27,8 +27,8 @@ fn main(@builtin(global_invocation_id) id:vec3<u32>) {
   if(id.x>=GRID || id.y>=GRID){return;}
   let index=id.y*GRID+id.x;
   let old_value=resources[index];
-  // This pass runs once per four macro-steps, each worth BIO_DT biological units.
-  let dt=f32(params.clock.z)*4.0;
+  // This pass runs when the biological clock crosses an eight-unit boundary.
+  let dt=8.0;
   if(params.mutation.z!=0.0){
     let phase=f32(params.clock.y)/1000000.0;
     let blend=phase*phase*(3.0-2.0*phase);

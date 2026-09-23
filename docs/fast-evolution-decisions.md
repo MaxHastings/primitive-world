@@ -87,15 +87,50 @@ These are individual GPU trajectories from one imported checkpoint, not a
 population-level fitness estimate. The owner chose to keep BIO_DT=2. The
 packaged wallpaper, v45 source, and v46 saves were untouched by the probes.
 
-## Explicit alternatives deferred
+**Reproductive-cadence follow-up:** A short copied-checkpoint GPU observer
+traced the 2/3/4-unit production and fusion funnel at equal biological time.
+Production while sensing a near entity and production still within organism
+interaction range both declined more than the decision count alone. Actual
+packet manufacture fell from 770 to 332 between two and four units, but
+compatible packet proposal observations fell from 157 to eight and viable
+births from 41 to three. Every observed proposal was energy-viable; the main
+additional loss preceded proposal. Force-contact success per selected force
+action did not decline. This supports a timing and local packet-encounter
+bottleneck for the imported controllers, not a proven contact-kernel failure
+or proof that four-unit genomes can adapt. The diagnostic initially kept DT=2
+as the live choice. See
+[the diagnostic](bio-contact-cadence-diagnostic.md) for definitions and limits.
 
-- **BIO_DT=3:** More biological time per decision, but lower realized
-  reproductive closure and major early population loss in the imported
-  fixture. Revisit only with better intra-step encounter and controller
-  treatment, not as a TPS shortcut.
-- **BIO_DT=4 or a 2→4 ramp:** Faster biological clock in the short replay,
-  but much weaker direct reproductive closure and repeated later-world
-  failures in the ramp probe. Neither is selected for the live wallpaper.
+**Owner-selected long adaptation trial:** After that short diagnostic, the
+owner explicitly chose to continue the running wallpaper at `BIO_DT=3`, then
+move to `BIO_DT=4` after observing a continuing population in the hundreds.
+This supersedes the live DT=2 choice above without changing the
+interpretation of the probes. The
+pre-switch world-58 DT=2 receipt at tick 2,181,780, 487 living, cumulative
+v46 macro step 71,642,827, and its 417,658,886-byte checkpoint were copied
+to `%LOCALAPPDATA%\PrimitiveWorldV46\archive\bio-dt2-before-dt3-20260923`
+with the old executable and SHA-256 manifest. The packaged wallpaper resumed
+the same world and population at MAX using the three-unit build. The new
+checkpoint format 63 records the clock transition; loading the old format 62
+preserves pre-switch biological age and v46's 512-cell ecology. The
+three-unit wallpaper then ran to world 62, tick 85,247, with 259 living at
+its final saved instant and cumulative v46 macro step 72,501,982. Its
+format-63 receipt, 417,659,851-byte checkpoint, and executable were archived
+at `%LOCALAPPDATA%\PrimitiveWorldV46\archive\bio-dt3-before-dt4-20260923`.
+The format-64 four-unit build preserved its 255,741 elapsed biological units
+at the handoff, and the packaged wallpaper resumed that exact world at MAX.
+Both archives have SHA-256 manifests. Monitor closed-chain retention over
+time rather than treating an early dip as failure.
+
+## Explicit alternatives and trial status
+
+- **BIO_DT=3:** Early imported-controller probes had lower reproductive
+  closure and major population loss. A live adaptation interval ran from a
+  reversible checkpoint, then the owner selected four units.
+- **BIO_DT=4 or a 2→4 ramp:** The short direct replay had much weaker
+  reproductive closure, and the earlier ramp had repeated later-world
+  failures. Despite this risk, the owner selected a long live four-unit
+  adaptation trial with a reversible checkpoint handoff. Its outcome is open.
 - **Threefold plasticity injection:** Immediately destabilized imported
   controllers. One observation currently makes one learned write.
 - **256-grid food or shared body/signal fields:** The coarse food store loses

@@ -2641,8 +2641,26 @@ fn ramp_settings_are_absent_and_old_ramp_state_is_rejected() {
         near(p.sensor_and_padding[2], 0.02);
         near(p.world_size[2], 0.01);
         near(p.sensor_and_padding[1], 1800.0);
-        assert_eq!(configured_ecology_time(tick, &settings), tick);
+        assert_eq!(params_for(tick, tick, &settings, 91).clock[2], BIO_DT);
     }
+}
+
+#[test]
+fn biological_clock_handoff_keeps_prior_world_age() {
+    let (d, q) = gpu();
+    let mut s = Simulation::new(&d, &q, 91);
+    s.bio_dt_transition_tick = Some(100);
+    s.bio_dt4_transition_tick = Some(130);
+    assert_eq!(s.world_biological_age_at(100), 200);
+    assert_eq!(s.world_biological_age_at(101), 203);
+    assert_eq!(s.world_biological_age_at(130), 290);
+    assert_eq!(s.world_biological_age_at(131), 294);
+    s.bio_dt_transition_tick = None;
+    assert_eq!(s.world_biological_age_at(130), 390);
+    s.reset(&q);
+    assert_eq!(s.bio_dt_transition_tick, None);
+    assert_eq!(s.bio_dt4_transition_tick, None);
+    assert_eq!(s.world_biological_age_at(4), 16);
 }
 
 #[path = "provisioning_audit.rs"]

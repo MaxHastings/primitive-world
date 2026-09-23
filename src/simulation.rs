@@ -336,6 +336,11 @@ pub struct Simulation {
     pub settings: SimSettings,
     pub seed: u32,
     pub tick: u64,
+    /// Existing worlds retain their two-unit biological age through the
+    /// decision where the three-unit clock was first installed.
+    pub bio_dt_transition_tick: Option<u64>,
+    /// The decision where the four-unit clock replaced the three-unit clock.
+    pub bio_dt4_transition_tick: Option<u64>,
     /// Retained only for old diagnostics; ecology no longer escalates by age.
     pub environment_start_age: u64,
     /// Environment/action time at this world's tick zero. This is separate
@@ -1167,6 +1172,8 @@ impl Simulation {
             settings: SimSettings::default(),
             seed,
             tick: 0,
+            bio_dt_transition_tick: None,
+            bio_dt4_transition_tick: None,
             environment_start_age: 0,
             assisted: false,
             current_buffer: 0,
@@ -1343,6 +1350,8 @@ impl Simulation {
             .collect();
         queue.write_buffer(&self.ancestry_masks, 0, bytemuck::cast_slice(&ancestry));
         self.environment_start_age = environment_start_age;
+        self.bio_dt_transition_tick = None;
+        self.bio_dt4_transition_tick = None;
         let environment_epoch = environment_start_age / u64::from(TERRAIN_EPOCH_TICKS);
         let terrain_a = build_habitat_at(
             self.seed,
@@ -1431,7 +1440,7 @@ impl Simulation {
             0,
             bytemuck::bytes_of(&params_for(
                 self.tick,
-                configured_ecology_time(self.tick, &self.settings)
+                self.world_biological_age_at(self.tick)
                     .saturating_add(self.environment_start_age),
                 &self.settings,
                 self.seed,
@@ -1550,7 +1559,7 @@ impl Simulation {
                 let tick = self.tick + u64::from(n);
                 params_for(
                     tick,
-                    configured_ecology_time(tick, &self.settings)
+                    self.world_biological_age_at(tick)
                         .saturating_add(self.environment_start_age),
                     &self.settings,
                     self.seed,
@@ -1587,7 +1596,8 @@ impl Simulation {
             batch.separate = self.separate_compute_passes;
         }
         for offset in 0..ticks {
-            let environment_tick = configured_ecology_time(self.tick, &self.settings)
+            let environment_tick = self
+                .world_biological_age_at(self.tick)
                 .saturating_add(self.environment_start_age);
             let epoch = environment_tick / u64::from(TERRAIN_EPOCH_TICKS);
             if self.terrain_epoch != epoch && self.settings.evolving_landscape {
@@ -1621,7 +1631,9 @@ impl Simulation {
             batch.dispatch(&self.passes["free"], s, groups, 1);
             batch.scan(&self.passes, "free", MAX_AGENTS);
             batch.dispatch(&self.passes["free_compact"], 0, groups, 1);
-            if (self.tick + 1).is_multiple_of(4) {
+            if self.world_biological_age_at(self.tick) / 8
+                != self.world_biological_age_at(self.tick + 1) / 8
+            {
                 batch.dispatch(
                     &self.passes["resource"],
                     0,
@@ -1989,8 +2001,23 @@ impl Simulation {
         Some(result)
     }
 }
-fn configured_ecology_time(tick: u64, _s: &SimSettings) -> u64 {
-    tick.saturating_mul(u64::from(BIO_DT))
+impl Simulation {
+    pub fn world_biological_age_at(&self, tick: u64) -> u64 {
+        match self.bio_dt4_transition_tick {
+            Some(four_start) => {
+                let before_four = tick.min(four_start);
+                let prior = match self.bio_dt_transition_tick {
+                    Some(three_start) => three_start
+                        .min(before_four)
+                        .saturating_mul(2)
+                        .saturating_add(before_four.saturating_sub(three_start).saturating_mul(3)),
+                    None => before_four.saturating_mul(3),
+                };
+                prior.saturating_add(tick.saturating_sub(four_start).saturating_mul(4))
+            }
+            None => tick.saturating_mul(4),
+        }
+    }
 }
 
 fn params_for(tick: u64, environment_tick: u64, s: &SimSettings, seed: u32) -> SimParams {

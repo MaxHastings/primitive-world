@@ -8,10 +8,20 @@ struct CheckpointMetadata {
     settings: SimSettings,
     progress: crate::evolution::Progress,
     environment_start_age: u64,
+    #[serde(default = "legacy_biological_clock_version")]
+    biological_clock_version: u32,
+    #[serde(default)]
+    bio_dt_transition_tick: Option<u64>,
+    #[serde(default)]
+    bio_dt4_transition_tick: Option<u64>,
     #[serde(default)]
     tick_high: u32,
     #[serde(default)]
     assisted: bool,
+}
+
+fn legacy_biological_clock_version() -> u32 {
+    2
 }
 
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
@@ -450,6 +460,9 @@ impl Simulation {
             settings: self.settings.clone(),
             progress: self.progress.clone(),
             environment_start_age: self.environment_start_age,
+            biological_clock_version: BIO_DT,
+            bio_dt_transition_tick: self.bio_dt_transition_tick,
+            bio_dt4_transition_tick: self.bio_dt4_transition_tick,
             tick_high: (self.tick >> 32) as u32,
             assisted: self.assisted,
         })
@@ -558,7 +571,16 @@ impl Simulation {
         // V46 is a distinct model. Historical checkpoints enter only through
         // the explicit, read-only migration path, never normal resume.
         let legacy = false;
-        if &magic != CHECKPOINT_MAGIC {
+        let source_clock = if &magic == b"PRIMWORLD062" {
+            2
+        } else if &magic == b"PRIMWORLD063" {
+            3
+        } else if &magic == CHECKPOINT_MAGIC {
+            BIO_DT
+        } else {
+            0
+        };
+        if source_clock == 0 {
             return Err(format!(
                 "Unsupported checkpoint: expected {} format {}. Only current-format data can be loaded.",
                 MODEL_ID, CHECKPOINT_VERSION
@@ -577,6 +599,23 @@ impl Simulation {
         let metadata: CheckpointMetadata =
             serde_json::from_slice(&json).map_err(|e| e.to_string())?;
         let tick = u64::from(tick_low) | (u64::from(metadata.tick_high) << 32);
+        if metadata.biological_clock_version != source_clock
+            || metadata.bio_dt_transition_tick.is_some_and(|at| at > tick)
+            || metadata.bio_dt4_transition_tick.is_some_and(|at| at > tick)
+            || metadata
+                .bio_dt_transition_tick
+                .zip(metadata.bio_dt4_transition_tick)
+                .is_some_and(|(three, four)| three > four)
+            || (source_clock == 2
+                && (metadata.bio_dt_transition_tick.is_some()
+                    || metadata.bio_dt4_transition_tick.is_some()))
+            || (source_clock == 3 && metadata.bio_dt4_transition_tick.is_some())
+            || (source_clock == BIO_DT
+                && metadata.bio_dt_transition_tick.is_some()
+                && metadata.bio_dt4_transition_tick.is_none())
+        {
+            return Err("Checkpoint biological clock metadata mismatch".into());
+        }
         if tick > MAX_WORLD_TICKS || (legacy && metadata.tick_high != 0) {
             return Err("Checkpoint exceeds its clock format capacity".into());
         }
@@ -886,6 +925,16 @@ impl Simulation {
         self.settings = settings;
         self.seed = seed;
         self.tick = tick;
+        self.bio_dt_transition_tick = if source_clock == 2 {
+            Some(tick)
+        } else {
+            metadata.bio_dt_transition_tick
+        };
+        self.bio_dt4_transition_tick = if source_clock < BIO_DT {
+            Some(tick)
+        } else {
+            metadata.bio_dt4_transition_tick
+        };
         self.environment_start_age = metadata.environment_start_age;
         self.assisted = counters[30] != 0 || metadata.assisted;
         self.current_buffer = 0;

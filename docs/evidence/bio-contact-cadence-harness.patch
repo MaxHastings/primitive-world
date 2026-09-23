@@ -1,0 +1,128 @@
+diff --git a/src/funnel_audit.rs b/src/funnel_audit.rs
+index 087722c..c87ada2 100644
+--- a/src/funnel_audit.rs
++++ b/src/funnel_audit.rs
+@@ -137,13 +137,66 @@ fn dense_replay_order_probe() {
+         }
+     }
+ }
++#[test]
++#[ignore = "short, isolated copied-checkpoint biological-cadence funnel probe"]
++fn copied_checkpoint_biological_cadence_funnel() {
++    use std::path::PathBuf;
++    let receipt = PathBuf::from(std::env::var("PRIMITIVE_PROFILE_RECEIPT").unwrap());
++    let output = PathBuf::from(std::env::var("PRIMITIVE_PROFILE_OUTPUT").unwrap());
++    assert!(!output.exists());
++    let record: crate::experiments::SaveRecord =
++        serde_json::from_slice(&std::fs::read(&receipt).unwrap()).unwrap();
++    let (d, q) = super::tests::gpu();
++    let mut s = Simulation::new(&d, &q, record.seed);
++    s.load_game_checkpoint(
++        &q,
++        std::fs::File::open(receipt.parent().unwrap().join(&record.checkpoint)).unwrap(),
++        (record.seed, record.tick, record.living),
++        record.world,
++    )
++    .unwrap();
++    assert_eq!(s.tick, 0);
++    s.funnel_observer = Some(FunnelObserver::with_capacity(&d, &s, 50_000));
++    let mut rows = Vec::new();
++    for bio in (0..=3_000).step_by(300) {
++        if bio > 0 {
++            super::tests::step(&mut s, &d, &q, 300 / BIO_DT);
++        }
++        let m = s.metrics(&d, &q).unwrap();
++        let c = s.funnel_observer.as_ref().unwrap().counts(&d, &q);
++        rows.push(json!({"bio":bio,"living":m.living,"packets":m.packets,
++            "actions":m.action_ticks,"force_contacts":m.force_attempts,
++            "birth_gates":m.birth_gates,"events":m.events,
++            "compatible_packet_coexist_macro_steps":c[3],
++            "pre_fusion_packet_macro_steps":c[26],
++            "compatible_packet_proposal_macro_steps":c[27],
++            "viable_packet_proposal_macro_steps":c[28],
++            "packet_macro_steps_above_32_energy":c[29],
++            "packet_proposals_above_48_birth_energy":c[30]}));
++        if let Some(row) = rows.last_mut() {
++            row["production_decisions_observed"] = json!(c[31]);
++            row["production_decisions_with_any_sensed_entity"] = json!(c[32]);
++            row["production_decisions_with_near_sensed_entity"] = json!(c[33]);
++            row["packets_produced_with_near_sensed_entity"] = json!(c[34]);
++            row["organism_decisions_with_near_sensed_entity"] = json!(c[35]);
++            row["organism_decisions_with_any_sensed_entity"] = json!(c[36]);
++            row["production_with_organism_within_6_post_move"] = json!(c[37]);
++            row["production_with_organism_within_12_post_move"] = json!(c[38]);
++        }
++    }
++    std::fs::write(&output, serde_json::to_vec_pretty(&json!({
++        "bio_dt": BIO_DT,"receipt":receipt,"rows":rows,
++        "scope":"Read-only observer on an isolated copy. Packet proposal counts are packet-macro-step counts and may count both members. They do not equal distinct pairs. No live saves or wallpaper changed."
++    })).unwrap()).unwrap();
++}
++
+ impl FunnelObserver {
+     pub fn new(d: &wgpu::Device, s: &Simulation) -> Self {
+         Self::with_capacity(d, s, 65536)
+     }
+     pub fn with_capacity(d: &wgpu::Device, s: &Simulation, capacity: u32) -> Self {
+         assert!(capacity > 0 && capacity <= 2_000_000);
+-        let counters = buffer(d, "funnel counters", 32 * 4);
++        let counters = buffer(d, "funnel counters", 39 * 4);
+         let lives = buffer(d, "funnel incarnations", MAX_AGENTS as u64 * 32);
+         let events = buffer(d, "funnel life events", u64::from(capacity) * 48);
+         let scratch = buffer(d, "funnel packet scratch", 16);
+@@ -224,9 +277,9 @@ impl FunnelObserver {
+     pub fn after_tick(&self, e: &mut wgpu::CommandEncoder, source: usize) {
+         self.post.dispatch(e, source, MAX_AGENTS.div_ceil(64), 1);
+     }
+-    pub fn counts(&self, d: &wgpu::Device, q: &wgpu::Queue) -> [u32; 32] {
++    pub fn counts(&self, d: &wgpu::Device, q: &wgpu::Queue) -> [u32; 39] {
+         let bytes = observability::read_buffer(d, q, &self.counters).unwrap();
+-        let values: [u32; 32] = *bytemuck::from_bytes(&bytes);
++        let values: [u32; 39] = *bytemuck::from_bytes(&bytes);
+         assert_eq!(values[1], 0, "funnel observer capacity exceeded");
+         values
+     }
+diff --git a/src/funnel_audit.wgsl b/src/funnel_audit.wgsl
+index 9fd1879..c3f8fc9 100644
+--- a/src/funnel_audit.wgsl
++++ b/src/funnel_audit.wgsl
+@@ -23,6 +23,20 @@ fn pre_fusion(@builtin(global_invocation_id) id:vec3<u32>) {
+  let i=id.x;if(i>=INVALID){return;}let a=bodies[i];
+  if(a.alive==ORGANISM && a.age>=params.sensor_and_padding.y){
+   let d=decisions[i];let old=previous[i];
++  if(d.selected_action==PRODUCE_PACKET){
++   var organism_within_6=false;var organism_within_12=false;
++   for(var other=0u;other<INVALID;other++){
++    if(other==i){continue;}
++    let b=bodies[other];if(b.alive!=ORGANISM){continue;}
++    let delta=torus_delta(a.position,b.position,params.world_size.xy);
++    let d2=dot(delta,delta);
++    organism_within_6=organism_within_6 || d2<=36.0;
++    organism_within_12=organism_within_12 || d2<=144.0;
++    if(organism_within_6){break;}
++   }
++   if(organism_within_6){add(37u,1u);}
++   if(organism_within_12){add(38u,1u);}
++  }
+   if(d.selected_action==PRODUCE_PACKET && a.packets_produced==old.packets_produced){
+    if(a.energy<a.packet_size){add(23u,1u);}
+    else if(a.energy*d.amount<a.packet_size){add(24u,1u);}
+@@ -68,6 +82,18 @@ fn post_tick(@builtin(global_invocation_id) id:vec3<u32>) {
+  }
+  if(same){
+   let harvested=u32(round(max(a.collected,0.0)*1000.0));add(21u,harvested);
++  if(perceptions[i].nearby_count>0.0){add(36u,1u);}
++  var nearby_inner=0.0;
++  for(var region=0u;region<8u;region++){nearby_inner+=perceptions[i].regions[region].bodies;}
++  if(nearby_inner>0.0){add(35u,1u);}
++  if(a.action==PRODUCE_PACKET){
++   add(31u,1u);
++   if(perceptions[i].nearby_count>0.0){add(32u,1u);}
++   var near_bodies=0.0;
++   for(var region=0u;region<8u;region++){near_bodies+=perceptions[i].regions[region].bodies;}
++   if(near_bodies>0.0){add(33u,1u);}
++   if(near_bodies>0.0 && a.packets_produced>old.packets_produced){add(34u,a.packets_produced-old.packets_produced);}
++  }
+   var exposed=false;var food_seen=false;
+   for(var k=0u;k<16u;k++){exposed=exposed || abs(perceptions[i].regions[k].signal)>0.0;food_seen=food_seen || perceptions[i].regions[k].food>0.05;}
+   if(exposed){life.last_signal=params.tick+1u;add(12u,1u);if(a.action==TRANSFER){add(13u,1u);}if(a.action==PRODUCE_PACKET){add(14u,1u);}}

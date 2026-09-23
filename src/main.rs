@@ -717,7 +717,7 @@ impl AppState {
             if let Some(profile) = &mut self.profile_log {
                 profile.emit(serde_json::json!({"seconds": seconds, "tps": self.ticks_last_second,
                     "biological_units_per_second": self.ticks_last_second * model::BIO_DT,
-                    "biological_units": self.simulation.tick * u64::from(model::BIO_DT),
+                    "biological_units": self.simulation.world_biological_age_at(self.simulation.tick),
                     "fps": self.render_fps, "living": self.living_agents, "tick": self.simulation.tick,
                     "world": self.simulation.progress.world, "speed": playback::SPEED_LABELS[self.speed_index],
                     "width": self.config.width, "height": self.config.height, "render_hz": self.render_hz,

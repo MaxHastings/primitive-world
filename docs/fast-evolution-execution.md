@@ -1,6 +1,9 @@
 # Primitive World v46: integrated release and handoff
 
 Status: v46 began running from the imported 2.654B-tick v45 source at MAX.
+The owner subsequently ran `BIO_DT=3` and then selected `BIO_DT=4` for a
+long adaptation trial on the continuing v46 wallpaper at MAX. The first integrated release below records
+the earlier `BIO_DT=2` architecture and evidence.
 The owner then chose to restore the 512² food field. The 512-grid wallpaper
 is running from an explicitly expanded v46 checkpoint with its population,
 learned state, and accumulated progress preserved. The architecture below supersedes the original
@@ -28,9 +31,13 @@ birth count, and ordinary ancestry depth alone are insufficient.
    capacity and growth rates again use the 512-cell area. Exact local
    body/signal scans and all 107 input indices remain.
 3. **Contacts, cognition, and heredity.** Bodies and packets move in bounded
-   substeps. Contact broad phase expands by measured maximum displacement;
-   narrow phase uses same-time closest approach of both swept trajectories
-   across torus images. Full recurrent memory and all local plasticity routes
+   substeps. Contact broad phase expands by measured maximum net displacement;
+   narrow phase uses same-time closest approach of start-to-end trajectories
+   across torus images. Packet paths are straight within one macro-step, while
+   organism paths can curve and are approximated by one chord. The
+   [reproductive-cadence probe](bio-contact-cadence-diagnostic.md) did not
+   identify force-contact detection as the main loss at larger steps. Full
+   recurrent memory and all local plasticity routes
    remain. Trace and learned-weight retention span two biological units, while
    one observed decision makes one learning write. Tripling that write caused
    rapid imported-controller failure in a matched probe. Each packet owns a
