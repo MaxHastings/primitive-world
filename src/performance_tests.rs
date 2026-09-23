@@ -174,6 +174,156 @@ fn linked_sensing_matches_contiguous_neighborhoods_at_wrapped_edges() {
     }
 }
 
+#[test]
+fn parallel_food_sensing_preserves_all_channels() {
+    let (d, q) = gpu();
+    let mut s = Simulation::new(&d, &q, 42);
+    let mut serial = Compute::new(
+        &d,
+        "serial live perception reference",
+        &live_source(include_str!("../shaders/perceive.wgsl"), 8),
+        "main",
+        "rrwrrrwur",
+        pair(|bank| {
+            vec![
+                &s.agent_buffers[bank],
+                &s.resource_buffer,
+                &s.ground_buffer,
+                &s.occupancy_buffer,
+                &s.audit_cell_offsets,
+                &s.audit_indices,
+                &s.perception_buffer,
+                &s.params_buffer,
+                &s.active_indices,
+            ]
+        }),
+    );
+    // Both pipelines use the normal linked spatial buffers.
+    for (seed, population, radius) in [(42, 1000, 24.0), (91, 256, 48.0)] {
+        s.seed = seed;
+        s.settings.population = population;
+        s.settings.sensor_radius = radius;
+        let mut expected = Vec::new();
+        for parallel in [false, true] {
+            if !parallel {
+                std::mem::swap(s.passes.get_mut("perceive_live").unwrap(), &mut serial);
+            }
+            s.reset(&q);
+            step(&mut s, &d, &q, 1);
+            let actual = read::<PerceptionGpu>(&d, &q, &s.perception_buffer, population as usize);
+            if parallel {
+                for (slot, (a, b)) in actual.iter().zip(&expected).enumerate() {
+                    let aa: &[f32] = bytemuck::cast_slice(std::slice::from_ref(a));
+                    let bb: &[f32] = bytemuck::cast_slice(std::slice::from_ref(b));
+                    for (channel, (&x, &y)) in aa.iter().zip(bb).enumerate() {
+                        assert!(
+                            (x - y).abs() <= 2e-5 * (1.0 + x.abs().max(y.abs())),
+                            "seed={seed} radius={radius} slot={slot} channel={channel}: {x} != {y}"
+                        );
+                    }
+                }
+            } else {
+                expected = actual;
+                std::mem::swap(s.passes.get_mut("perceive_live").unwrap(), &mut serial);
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires an explicit copied checkpoint receipt"]
+fn parallel_sensing_matches_evolved_checkpoint() {
+    let receipt = std::path::PathBuf::from(std::env::var("PRIMITIVE_PROFILE_RECEIPT").unwrap());
+    let record: crate::experiments::SaveRecord =
+        serde_json::from_slice(&std::fs::read(&receipt).unwrap()).unwrap();
+    let checkpoint = receipt.parent().unwrap().join(&record.checkpoint);
+    let (d, q) = gpu();
+    let mut s = Simulation::new(&d, &q, 42);
+    let mut serial = Compute::new(
+        &d,
+        "serial checkpoint perception reference",
+        &live_source(include_str!("../shaders/perceive.wgsl"), 8),
+        "main",
+        "rrwrrrwur",
+        pair(|bank| {
+            vec![
+                &s.agent_buffers[bank],
+                &s.resource_buffer,
+                &s.ground_buffer,
+                &s.occupancy_buffer,
+                &s.audit_cell_offsets,
+                &s.audit_indices,
+                &s.perception_buffer,
+                &s.params_buffer,
+                &s.active_indices,
+            ]
+        }),
+    );
+    let mut expected = Vec::new();
+    let mut expected_actions = Vec::new();
+    let mut organisms = Vec::new();
+    let mut packets = Vec::new();
+    for parallel in [false, true] {
+        if !parallel {
+            std::mem::swap(s.passes.get_mut("perceive_live").unwrap(), &mut serial);
+        }
+        s.load_game_checkpoint(
+            &q,
+            std::fs::File::open(&checkpoint).unwrap(),
+            (record.seed, record.tick, record.living),
+            record.world,
+        )
+        .unwrap();
+        if organisms.is_empty() {
+            for (i, a) in s.agent_snapshot(&d, &q).unwrap().iter().enumerate() {
+                if a.alive == 1 {
+                    organisms.push(i);
+                }
+                if a.alive == 2 {
+                    packets.push(i);
+                }
+            }
+        }
+        step(&mut s, &d, &q, 1);
+        let actual = read::<PerceptionGpu>(&d, &q, &s.perception_buffer, MAX_AGENTS as usize);
+        let actions = read::<DecisionGpu>(&d, &q, &s.decision_buffer, MAX_AGENTS as usize);
+        if parallel {
+            let mut max_error = 0.0f32;
+            let mut action_changes = 0usize;
+            for &slot in &organisms {
+                let aa: &[f32] = bytemuck::cast_slice(std::slice::from_ref(&actual[slot]));
+                let bb: &[f32] = bytemuck::cast_slice(std::slice::from_ref(&expected[slot]));
+                for (channel, (&x, &y)) in aa.iter().zip(bb).enumerate() {
+                    max_error = max_error.max((x - y).abs());
+                    assert!(
+                        (x - y).abs() <= 2e-5 * (1.0 + x.abs().max(y.abs())),
+                        "slot={slot} channel={channel}: {x} != {y}"
+                    );
+                }
+                action_changes +=
+                    usize::from(actions[slot].selected_action != expected_actions[slot]);
+            }
+            for &slot in &packets {
+                assert_eq!(
+                    bytemuck::bytes_of(&actual[slot]),
+                    bytemuck::bytes_of(&expected[slot]),
+                    "packet slot {slot} perception differs"
+                );
+            }
+            eprintln!(
+                "{} evolved organisms, {} packets, max perception error {max_error}, action changes {action_changes}",
+                organisms.len(),
+                packets.len()
+            );
+            assert_eq!(action_changes, 0);
+        } else {
+            expected = actual;
+            expected_actions = actions.iter().map(|d| d.selected_action).collect();
+            std::mem::swap(s.passes.get_mut("perceive_live").unwrap(), &mut serial);
+        }
+    }
+}
+
 fn install_linked_spatial(s: &mut Simulation, d: &wgpu::Device, linked: bool) {
     s.linked_spatial = linked;
     for (name, source, entry) in [

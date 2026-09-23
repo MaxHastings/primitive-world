@@ -755,7 +755,7 @@ impl Simulation {
             Compute::new(
                 device,
                 "perceive_live",
-                &live_source(include_str!("../shaders/perceive.wgsl"), 8),
+                include_str!("../shaders/perceive_parallel.wgsl"),
                 "main",
                 "rrwrrrwur",
                 pair(|s| {
