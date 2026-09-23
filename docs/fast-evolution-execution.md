@@ -34,7 +34,9 @@ ready for the user's wallpaper. The first user-facing run is the integrated v46.
   changes growth/capacity independently of population success. Agents deplete
   food continuously; the ecology integrates accumulated extraction and three
   biological units per macro-step **once every four macro-steps**. Render the
-  coarse grid smoothly.
+  coarse grid smoothly. A food cell covers four times the v45 area: scale its
+  mass/capacity and extraction accounting by represented area so reducing grid
+  resolution does not silently quarter the world's food budget.
 
 ## Sensing and cognition
 
@@ -45,9 +47,11 @@ ready for the user's wallpaper. The first user-facing run is the integrated v46.
   No IDs, coordinates, lineage, map, or authored signal meaning enter cognition.
 - Keep **1–16 expressed recurrent units**, latent inactive hereditary weights,
   topology mutation, the existing general-purpose action set, hidden memory,
-  and locally learned recurrent/gate/output connections. Remove lifetime-plastic
-  input-to-hidden deltas and their traces/storage. Scale trace and learned-weight
-  retention for the macro-step. No reward or scripted behavioral policy is added.
+  and locally learned input/recurrent/gate/output connections in the first cut.
+  The smaller sensory vector already shrinks the input-learning matrix. Scale
+  trace and learned-weight retention for the macro-step. No reward or scripted
+  behavioral policy is added. A recurrent/gate/output-only learning variant is
+  a later option if neural state becomes the measured bottleneck.
 
 ## Entities and inheritance
 
@@ -71,6 +75,9 @@ ready for the user's wallpaper. The first user-facing run is the integrated v46.
   steps but should retain normal display cadence.
 - Fresh v46 worlds should be tuned for an ordinary living population in the
   hundreds to roughly a thousand, without a hard population controller.
+- The HUD/report should distinguish macro-steps/s, biological units/s, births,
+  maturations, and naturally born mature parents who contribute to later births.
+  Ancestry depth alone does not prove a closed developmental loop; track both.
 - A v45 receipt/checkpoint never loads as v46. Development uses isolated output
   paths and does not touch the running v45 wallpaper or its save library.
 
