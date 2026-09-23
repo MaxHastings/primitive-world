@@ -352,6 +352,9 @@ pub struct Simulation {
     pub(crate) trace_buffer: wgpu::Buffer,
     pub(crate) learned_summary_buffer: wgpu::Buffer,
     pub agent_buffers: [wgpu::Buffer; 2],
+    pub(crate) ancestry_masks: wgpu::Buffer,
+    pub(crate) ancestry_pair_counts: wgpu::Buffer,
+    pub(crate) block_cross_lineage_mating: bool,
     motion_bound_buffer: wgpu::Buffer,
     pub resource_buffer: wgpu::Buffer,
     pub resource_display_buffer: wgpu::Buffer,
@@ -469,6 +472,8 @@ impl Simulation {
             buffer(device, "bodies A", agent_size),
             buffer(device, "bodies B", agent_size),
         ];
+        let ancestry_masks = buffer(device, "diagnostic ancestry masks", MAX_AGENTS as u64 * 4);
+        let ancestry_pair_counts = buffer(device, "diagnostic ancestry pair counters", 21 * 4);
         let motion_bound_buffer = buffer(device, "maximum swept displacement", 4);
         let resource_buffer = buffer(device, "food", u64::from(RESOURCE_GRID * RESOURCE_GRID) * 4);
         let resource_display_buffer = buffer(
@@ -899,22 +904,45 @@ impl Simulation {
                 &inheritance_dispatch
             ]]
         );
-        add!(
-            "birth",
-            "../shaders/apply_births.wgsl",
-            "main",
-            "wrrrruwrr",
-            pair(|s| vec![
-                &agent_buffers[s],
-                &free_indices,
-                &free_prefix,
-                &parents,
-                &birth_prefix,
-                &params_buffer,
-                &death_stats_buffer,
-                &decision_buffer,
-                &claims
-            ])
+        let birth_source = if cfg!(feature = "lineage-contest") {
+            include_str!("../shaders/apply_births_lineage.wgsl")
+        } else {
+            include_str!("../shaders/apply_births.wgsl")
+        };
+        let birth_kinds = if cfg!(feature = "lineage-contest") {
+            "wrrrruwrrww"
+        } else {
+            "wrrrruwrr"
+        };
+        let birth_groups = || {
+            pair(|s| {
+                let mut buffers = vec![
+                    &agent_buffers[s],
+                    &free_indices,
+                    &free_prefix,
+                    &parents,
+                    &birth_prefix,
+                    &params_buffer,
+                    &death_stats_buffer,
+                    &decision_buffer,
+                    &claims,
+                ];
+                if cfg!(feature = "lineage-contest") {
+                    buffers.extend([&ancestry_masks, &ancestry_pair_counts]);
+                }
+                buffers
+            })
+        };
+        passes.insert(
+            "birth".to_string(),
+            Compute::new(
+                device,
+                "birth",
+                birth_source,
+                "main",
+                birth_kinds,
+                birth_groups(),
+            ),
         );
         add!(
             "inherit_genomes",
@@ -935,27 +963,21 @@ impl Simulation {
                 &agent_buffers[1 - s],
             ])
         );
-        add!(
-            "fusion",
-            "../shaders/apply_births.wgsl",
-            "fusion",
-            "wrrrruwrr",
-            pair(|s| vec![
-                &agent_buffers[s],
-                &free_indices,
-                &free_prefix,
-                &parents,
-                &birth_prefix,
-                &params_buffer,
-                &death_stats_buffer,
-                &decision_buffer,
-                &claims
-            ])
+        passes.insert(
+            "fusion".to_string(),
+            Compute::new(
+                device,
+                "fusion",
+                birth_source,
+                "fusion",
+                birth_kinds,
+                birth_groups(),
+            ),
         );
         #[cfg(test)]
         {
             let capped = "min(energy-params.sensor_and_padding.w,reserve_capacity(0.0,params.sensor_and_padding.y))";
-            let original = include_str!("../shaders/apply_births.wgsl");
+            let original = birth_source;
             let paid = "child.energy=energy-params.sensor_and_padding.w;";
             assert_eq!(original.matches(paid).count(), 1);
             let legacy = original.replace(paid, &format!("child.energy={capped};"));
@@ -966,20 +988,8 @@ impl Simulation {
                     "legacy clipped packet endowment",
                     &legacy,
                     "fusion",
-                    "wrrrruwrr",
-                    pair(|i| {
-                        vec![
-                            &agent_buffers[i],
-                            &free_indices,
-                            &free_prefix,
-                            &parents,
-                            &birth_prefix,
-                            &params_buffer,
-                            &death_stats_buffer,
-                            &decision_buffer,
-                            &claims,
-                        ]
-                    }),
+                    birth_kinds,
+                    birth_groups(),
                 ),
             );
         }
@@ -1169,6 +1179,9 @@ impl Simulation {
             trace_buffer,
             learned_summary_buffer,
             agent_buffers,
+            ancestry_masks,
+            ancestry_pair_counts,
+            block_cross_lineage_mating: false,
             motion_bound_buffer,
             resource_buffer,
             resource_display_buffer,
@@ -1285,7 +1298,15 @@ impl Simulation {
         ]) {
             clear.clear_buffer(buffer, 0, None);
         }
+        clear.clear_buffer(&self.ancestry_masks, 0, None);
+        clear.clear_buffer(&self.ancestry_pair_counts, 0, None);
         queue.submit(Some(clear.finish()));
+        let reproductive_gate = u32::from(self.block_cross_lineage_mating);
+        queue.write_buffer(
+            &self.ancestry_pair_counts,
+            20 * 4,
+            bytemuck::bytes_of(&reproductive_gate),
+        );
         self.family_observer = None;
         #[cfg(test)]
         {
@@ -1316,6 +1337,11 @@ impl Simulation {
         for b in &self.agent_buffers {
             queue.write_buffer(b, 0, bytemuck::cast_slice(&data));
         }
+        let ancestry: Vec<u32> = data
+            .iter()
+            .map(|a| diagnostic_ancestry_group(a.founder_family))
+            .collect();
+        queue.write_buffer(&self.ancestry_masks, 0, bytemuck::cast_slice(&ancestry));
         self.environment_start_age = environment_start_age;
         let environment_epoch = environment_start_age / u64::from(TERRAIN_EPOCH_TICKS);
         let terrain_a = build_habitat_at(
@@ -2036,6 +2062,10 @@ fn params_for(tick: u64, environment_tick: u64, s: &SimSettings, seed: u32) -> S
 fn build_agents(seed: u32, s: &SimSettings) -> Vec<AgentGpu> {
     let traits = build_traits(seed, s);
     build_agents_with_traits(seed, s, &traits)
+}
+/// Interleaved diagnostic founder banks use even/odd slots for the two lineages.
+pub(crate) fn diagnostic_ancestry_group(founder_family: u32) -> u32 {
+    if founder_family % 2 == 0 { 1 } else { 2 }
 }
 fn build_agents_with_traits(
     seed: u32,

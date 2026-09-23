@@ -9,6 +9,9 @@ keywords = ["artificial-life", "simulation", "wgpu", "evolution", "wallpaper"]
 categories = ["science", "simulation", "visualization"]
 publish = false
 
+[features]
+lineage-contest = []
+
 [dependencies]
 bytemuck = { version = "1.23", features = ["derive", "min_const_generics"] }
 egui = "0.31"

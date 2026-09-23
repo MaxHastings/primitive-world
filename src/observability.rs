@@ -182,6 +182,65 @@ impl Simulation {
             .collect())
     }
 
+    /// Observer-only masks: 1 is the even founder bank, 2 the odd bank, 3 hybrid.
+    pub fn diagnostic_ancestry_alive_counts(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<[u64; 4], String> {
+        let agents = self.agent_snapshot(device, queue)?;
+        let bytes = read_buffer(device, queue, &self.ancestry_masks)?;
+        let masks: &[u32] = bytemuck::cast_slice(&bytes);
+        let mut counts = [0u64; 4];
+        for (agent, mask) in agents.iter().zip(masks.iter().copied()) {
+            if agent.alive == 1 && mask > 3 {
+                return Err("Invalid diagnostic ancestry mask".into());
+            }
+            if agent.alive == 1 {
+                counts[mask as usize] += 1;
+            }
+        }
+        Ok(counts)
+    }
+
+    pub fn diagnostic_ancestry_report(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<serde_json::Value, String> {
+        let agents = self.agent_snapshot(device, queue)?;
+        let bytes = read_buffer(device, queue, &self.ancestry_masks)?;
+        let masks: &[u32] = bytemuck::cast_slice(&bytes);
+        let bytes = read_buffer(device, queue, &self.ancestry_pair_counts)?;
+        let counters: &[u32] = bytemuck::cast_slice(&bytes);
+        let mut organisms = [0u64; 4];
+        let mut packets = [0u64; 4];
+        let mut invalid_masks = 0u64;
+        for (agent, mask) in agents.iter().zip(masks.iter().copied()) {
+            if agent.alive == 0 {
+                continue;
+            }
+            if mask > 3 {
+                invalid_masks += 1;
+                continue;
+            }
+            let counts = if agent.alive == 2 {
+                &mut packets
+            } else {
+                &mut organisms
+            };
+            counts[mask as usize] += 1;
+        }
+        Ok(serde_json::json!({
+            "tick": self.tick,
+            "organisms_alive": {"old_only": organisms[1], "latest_only": organisms[2], "hybrid": organisms[3], "unknown": organisms[0]},
+            "packets_alive": {"old_only": packets[1], "latest_only": packets[2], "hybrid": packets[3], "unknown": packets[0]},
+            "successful_births_by_child_ancestry": {"old_only": counters[0], "latest_only": counters[1], "hybrid": counters[2]},
+            "invalid_masks": invalid_masks,
+            "gate_enabled": counters[20] == 1,
+        }))
+    }
+
     pub fn evolution_snapshot(
         &self,
         device: &wgpu::Device,

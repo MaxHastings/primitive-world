@@ -25,6 +25,8 @@ Headless observers:
          --communication-trace PATH (read-only signal emissions and receiver responses)
          --survivors PATH [--survivor-sample N] (latest nonempty living sample;
            up to 64 current genomes, founders included; period 1..1024, default 128)
+         --ancestry-audit PATH --block-cross-lineage-mating --stop-on-lineage-extinction
+           (fresh-world headless diagnostic; interleaved even/odd founder banks)
          --famine-at T --restore-at T [--famine-radius X --famine-delta X] --help --version
 New Game and fresh command-line runs use seed-specific random weights for every founder. --founders imports a specified bank.
 Motor gain calibrates continuous effort, not minimum movement or maximum speed.
@@ -58,6 +60,8 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
         "--version",
         "--install-startup",
         "--uninstall-startup",
+        "--block-cross-lineage-mating",
+        "--stop-on-lineage-extinction",
     ];
     let valued = [
         "--load-game",
@@ -79,6 +83,7 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
         "--export-founders",
         "--survivors",
         "--survivor-sample",
+        "--ancestry-audit",
         "--view-speed",
         "--view-fps",
         "--compute-budget",
@@ -174,6 +179,9 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
             "--communication-trace",
             "--survivors",
             "--survivor-sample",
+            "--ancestry-audit",
+            "--block-cross-lineage-mating",
+            "--stop-on-lineage-extinction",
             "--famine-at",
             "--restore-at",
             "--famine-radius",
@@ -214,6 +222,9 @@ pub fn arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
             "--families",
             "--journeys",
             "--survivors",
+            "--ancestry-audit",
+            "--block-cross-lineage-mating",
+            "--stop-on-lineage-extinction",
             "--famine-at",
             "--restore-at",
             "--famine-radius",
@@ -313,6 +324,22 @@ pub fn run(args: &[String]) -> Result<(), String> {
     if a.contains_key("--survivor-sample") && !a.contains_key("--survivors") {
         return Err("--survivor-sample requires --survivors PATH".into());
     }
+    if a.contains_key("--ancestry-audit") && a.contains_key("--checkpoint") {
+        return Err("--ancestry-audit requires a fresh world".into());
+    }
+    if a.contains_key("--ancestry-audit") && !cfg!(feature = "lineage-contest") {
+        return Err("--ancestry-audit requires a build with --features lineage-contest".into());
+    }
+    if (a.contains_key("--block-cross-lineage-mating")
+        || a.contains_key("--stop-on-lineage-extinction"))
+        && !a.contains_key("--ancestry-audit")
+    {
+        return Err("Lineage contest flags require --ancestry-audit".into());
+    }
+    let mut ancestry_file = a
+        .get("--ancestry-audit")
+        .map(|p| new_report(p))
+        .transpose()?;
     let mut survivor_file = a
         .get("--survivors")
         .map(|path| new_report(path))
@@ -376,6 +403,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
     let mut sim = Simulation::new(&device, &queue, number("--seed", 1)?);
     configure(&mut sim, args)?;
+    sim.block_cross_lineage_mating = a.contains_key("--block-cross-lineage-mating");
+    let stop_on_lineage_extinction = a.contains_key("--stop-on-lineage-extinction");
     sim.reset(&queue);
     if let Some(path) = a.get("--checkpoint") {
         sim.load_checkpoint(&queue, Path::new(path))?;
@@ -434,7 +463,12 @@ pub fn run(args: &[String]) -> Result<(), String> {
         .checked_add(u64::from(ticks))
         .ok_or("Tick overflow")?;
     let mut extinct = history[0].living == 0;
-    while sim.tick < target && !extinct && !sim.progress.engine_saturated {
+    let mut lineage_extinction: Option<&'static str> = None;
+    while sim.tick < target
+        && !extinct
+        && lineage_extinction.is_none()
+        && !sim.progress.engine_saturated
+    {
         if sim.tick == famine {
             sim.apply_resource_shock(&device, &queue, [1024.0; 2], famine_radius, famine_delta);
             sim.settings.resource_regeneration = 0.0;
@@ -497,6 +531,15 @@ pub fn run(args: &[String]) -> Result<(), String> {
             .read_alive_count(&device)
             .ok_or("Could not read living population; refusing to guess extinction")?
             == 0;
+        if stop_on_lineage_extinction && !extinct {
+            let counts = sim.diagnostic_ancestry_alive_counts(&device, &queue)?;
+            lineage_extinction = match (counts[1] == 0, counts[2] == 0) {
+                (true, true) => Some("both"),
+                (true, false) => Some("old_only"),
+                (false, true) => Some("latest_only"),
+                (false, false) => None,
+            };
+        }
         if survivor_file.is_some()
             && (sim.tick.is_multiple_of(survivor_sample) || sim.tick == target || extinct)
         {
@@ -523,7 +566,11 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 writeln!(file, "{line}").map_err(|e| e.to_string())?;
             }
         }
-        if sim.tick.is_multiple_of(sample) || sim.tick == target || extinct {
+        if sim.tick.is_multiple_of(sample)
+            || sim.tick == target
+            || extinct
+            || lineage_extinction.is_some()
+        {
             let m = sim.metrics(&device, &queue)?;
             travel.observe(sim.tick, &sim.agent_snapshot(&device, &queue)?)?;
             eprintln!(
@@ -551,6 +598,11 @@ pub fn run(args: &[String]) -> Result<(), String> {
             .as_ref()
             .ok_or("No living bodies observed; no survivor bank available")?;
         file.write_all(&serde_json::to_vec(sample).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    }
+    if let Some(file) = &mut ancestry_file {
+        let report = sim.diagnostic_ancestry_report(&device, &queue)?;
+        file.write_all(&serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
     }
     sim.refresh_engine_status(&device, &queue)?;
@@ -604,7 +656,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
   "initial_biological_units":initial_tick*u64::from(BIO_DT),
   "elapsed_biological_units":(sim.tick-initial_tick)*u64::from(BIO_DT),
   "biological_units_per_wall_second":(sim.tick-initial_tick) as f64*f64::from(BIO_DT)/wall_seconds,
-  "termination_reason":if sim.progress.engine_saturated {"engine_capacity"} else if extinct {"extinction"} else if sim.tick >= MAX_WORLD_TICKS {"tick_capacity"} else {"tick_limit"},
+  "termination_reason":if sim.progress.engine_saturated {"engine_capacity"} else if lineage_extinction.is_some() {"lineage_extinction"} else if extinct {"extinction"} else if sim.tick >= MAX_WORLD_TICKS {"tick_capacity"} else {"tick_limit"},
+  "block_cross_lineage_mating":sim.block_cross_lineage_mating,"stop_on_lineage_extinction":stop_on_lineage_extinction,"lineage_extinction":lineage_extinction,
   "extinction_detection_max_delay_ticks":31,
   "initial_settings":settings,"final_settings":sim.settings,"history_limit":4096,"history":history,"evolution":evolution,
   "travel_observer":travel.report(sample as u32),
