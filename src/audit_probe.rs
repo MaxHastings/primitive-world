@@ -41,7 +41,7 @@ fn juvenile_maintenance_accounting() {
     }).collect();
     save_report(
         "maintenance.json",
-        json!({"rows":rows,"settings":s.settings,"scope":"One actual GPU body-update pass for matched resting organisms at five developmental ages, with one or sixteen active units. Ordinary production costs; zero decision/request buffers imply no movement or gathering, with no carried inventory. Initialization only; no physiology overrides. Inspected before separate lifetime-learning charges: this isolates basal and expressed-unit upkeep, not the complete cost of moving, learning, foraging or care."}),
+        json!({"rows":rows,"settings":s.settings,"scope":"One actual GPU body-update pass for matched resting organisms at five developmental ages, with one or sixteen active units. Zero decision/request buffers imply no movement or gathering, with no carried inventory. The current rules charge body upkeep equally regardless of expressed unit count; learning writes are free. No live experiment writes."}),
     );
 }
 

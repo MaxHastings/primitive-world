@@ -2075,13 +2075,15 @@ fn params_for(tick: u64, environment_tick: u64, s: &SimSettings, seed: u32) -> S
             BASE_MUTATION_PROBABILITY,
             BASE_MUTATION_MAGNITUDE,
             f32::from(s.evolving_landscape),
-            s.active_unit_upkeep,
+            // Reserved legacy uniform slot: expressed capacity is free.
+            0.0,
         ],
         environment: [
             f32::from_bits((environment_tick % 47_003) as u32),
             f32::from_bits(local_epoch as u32),
             f32::from_bits((environment_tick % 997) as u32),
-            s.memory_write_energy,
+            // Reserved legacy uniform slot: learning writes are free.
+            0.0,
         ],
     }
 }

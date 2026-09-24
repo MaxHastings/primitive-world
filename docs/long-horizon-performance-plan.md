@@ -2,6 +2,10 @@
 
 Status: implementation plan only. No simulation changes or benchmark results are implied.
 
+The later explicit decision to remove brain-size, learning-write, and signal
+energy charges supersedes this plan's cost-preservation clauses. This document
+remains a performance proposal; it does not authorize reverting that biology.
+
 ## Objective and scope
 
 Reduce the cost of the existing experiment without narrowing its biological capabilities. Preserve the running experiment and its inherited history. Support reliable operation across at least 10,000,000,000 cumulative experiment ticks under the existing multi-world policy.

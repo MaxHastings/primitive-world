@@ -5,7 +5,7 @@ cognitive, and evolutionary mechanisms. The organisms begin with random brains;
 the simulator supplies opportunities and consequences, not a strategy to follow.
 
 This page distinguishes that design intent from the choices actually made in
-`primitive-v45-depth-retention`. For exact mechanics, read [agents](agents.md),
+`primitive-v46-fast-evolution`. For exact mechanics, read [agents](agents.md),
 [world rules](world.md), and [evolution](evolution.md).
 
 ## Define possibilities, not behavioral goals
@@ -32,7 +32,7 @@ All simulated physics involves design choices. This model specifies:
 - Energy, food, developmental costs and lifespans.
 - Local physical sensing, movement, contact and action arbitration.
 - Packet reproduction, inheritance and blind mutation.
-- Gated recurrent memory, lifetime plasticity and their energy costs.
+- Gated recurrent memory and lifetime plasticity, without an energy charge.
 - Spatial ecology, climate variation and initial conditions.
 - Finite entity storage, hereditary retention and world rollover.
 
@@ -62,7 +62,7 @@ Offspring inherit weights and traits that enable memory and learning. They do no
 inherit acquired recurrent state, traces or learned connection deltas. Evolutionary
 change between generations and adaptation within a lifetime are distinct.
 
-Expressed capacity and state changes have physical costs. Evolution may use or
+Expressed capacity and state changes have no energy charge. Evolution may use or
 reduce learning and memory; providing the machinery is not a claim that useful
 learning has been demonstrated. A currently unused capability is not, by itself,
 evidence that it should be removed.

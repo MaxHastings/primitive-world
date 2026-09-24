@@ -138,7 +138,7 @@ fn masked_inheritance_matches_gpu_across_capacities_and_topology_changes() {
 }
 
 #[test]
-fn local_learning_is_masked_paid_and_retained_on_the_founders_first_tick() {
+fn local_learning_is_masked_free_and_retained_on_the_founders_first_tick() {
     let (d, q) = gpu();
     let mut s = scene(&d, &q);
     s.settings.active_unit_upkeep = 0.002;
@@ -175,21 +175,14 @@ fn local_learning_is_masked_paid_and_retained_on_the_founders_first_tick() {
     }
     let change = learned.iter().chain(&traces).map(|x| x.abs()).sum::<f32>()
         + (after.hidden[0] - a.hidden[0]).abs();
+    assert!(change > 0.0);
     near(
         a.energy - after.energy,
-        s.settings.metabolic_cost
-            + s.settings.active_unit_upkeep
-            + change * s.settings.memory_write_energy,
+        s.settings.metabolic_cost * BIO_DT as f32,
     );
     let metrics = s.metrics(&d, &q).unwrap();
-    near(
-        metrics.cognitive_upkeep_energy as f32,
-        s.settings.active_unit_upkeep,
-    );
-    near(
-        metrics.cognitive_write_energy as f32,
-        change * s.settings.memory_write_energy,
-    );
+    near(metrics.cognitive_upkeep_energy as f32, 0.0);
+    near(metrics.cognitive_write_energy as f32, 0.0);
     assert_eq!(s.read_genomes(&d, &q, 1).unwrap(), genome);
     // A fault clears the entire lifetime state, including learned connections.
     genome[NODE_BIAS] = f32::NAN;

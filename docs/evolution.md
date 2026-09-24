@@ -5,7 +5,7 @@ world, and a bounded hereditary pool carries inherited records across worlds.
 The current model explicitly favors deeper within-world reproduction when
 retaining pool records. It does not use a behavioral reward to train controllers.
 
-This page specifies `primitive-v45-depth-retention`. The [design principles](direction.md)
+This page specifies `primitive-v46-fast-evolution`. The [design principles](direction.md)
 explain the intent; the rules below describe the implemented selection preference.
 
 | Event | What carries forward |

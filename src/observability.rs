@@ -928,6 +928,11 @@ impl Simulation {
         self.progress = metadata.progress;
         self.progress.engine_saturated = tick >= MAX_WORLD_TICKS;
         self.settings = settings;
+        // Older v46 checkpoints retain historical cognitive energy settings.
+        // Loading preserves the population and world, then applies the current
+        // rule that expressed units and memory writes have no energy charge.
+        self.settings.active_unit_upkeep = 0.0;
+        self.settings.memory_write_energy = 0.0;
         self.seed = seed;
         self.tick = tick;
         self.bio_dt_transition_tick = if source_clock == 2 {

@@ -4,9 +4,10 @@ This page describes the environment and the consequences of agent actions.
 For how organisms choose actions, see [agents](agents.md); for what survives
 extinction, see [evolution](evolution.md).
 
-Current model: `primitive-v45-depth-retention`, checkpoint format 59, founder-bank
-format 21. Numeric costs are defaults, not universal constants: saved settings and
-explicit controls such as the live metabolism slider can change them. The
+Current model: `primitive-v46-fast-evolution`, checkpoint format 67, founder-bank
+format 22. Numeric physical costs are defaults: saved settings and
+explicit controls such as the live metabolism slider can change them. Historical
+cognitive cost settings are cleared on resume. The
 [design principles](direction.md) distinguish physical rules from research goals.
 
 ## Geometry and tick order
@@ -23,9 +24,9 @@ headings use continuous relative geometry.
 3. Gather at pre-movement positions using proportional sharing within each food cell.
 4. Organisms digest inventory carried into the tick, add newly gathered food to
    inventory, pay gathering effort, turn, damp velocity, apply thrust and
-   integrate; pay body/cognitive upkeep, age, check death and emit. Packets consume
+   integrate; pay body upkeep, age, check death and emit. Packets consume
    their reserves for viability without running a controller.
-5. Apply paid local plasticity; rebuild post-movement contact indexing.
+5. Apply local plasticity; rebuild post-movement contact indexing.
 6. Choose contact proposals from an immutable snapshot, then resolve disjoint pairs.
 7. Manufacture affordable packets into free slots; fuse contacting packets in place,
    recombine/mutate inherited records and clear newborn learning. Only successful
@@ -43,13 +44,13 @@ time physiology, not simultaneous continuous physics.
 | Energy/inventory capacity | 100 energy / 8 food |
 | Founder provision | 35 energy, zero food, mature age (1,800 by default) |
 | Body upkeep | Stationary 0.05 energy/tick from tick zero |
-| Cognitive upkeep/writes | 0.00025 per expressed unit; 0.0001 per absolute state change |
+| Cognitive upkeep/writes | No energy charge |
 | Gathering | clamp(output 1,0,1), up to 0.025 food/tick |
 | Gathering effort cost | 0.005 * effort, including unsuccessful effort |
 | Digestion | At most 0.1 carried food/tick, 8 energy/food, limited by energy headroom |
 | Thrust | At most 0.18 adult units/tick of velocity change; cost length(thrust)/0.15 * 0.01 |
 | Damping | Retain 0.85 of prior velocity each integration |
-| Signal | 0.01 activation + 0.02 * absolute payload energy |
+| Signal | No energy charge; still requires the selected signal action |
 | Contact range | Wrapped center distance at most 6 |
 | Contact impulse | At most 3; actor pays 0.1 * squared impulse magnitude |
 

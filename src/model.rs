@@ -7,10 +7,9 @@ pub const CHECKPOINT_VERSION: u32 = 67;
 pub const CHECKPOINT_MAGIC: &[u8; 12] = b"PRIMWORLD067";
 /// Fixed rolling hereditary storage; independent of body-engine capacity.
 pub const HEREDITARY_RESERVOIR_SIZE: u32 = 4_096;
-/// Incremental maintenance paid for each expressed recurrent unit.
-pub const DEFAULT_ACTIVE_UNIT_UPKEEP: f32 = 0.00025;
-/// Energy paid for each unit of actual bounded memory-state change.
-pub const DEFAULT_MEMORY_WRITE_ENERGY: f32 = 0.0001;
+/// Retained in checkpoint settings for compatibility; cognition has no energy charge.
+pub const DEFAULT_ACTIVE_UNIT_UPKEEP: f32 = 0.0;
+pub const DEFAULT_MEMORY_WRITE_ENERGY: f32 = 0.0;
 /// Blind per-birth connection mutation probability and bounded magnitude.
 pub const BASE_MUTATION_PROBABILITY: f32 = 0.25;
 pub const BASE_MUTATION_MAGNITUDE: f32 = 0.03;
@@ -344,6 +343,7 @@ pub struct SimSettings {
     pub movement_energy_cost: f32,
     /// Stationary body upkeep, independent of world age or outcomes.
     pub metabolic_cost: f32,
+    /// Legacy checkpoint fields; retained for decoding but never charged.
     pub active_unit_upkeep: f32,
     pub memory_write_energy: f32,
     /// Actuator sensitivity, not minimum effort or maximum body speed.

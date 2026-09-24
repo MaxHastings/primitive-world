@@ -462,6 +462,45 @@ fn rotation_cli_and_checkpoint_preserve_explicit_environment_settings() {
     );
 }
 
+#[test]
+fn old_cognitive_cost_settings_are_cleared_when_resuming() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    s.settings.active_unit_upkeep = 0.00025;
+    s.settings.memory_write_energy = 0.0001;
+    let path = temp("old-cognitive-costs.checkpoint");
+    s.save_checkpoint(&d, &q, &path).unwrap();
+    s.load_checkpoint(&q, &path).unwrap();
+    assert_eq!(s.settings.active_unit_upkeep, 0.0);
+    assert_eq!(s.settings.memory_write_energy, 0.0);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn large_brains_have_no_extra_energy_upkeep() {
+    let (d, q) = gpu();
+    let mut s = scene(&d, &q);
+    // Even historical nonzero settings must not charge cognition.
+    s.settings.active_unit_upkeep = 1.0;
+    s.settings.memory_write_energy = 1.0;
+    for (slot, mask) in [(0, 1u32), (1, 0xffffu32)] {
+        let mut a = body([600.0 + slot as f32 * 100.0, 900.0]);
+        a.food = 0.0;
+        a.active_mask = mask;
+        put(&s, &q, slot, a, &fixed(0, [0.0; 2]));
+    }
+    step(&mut s, &d, &q, 1);
+    let bodies = s.agent_snapshot(&d, &q).unwrap();
+    near(bodies[0].energy, bodies[1].energy);
+    near(
+        bodies[0].energy,
+        80.0 - BIO_DT as f32 * s.settings.metabolic_cost,
+    );
+    let metrics = s.metrics(&d, &q).unwrap();
+    near(metrics.cognitive_upkeep_energy as f32, 0.0);
+    near(metrics.cognitive_write_energy as f32, 0.0);
+}
+
 /// Explicit diagnostic: outcomes are measured, never required to point a chosen way.
 /// Run separately after the frozen campaign; normal tests do not read research banks.
 #[test]
@@ -741,8 +780,8 @@ fn dead_slot_reuse_resets_experience_and_advances_incarnation() {
 fn fresh_world_defaults_match_documented_physical_settings() {
     let settings = SimSettings::default();
     assert_eq!(settings.metabolic_cost, 0.05);
-    assert_eq!(settings.active_unit_upkeep, 0.00025);
-    assert_eq!(settings.memory_write_energy, 0.0001);
+    assert_eq!(settings.active_unit_upkeep, 0.0);
+    assert_eq!(settings.memory_write_energy, 0.0);
     for tick in [0, 25000, 50000, 100000] {
         near(
             params_for(tick, tick, &settings, 42).time_and_costs[3],
@@ -1199,7 +1238,7 @@ fn scene(d: &wgpu::Device, q: &wgpu::Queue) -> Simulation {
     s.settings.population = 0;
     s.settings.social_actions_enabled = true;
     s.settings.metabolic_cost = 0.06;
-    // These fixtures isolate physical actions; cognitive costs have dedicated tests.
+    // These fixtures isolate physical actions; cognition is free.
     s.settings.active_unit_upkeep = 0.0;
     s.settings.memory_write_energy = 0.0;
     s.settings.resource_regeneration = 0.0;
@@ -1599,7 +1638,7 @@ fn transfer_and_force_are_contact_local_across_the_torus_seam() {
 }
 
 #[test]
-fn gathering_effort_and_signal_amplitude_pay_their_physical_costs() {
+fn gathering_effort_is_paid_and_signals_are_free() {
     let (d, q) = gpu();
     let mut gather = scene(&d, &q);
     let mut body_without_food = body([602.0, 902.0]);
@@ -1607,23 +1646,28 @@ fn gathering_effort_and_signal_amplitude_pay_their_physical_costs() {
     put(&gather, &q, 0, body_without_food, &fixed(1, [0.0; 2]));
     step(&mut gather, &d, &q, 1);
     let after_gather = gather.agent_snapshot(&d, &q).unwrap()[0];
-    near(after_gather.energy, body_without_food.energy - 0.06 - 0.005);
+    near(
+        after_gather.energy,
+        body_without_food.energy - BIO_DT as f32 * (gather.settings.metabolic_cost + 0.005),
+    );
     assert_eq!(after_gather.collected, 0.0);
 
-    let emitted_energy = |payload: f32| {
+    let action_energy = |action: usize, payload: f32| {
         let mut s = scene(&d, &q);
-        let mut genes = fixed(4, [0.0; 2]);
+        let mut genes = fixed(action, [0.0; 2]);
         genes[OUTPUT_BIAS + 9] = payload;
         let mut sender = body([602.0, 902.0]);
         sender.food = 0.0;
         put(&s, &q, 0, sender, &genes);
         step(&mut s, &d, &q, 1);
-        s.agent_snapshot(&d, &q).unwrap()[0].energy
+        let after = s.agent_snapshot(&d, &q).unwrap()[0];
+        if action == 4 {
+            assert_eq!(after.signal_tick, 1);
+        }
+        after.energy
     };
-    near(
-        emitted_energy(0.0) - emitted_energy(4.0),
-        0.02 * 4.0f32.tanh(),
-    );
+    near(action_energy(4, 0.0), action_energy(0, 0.0));
+    near(action_energy(4, 4.0), action_energy(0, 0.0));
 }
 #[test]
 fn force_is_paid_symmetric_impulse_without_recipient_food_loss() {
@@ -1904,7 +1948,7 @@ fn batching_checkpoint_and_selection_preserve_state() {
     let mut s = scene(&d, &q);
     // Loading restores saved physical settings.
     s.settings.metabolic_cost = 0.06;
-    // These fixtures isolate physical actions; cognitive costs have dedicated tests.
+    // These fixtures isolate physical actions; cognition is free.
     s.settings.active_unit_upkeep = 0.0;
     s.settings.memory_write_energy = 0.0;
     s.settings.movement_energy_cost = 0.01;

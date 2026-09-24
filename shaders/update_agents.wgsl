@@ -52,8 +52,7 @@ if(a.alive==0u){destination[i]=a;return;}if(a.alive==PACKET){
   a.position=wrap_world(a.position+movement,params.world_size.xy);a.moved+=movement;
   let movement_cost=length(thrust)/0.15*params.time_and_costs.z;a.spent+=movement_cost;a.energy=max(0.0,a.energy-movement_cost);
   let body_cost=min(a.energy,params.time_and_costs.w);a.energy-=body_cost;
-  let unit_cost=min(a.energy,params.mutation.w*f32(countOneBits(a.active_mask)));
-  a.energy-=unit_cost;a.spent+=body_cost+unit_cost;counter_add(35,u32(round(unit_cost*1000.0)));
+  a.spent+=body_cost;
   a.distance_travelled+=length(movement);a.age+=1.0;
   if(a.energy<=0.0||a.age>=a.max_age){a.alive=0u;if(a.age>=a.max_age){counter_add(2,1u);}else{counter_add(1,1u);}break;}
  }
@@ -63,7 +62,7 @@ if(a.alive==0u){destination[i]=a;return;}if(a.alive==PACKET){
  }
  a.action=d.selected_action;a.hidden=d.hidden;a.rng=hash_u32(a.rng+params.tick+1u);
  atomicMax(&motion_bound[0],u32(ceil(length(a.moved)*1000.0)));
- let signal_cost=SIGNAL_ACTIVATION_COST+SIGNAL_AMPLITUDE_COST*abs(d.payload);if(a.alive!=0u && d.selected_action==EMIT && params.physical.y>=0.5 && a.energy>=signal_cost){a.energy-=signal_cost;a.spent+=signal_cost;a.signal_payload=d.payload;a.signal_tick=params.tick+1u;a.signal_high=params.clock.x+u32(params.tick==0xffffffffu);let sequence=counter_add(8,1u);events[sequence%65536u]=InteractionEvent(params.tick,i,INVALID,EMIT,d.payload,sequence,a.lineage_id,0u,a.position,vec2<f32>(0.0),0u,0u,params.clock.x,a.lineage_high,0u,0u);counter_add(9,1u);}
+ if(a.alive!=0u && d.selected_action==EMIT && params.physical.y>=0.5){a.signal_payload=d.payload;a.signal_tick=params.tick+1u;a.signal_high=params.clock.x+u32(params.tick==0xffffffffu);let sequence=counter_add(8,1u);events[sequence%65536u]=InteractionEvent(params.tick,i,INVALID,EMIT,d.payload,sequence,a.lineage_id,0u,a.position,vec2<f32>(0.0),0u,0u,params.clock.x,a.lineage_high,0u,0u);counter_add(9,1u);}
  destination[i]=a;
 }
 fn counter_add(index:u32,value:u32)->u32 {

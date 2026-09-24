@@ -158,15 +158,13 @@ pub fn physics(ui: &mut egui::Ui, state: &mut AppState) {
         ui.label(format!("Founding bodies: {}", s.population));
         ui.label(format!("Food regeneration: {:.3}", s.resource_regeneration));
         ui.label(format!(
-            "Body upkeep: {:.3} per tick; unit upkeep: {:.5}; write energy: {:.5}; movement cost: {:.3}",
+            "Body upkeep: {:.3} per tick; brain and signaling: free; movement cost: {:.3}",
             s.metabolic_cost,
-            s.active_unit_upkeep,
-            s.memory_write_energy,
             s.movement_energy_cost
         ));
         ui.small(format!("Social actions: {}", if s.social_actions_enabled { "available under ordinary world rules" } else { "disabled" }));
         ui.small("Body upkeep and environmental dynamics have fixed strength from tick zero.");
-        ui.small("Active units and actual memory writes are paid; reproduction overhead remains physical construction.");
+        ui.small("Brain size, learning writes and signaling have no energy charge; reproduction still requires physical packets.");
     });
 }
 

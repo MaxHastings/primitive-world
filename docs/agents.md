@@ -2,9 +2,10 @@
 
 An organism chooses effort from local measurements and private lifetime state.
 The world resolves whether those intentions are affordable and physically possible.
-This page specifies the current `primitive-v45-depth-retention` interface; all
+This page specifies the current `primitive-v46-fast-evolution` interface; all
 execution modes use the same biology. Values below are defaults unless stated
-otherwise; saved settings take precedence.
+otherwise; saved physical settings take precedence except that historical brain
+energy charges are cleared on resume.
 
 Read [inputs](#inputs-zero-based) and [outputs](#outputs-zero-based) for the
 controller interface, [reproductive packets](#reproductive-packets) for inheritance
@@ -16,7 +17,7 @@ The [design principles](direction.md) explain why these are general capabilities
 There are 107 physical inputs, 16 potential gated recurrent units, and 14 outputs:
 2,494 inherited float32 parameters. A heritable mask expresses 1-16 units. Every
 unit has the same connectivity and update equations; inactive units have zero
-state, readout, learning, write cost, and upkeep effect. Latent inherited weights
+state, readout, and learning effect. Latent inherited weights
 remain available to blind topology mutation.
 
 Candidate activity is tanh(input projection + previous-state projection + bias).
@@ -33,10 +34,9 @@ Inherited weights, the active mask, plasticity/retention traits, packet size and
 the three mutation controls enter hereditary storage. Speed and sensory radius
 copy at birth and are fixed by world physiology, not evolved morphology.
 
-Body upkeep defaults to 0.05 energy/tick and can be adjusted in the viewer. Each
-active unit adds 0.00025; actual absolute recurrent/trace/learned-state changes
-cost 0.0001 energy per unit of change.
-Capacity and learning are optional and paid. Genome copying has no extra upkeep.
+Body upkeep defaults to 0.05 energy/tick and can be adjusted in the viewer.
+Active brain units, learning writes, and signaling have no energy charge.
+Genome copying has no extra upkeep.
 
 ## Inputs (zero-based)
 
