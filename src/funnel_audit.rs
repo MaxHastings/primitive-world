@@ -14,6 +14,13 @@ pub(crate) struct FunnelObserver {
     post: Compute,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct BirthEdge {
+    pub tick: u32,
+    pub child: u32,
+    pub parents: [u32; 2],
+}
+
 #[test]
 fn observer_is_physically_neutral_and_counts_real_births() {
     let (d, q) = super::tests::gpu();
@@ -229,6 +236,34 @@ impl FunnelObserver {
         let values: [u32; 32] = *bytemuck::from_bytes(&bytes);
         assert_eq!(values[1], 0, "funnel observer capacity exceeded");
         values
+    }
+
+    /// The exact two packet producers of every viable birth in the observer window.
+    pub fn birth_edges(&self, d: &wgpu::Device, q: &wgpu::Queue) -> (Vec<BirthEdge>, u32) {
+        let totals = self.counts(d, q);
+        assert!(u64::from(totals[0]) <= self.events.size() / 48);
+        let bytes = observability::read_buffer(d, q, &self.events).unwrap();
+        let all: &[[u32; 12]] = bytemuck::cast_slice(&bytes);
+        let events = &all[..totals[0] as usize];
+        let mut fusions = std::collections::HashMap::new();
+        for e in events.iter().filter(|e| e[0] == 6) {
+            assert!(fusions.insert((e[1], e[4]), [e[5], e[6]]).is_none());
+        }
+        let mut births = Vec::with_capacity(totals[4] as usize);
+        for e in events.iter().filter(|e| e[0] == 1) {
+            let parents = *fusions
+                .get(&(e[1], e[10]))
+                .expect("birth missing two-parent fusion record");
+            assert_eq!(parents[0], e[5], "birth first-parent mismatch");
+            births.push(BirthEdge {
+                tick: e[1],
+                child: e[2],
+                parents,
+            });
+        }
+        births.sort_by_key(|edge| (edge.tick, edge.child));
+        assert_eq!(births.len(), totals[4] as usize);
+        (births, totals[0])
     }
     pub fn report(&self, d: &wgpu::Device, q: &wgpu::Queue) -> serde_json::Value {
         let words = observability::read_buffer(d, q, &self.counters).unwrap();

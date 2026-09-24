@@ -1,6 +1,120 @@
 # V46 restart-diversity trial
 
-## Current selection: one cubic curve
+## 2026-09-24 stability-biased handoff
+
+The live founder redraw curve is now `u⁵` instead of `u³`, where `u` is each
+founder's shuffled rank between zero and one. The median gene redraw
+probability falls from 12.5% to 3.125%; the 80th percentile falls from 51.2%
+to 32.768%. The exact inherited and fresh endpoints remain. Brain genes,
+plasticity parameters, structural traits, and inherited mutation controls
+still follow the same mixing mechanism. Ordinary birth mutation, the rolling
+hereditary pool, ecology, sensing, physics, rendering, and BIO_DT=4 were not
+changed. The new curve will first act at the next natural world rollover.
+
+The owner chose this stability shift without a matched fitness trial. The
+morning lineage comparisons showed substantial competitive variation but did
+not establish that the cubic restart caused it. The old wallpaper saved and
+closed normally at world 324, tick 852,158, with 780 living and 171,392,447
+v46 macro steps. Its exact checkpoint, receipt, previous executable, hashes,
+and handoff manifest are under
+`%LOCALAPPDATA%\PrimitiveWorldV46\archive\restart-cubic5-before-handoff-20260924-032954`.
+The new executable resumed that checkpoint at MAX speed as process 7708 on
+the same raised desktop wallpaper layer. The checkpoint SHA-256 is
+`29E045AD319C412D73921E07CCACAE4CC4E4CEEC32B9D0A5D09F9535F307AEAD`.
+The new executable SHA-256 is
+`D685AA18FAB8B517D65254C31A4FF798F6E07DFB9589E6F1BAF8AEFA41DF1091`.
+The release build passed; a separate comparison test was deliberately skipped
+at the owner's request.
+
+A later [matched `u³` versus `u⁵` fork and descendant contest](restart-curve-comparison-20260924.md)
+found that both curves sustained closed reproduction; `u⁵` led in four of six
+contest placements from one paired evolutionary fork. That result is
+directional and seed-dependent, not a long-run fitness verdict.
+
+## Two-parent reproductive ancestry check (2026-09-23)
+
+A separate diagnostic restarted from the same copied world-268 pool and
+recorded both packet producers at every viable fusion. It matched every birth
+record to its fusion pair, reconstructed the full founder pedigree of each
+living organism, and checked that the reconstructed first-parent tag matched
+the stored `founder_family` label. The run reached tick 262,144 with 85,905
+viable births and 1,706,954 observer events, below the allocated 2,000,000
+event capacity. The live wallpaper and its saves were untouched.
+
+| Trial tick | Living | One-sided tags | Founders in living two-parent pedigrees | Founders ancestral to every living organism | Median founders per living pedigree |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 8,192 | 1,352 | 102 | 249 | 0 | 29 |
+| 65,536 | 666 | 11 | 243 | 243 | 243 |
+| 131,072 | 666 | 8 | 243 | 243 | 243 |
+| 262,144 | 436 | 3 | 243 | 243 | 243 |
+
+By tick 65,536, reproductive ancestry had mixed enough that every living
+organism had the same 243 founders somewhere in its two-parent pedigree. The
+visible tag count continued to fall to three, and 63,367 of 85,905 viable
+births by tick 262,144 paired parents with different one-sided tags. Thus a
+tag sweep is not a sweep of all reproductive ancestry. The shared pedigree
+also reaches a saturation point and stops distinguishing which founders are
+currently supplying useful genetic material.
+
+This is **reproductive genealogy**, not exact gene provenance. Each fusion
+uses two packets, but module-wise recombination can replace a distant
+ancestor's last surviving parameters. The 243 shared founders must not be
+reported as 243 active genetic contributors. Exact inherited-material
+tracking would need provenance attached to each heritable module or parameter
+through recombination and mutation. The compact milestone records are under
+`reports/two-parent-seed-2718281828/two-parent-tick-*.json`.
+
+## Isolated restart observations from the world-268 pool (2026-09-23)
+
+A diagnostic loaded a **copy** of the world-268 tick-632,116 checkpoint and
+used the normal cubic rollover to start a counterfactual world 269 with 8,192
+founders. Three independent restart seeds used the same 4,096-record source
+pool. Two ran for 65,536 world ticks; the third ran for 262,144. None wrote a
+game save or changed the running wallpaper. These are trajectories, not a
+real-time performance or evolutionary-value comparison.
+
+| Trial / tick | Living | Viable births | Founder tags | Largest tag | Three-unit living | Distinct expressed brains in sample |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| A / 0 | 8,192 | 0 | 8,192 | 0.01% | 66.7% | 1,013 / 1,024 |
+| A / 65,536 | 728 | 27,012 | 16 | 21.3% | 98.5% | 515 / 728 |
+| B / 0 | 8,192 | 0 | 8,192 | 0.01% | 67.6% | 1,017 / 1,024 |
+| B / 65,536 | 386 | 17,239 | 7 | 25.4% | 90.4% | 263 / 386 |
+| C / 0 | 8,192 | 0 | 8,192 | 0.01% | 66.6% | 1,017 / 1,024 |
+| C / 65,536 | 587 | 27,453 | 12 | 28.3% | 99.7% | 485 / 587 |
+| C / 131,072 | 706 | 49,377 | 7 | 27.6% | 97.3% | 603 / 706 |
+| C / 262,144 | 458 | 82,031 | 4 | 61.1% | 96.5% | 360 / 458 |
+
+In C, tag count fell to 91 by tick 8,192 and 12 by tick 65,536, then more
+slowly to four at tick 262,144. Viable, naturally closed reproduction
+continued throughout; 80,235 of the 82,031 births by the last checkpoint
+were closed births. The common `0x19` three-unit brain's mean expressed-weight
+RMS pair distance fell from 0.0576 among sampled founders to 0.0081 at
+262,144. That indicates narrower weights among living brains with this mask,
+even though 360 of 458 living organisms still had exact distinct expressed
+brains. The initial sample included strongly redrawn founders, so this change
+does not isolate selection from the loss of highly disrupted founders.
+
+The pool itself did not become a single genotype. In C, exact distinct full
+pool genomes were 2,675 of 4,096 before rollover, 3,580 at tick 8,192, and
+3,890 at tick 262,144. Exact distinct *expressed* pool brains were 2,586,
+3,340, and 2,617, respectively. The pool remained overwhelmingly three-unit:
+4,043 slots at the start and 4,018 at tick 262,144. Founders with other
+topologies were therefore mostly made by restart redraw; their early loss
+does not demonstrate that a larger well-adapted brain is inherently worse.
+
+**Interpretation limit:** `founder_family` is an observer tag copied from only
+one packet in a two-parent fusion. A single tag can contain genetic material
+from multiple founders. It resets to the spawn slot each new world and cannot
+identify a persistent cross-world lineage. Tag consolidation measures this
+one-sided label's concentration, not loss of all genetic diversity. The
+two-parent check above traces reproductive pedigree; exact genetic-material
+contributions still need module or parameter provenance. A controlled
+brain-size comparison would also need matched genome
+backgrounds and starting conditions. The per-tick JSON observations are in
+`reports/latest-world-20260923-w268/pool-trial-tick-*.json` and
+`reports/pool-trial-seed-{3735928559,2718281828}/pool-trial-tick-*.json`.
+
+## Previous selection: one cubic curve
 
 The owner replaced the fixed 20/40/40 mix with one rule applied to every
 founder at each *natural* world rollover. All founders independently sample
@@ -119,3 +233,10 @@ mutated controllers can also lose useful coordination. Judge the run by mature
 descendants, naturally closed reproductive chains and their retention across
 worlds per real hour, alongside population and rollover duration. Faster
 rollover or more founder diversity alone is not success.
+
+The later [v46 checkpoint time-course contest](lineage-comparison-v46-timecourse-20260923.md)
+found that descendants from just before the cubic rollout beat cohorts after
+11.34M and 27.84M further macro steps in a shared no-hybrid challenge. The
+newest cohort did beat the intermediate one in five of six placements. This is
+evidence of a competitive drop and partial recovery, not a causal estimate of
+the restart rule's effect on the continuing wallpaper experiment.

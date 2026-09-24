@@ -461,7 +461,7 @@ fn reservoir_and_world_transitions_resume_without_observer_selection() {
 }
 
 #[test]
-fn cubic_restart_curve_covers_both_endpoints() {
+fn fifth_power_restart_curve_covers_both_endpoints() {
     let count = 8192;
     assert_eq!(crate::evolution::founder_redraw_probability(0, count), 0.0);
     assert_eq!(
@@ -474,8 +474,8 @@ fn cubic_restart_curve_covers_both_endpoints() {
             count,
         )
     };
-    assert!((0.12..0.13).contains(&p(0.5)));
-    assert!((0.72..0.74).contains(&p(0.9)));
+    assert!((0.03..0.033).contains(&p(0.5)));
+    assert!((0.58..0.60).contains(&p(0.9)));
     assert!((1..count).all(
         |rank| crate::evolution::founder_redraw_probability(rank - 1, count)
             < crate::evolution::founder_redraw_probability(rank, count)

@@ -41,9 +41,10 @@ def summarize(report_path, ancestry_path):
                    for m in ("unknown", "hybrid"))):
         raise ValueError("Contest ancestry gate failed")
     families = report["family_report"]["families"]
+    biological_units_per_macro_step = report["biological_units_per_macro_step"]
     def score(side):
         group = [f for f in families if f["family"] % 2 == side]
-        return dict(organism_biological_units=2 * sum(f["founder_body_ticks"] + f["descendant_body_ticks"] for f in group),
+        return dict(organism_biological_units=biological_units_per_macro_step * sum(f["founder_body_ticks"] + f["descendant_body_ticks"] for f in group),
                     births=sum(f["births"] for f in group),
                     descendant_parent_births=sum(f["births_to_descendant_parents"] for f in group),
                     matured_descendants=sum(f["matured_descendants"] for f in group))
@@ -64,7 +65,11 @@ def main():
     parser.add_argument("--exe", type=Path, default=Path("target-lineage-contest/release/primitive_world.exe"))
     parser.add_argument("--seeds", type=int, nargs="+", default=[101, 202, 303])
     parser.add_argument("--ticks", type=int, default=50_000,
-                        help="v46 macro steps; 50,000 equals 100,000 biological units")
+                        help="v46 macro steps; biological units are read from the diagnostic report")
+    parser.add_argument("--no-famine", action="store_true",
+                        help="omit the assay's forced food shock")
+    parser.add_argument("--metabolic-cost", default=".005",
+                        help="stationary upkeep shared by both arms")
     args = parser.parse_args()
     if not 1 <= args.ticks <= 200_000 or len(set(args.seeds)) != len(args.seeds):
         parser.error("ticks must be 1..200000 and seeds unique")
@@ -78,7 +83,7 @@ def main():
                     mixed_sha256=hashlib.sha256(mixed.read_bytes()).hexdigest(),
                     old_source_model=old["model"], new_source_model=new["model"],
                     founder_count_each=128, seeds=args.seeds, max_macro_steps=args.ticks,
-                    max_biological_units=args.ticks * 2,
+                    metabolic_cost=args.metabolic_cost, forced_famine=not args.no_famine,
                     method="Interleaved founder slots, shared v46 world, physical packet fusion within ancestry only; fresh world per seed.")
     (args.out / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     results = []
@@ -86,17 +91,19 @@ def main():
         run_dir = args.out / f"seed-{seed}"
         run_dir.mkdir()
         report, ancestry = run_dir / "report.json", run_dir / "ancestry.json"
-        famine = min(2500, args.ticks + 1)
-        restore = min(3000, args.ticks + 2)
         command = [str(args.exe.resolve()), "--headless", "--single-world", "--seed", str(seed),
                    "--founders", str(mixed.resolve()), "--ticks", str(args.ticks),
                    "--sample", "128", "--families", "--ancestry-audit", str(ancestry.resolve()),
                    "--block-cross-lineage-mating", "--stop-on-lineage-extinction",
-                   "--population", "8192", "--regeneration", ".01", "--metabolic-cost", ".005",
+                   "--population", "8192", "--regeneration", ".01", "--metabolic-cost", args.metabolic_cost,
                    "--movement-cost", ".01", "--motor-gain", "4", "--habitat-contrast", "1",
-                   "--environment-rotation", "0", "--famine-at", str(famine),
-                   "--restore-at", str(restore), "--famine-radius", "256", "--famine-delta", "-10",
+                   "--environment-rotation", "0",
                    "--output", str(report.resolve())]
+        if not args.no_famine:
+            famine = min(2500, args.ticks + 1)
+            restore = min(3000, args.ticks + 2)
+            command.extend(["--famine-at", str(famine), "--restore-at", str(restore),
+                            "--famine-radius", "256", "--famine-delta", "-10"])
         with (run_dir / "runner.log").open("x", encoding="utf-8") as log:
             result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=False)
         if result.returncode or not report.is_file() or not ancestry.is_file():

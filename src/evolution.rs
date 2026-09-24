@@ -7,13 +7,13 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 pub const HISTORY_LIMIT: usize = 64;
-/// A single continuous restart curve, biased toward inherited founders.
+/// A single continuous restart curve, strongly biased toward inherited founders.
 pub(crate) fn founder_redraw_probability(rank: usize, count: usize) -> f32 {
     if count <= 1 {
         return 0.0;
     }
     let position = rank as f32 / (count - 1) as f32;
-    position * position * position
+    position.powi(5)
 }
 
 fn shuffled_founder_ranks(count: usize, rng: &mut u32) -> Vec<usize> {
